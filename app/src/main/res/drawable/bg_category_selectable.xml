@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- 选中态：主色描边 + 主色弱化底，保证单选状态一眼可辨 -->
+    <item android:state_selected="true">
+        <shape android:shape="rectangle">
+            <solid android:color="@color/primary_light" />
+            <stroke
+                android:width="@dimen/stroke_width"
+                android:color="@color/primary" />
+            <corners android:radius="@dimen/radius_sm" />
+        </shape>
+    </item>
+
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="@color/surface" />
+            <stroke
+                android:width="@dimen/stroke_width"
+                android:color="@color/divider" />
+            <corners android:radius="@dimen/radius_sm" />
+        </shape>
+    </item>
+
+</selector>

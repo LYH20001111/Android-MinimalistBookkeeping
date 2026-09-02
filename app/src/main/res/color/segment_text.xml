@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 分段按钮（周/月/年、支出/收入）的文字颜色：选中用主色上的白字 -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:color="@color/text_on_primary" android:state_checked="true" />
+    <item android:color="@color/text_on_primary" android:state_selected="true" />
+    <item android:color="@color/text_secondary" />
+</selector>

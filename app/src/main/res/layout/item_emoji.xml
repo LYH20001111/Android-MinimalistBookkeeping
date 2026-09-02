@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="@dimen/emoji_cell_size"
+    android:layout_margin="@dimen/spacing_xxs"
+    android:background="@drawable/bg_category_selectable">
+
+    <TextView
+        android:id="@+id/emojiText"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:contentDescription="@string/cd_category_icon"
+        android:gravity="center"
+        android:textSize="@dimen/font_emoji" />
+
+</FrameLayout>

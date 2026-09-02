@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- 到达列表边界时排序按钮被禁用，用三级文字色弱化，避免出现「点了没反应」的错觉 -->
+    <item android:color="@color/text_tertiary" android:state_enabled="false" />
+    <item android:color="@color/text_secondary" />
+
+</selector>

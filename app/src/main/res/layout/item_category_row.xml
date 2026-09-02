@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="?attr/selectableItemBackground"
+    android:gravity="center_vertical"
+    android:minHeight="@dimen/list_item_min_height"
+    android:orientation="horizontal"
+    android:paddingStart="@dimen/page_margin"
+    android:paddingTop="@dimen/spacing_xs"
+    android:paddingEnd="@dimen/spacing_xs"
+    android:paddingBottom="@dimen/spacing_xs">
+
+    <!-- emoji 圆形底 -->
+    <FrameLayout
+        android:layout_width="@dimen/list_category_icon_size"
+        android:layout_height="@dimen/list_category_icon_size"
+        android:background="@drawable/bg_category_circle">
+
+        <TextView
+            android:id="@+id/rowIcon"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:contentDescription="@string/cd_category_icon"
+            android:gravity="center"
+            android:textSize="@dimen/font_emoji" />
+
+    </FrameLayout>
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="@dimen/spacing_md"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/rowName"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textAppearance="@style/TextAppearance.App.Body" />
+
+        <!-- 系统默认分类可以改名换图标，但同样受删除守卫约束，这里给出提示 -->
+        <TextView
+            android:id="@+id/rowBadge"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/spacing_xxs"
+            android:maxLines="1"
+            android:text="@string/category_default_badge"
+            android:textAppearance="@style/TextAppearance.App.Caption"
+            android:visibility="gone" />
+
+    </LinearLayout>
+
+    <ImageView
+        android:id="@+id/rowMoveUp"
+        style="@style/Widget.App.RowAction"
+        android:contentDescription="@string/category_move_up"
+        android:src="@drawable/ic_arrow_up" />
+
+    <ImageView
+        android:id="@+id/rowMoveDown"
+        style="@style/Widget.App.RowAction"
+        android:contentDescription="@string/category_move_down"
+        android:src="@drawable/ic_arrow_down" />
+
+    <ImageView
+        android:id="@+id/rowEdit"
+        style="@style/Widget.App.RowAction"
+        android:contentDescription="@string/category_edit_title"
+        android:src="@drawable/ic_edit" />
+
+    <ImageView
+        android:id="@+id/rowDelete"
+        style="@style/Widget.App.RowAction.Danger"
+        android:contentDescription="@string/action_delete"
+        android:src="@drawable/ic_delete" />
+
+</LinearLayout>

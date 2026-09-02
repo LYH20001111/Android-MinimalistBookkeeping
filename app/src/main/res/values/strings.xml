@@ -1,0 +1,204 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <string name="app_name">极简记账</string>
+
+    <!-- ============ 通用 ============ -->
+    <string name="action_save">保存</string>
+    <string name="action_cancel">取消</string>
+    <string name="action_delete">删除</string>
+    <string name="action_confirm">确定</string>
+    <string name="action_add_one">记一笔</string>
+    <string name="action_go_setting">去设置</string>
+    <string name="placeholder_dash">—</string>
+    <string name="amount_zero">¥0.00</string>
+
+    <!-- ============ 底部导航 ============ -->
+    <string name="tab_record">记录</string>
+    <string name="tab_chart">图表</string>
+    <string name="tab_mine">我的</string>
+
+    <!-- ============ 日期与周期 ============ -->
+    <string name="date_format_year_month">%1$d年%2$d月</string>
+    <string name="date_format_year">%1$d年</string>
+    <string name="date_format_month_day">%1$d月%2$d日</string>
+    <string name="date_format_full">%1$d年%2$d月%3$d日</string>
+    <string name="date_format_week_range">%1$d月%2$d日 - %3$d月%4$d日</string>
+    <string name="day_label_today">今天</string>
+    <string name="day_label_yesterday">昨天</string>
+
+    <string-array name="weekday_labels">
+        <item>一</item>
+        <item>二</item>
+        <item>三</item>
+        <item>四</item>
+        <item>五</item>
+        <item>六</item>
+        <item>日</item>
+    </string-array>
+
+    <string-array name="month_labels">
+        <item>1月</item>
+        <item>2月</item>
+        <item>3月</item>
+        <item>4月</item>
+        <item>5月</item>
+        <item>6月</item>
+        <item>7月</item>
+        <item>8月</item>
+        <item>9月</item>
+        <item>10月</item>
+        <item>11月</item>
+        <item>12月</item>
+    </string-array>
+
+    <!-- ============ 记录页 ============ -->
+    <string name="record_title">记录</string>
+    <string name="record_pick_business_date">选择业务日期</string>
+    <string name="record_today_expense">今日支出</string>
+    <string name="record_today_income">今日收入</string>
+    <string name="record_today_balance">结余</string>
+    <string name="record_bill_list_title">账单</string>
+    <string name="record_day_count_format">%1$d 笔</string>
+    <string name="record_empty_title">还没有账单</string>
+    <string name="record_empty_subtitle">记下第一笔，开始看懂自己的钱花在哪里</string>
+    <string name="record_delete_title">删除这笔账单？</string>
+    <string name="record_delete_message">%1$s %2$s 将从统计中移除，此操作不可恢复。</string>
+    <string name="record_deleted">已删除</string>
+
+    <!-- ============ 新增/编辑账单 ============ -->
+    <string name="edit_title_new">记一笔</string>
+    <string name="edit_title_edit">编辑账单</string>
+    <string name="edit_type_expense">支出</string>
+    <string name="edit_type_income">收入</string>
+    <string name="edit_amount_hint">金额</string>
+    <string name="edit_category_title">选择分类</string>
+    <string name="edit_date_title">日期</string>
+    <string name="edit_time_title">时间</string>
+    <string name="edit_note_hint">备注（选填，最多 100 字）</string>
+    <string name="edit_error_amount">请输入大于 0 的金额</string>
+    <string name="edit_error_category">请选择分类</string>
+    <string name="edit_saved">已保存</string>
+    <string name="edit_delete_button">删除账单</string>
+    <string name="edit_category_empty">该类型下还没有分类，请先到「我的 → 分类管理」新增</string>
+
+    <!-- ============ 图表页 ============ -->
+    <string name="chart_title">图表</string>
+    <string name="chart_period_week">周</string>
+    <string name="chart_period_month">月</string>
+    <string name="chart_period_year">年</string>
+    <string name="chart_income">收入</string>
+    <string name="chart_expense">支出</string>
+    <string name="chart_balance">结余</string>
+    <string name="chart_count_format">共 %1$d 笔</string>
+    <string name="chart_compare_label">支出较上一周期</string>
+    <string name="chart_change_up_format">↑ %1$s</string>
+    <string name="chart_change_down_format">↓ %1$s</string>
+    <string name="chart_change_flat">持平</string>
+    <string name="chart_trend_title">支出趋势</string>
+    <string name="chart_trend_empty">本周期暂无支出趋势</string>
+    <string name="chart_category_title">消费分类</string>
+    <string name="chart_total_expense">总支出</string>
+    <string name="chart_empty_title">本周期还没有记录</string>
+    <string name="chart_empty_subtitle">记一笔后即可查看趋势与分类占比</string>
+    <string name="chart_previous_period">上一周期</string>
+    <string name="chart_next_period">下一周期</string>
+
+    <!-- ============ 预算 ============ -->
+    <string name="budget_card_title">本月预算</string>
+    <string name="budget_amount_label">月预算</string>
+    <string name="budget_used_label">已消费</string>
+    <string name="budget_remaining_label">剩余</string>
+    <string name="budget_usage_label">使用率</string>
+    <string name="budget_not_set_title">尚未设置本月预算</string>
+    <string name="budget_not_set_subtitle">设置后可以看到这个月还能花多少</string>
+    <string name="budget_status_normal">正常</string>
+    <string name="budget_status_warning">接近预算</string>
+    <string name="budget_status_over">已超预算</string>
+    <string name="budget_over_format">超出 %1$s</string>
+    <string name="budget_setting_title">预算设置</string>
+    <string name="budget_setting_hint">本月总预算</string>
+    <string name="budget_setting_tip">预算只按支出计算，不把收入算作预算消耗。清空金额后保存即视为删除该月预算。</string>
+    <string name="budget_setting_status_title">本月执行情况</string>
+    <string name="budget_saved">预算已保存</string>
+    <string name="budget_removed">已清除该月预算</string>
+    <string name="budget_error_amount">请输入有效的预算金额</string>
+
+    <!-- ============ 我的 ============ -->
+    <string name="mine_title">我的</string>
+    <string name="mine_category">分类管理</string>
+    <string name="mine_category_subtitle">新增、编辑、删除与排序</string>
+    <string name="mine_budget">预算设置</string>
+    <string name="mine_budget_subtitle">按月份设置一个总预算</string>
+    <string name="mine_appearance">外观设置</string>
+    <string name="mine_appearance_subtitle">浅色 / 跟随系统</string>
+    <string name="mine_data">数据管理</string>
+    <string name="mine_data_subtitle">查看数据量与清空本地数据</string>
+    <string name="mine_about">关于 App</string>
+    <string name="mine_about_subtitle">版本号与产品说明</string>
+
+    <!-- ============ 分类管理 ============ -->
+    <string name="category_title">分类管理</string>
+    <string name="category_tab_expense">支出分类</string>
+    <string name="category_tab_income">收入分类</string>
+    <string name="category_add">新增分类</string>
+    <string name="category_edit_title">编辑分类</string>
+    <string name="category_name_hint">分类名称</string>
+    <string name="category_icon_title">选择图标</string>
+    <string name="category_move_up">上移</string>
+    <string name="category_move_down">下移</string>
+    <string name="category_delete_title">删除分类「%1$s」？</string>
+    <string name="category_delete_message">删除后不可恢复。</string>
+    <string name="category_delete_blocked_title">无法删除</string>
+    <string name="category_delete_blocked_message">分类「%1$s」已被 %2$d 笔账单使用，请先修改或删除相关账单，避免统计数据断裂。</string>
+    <string name="category_deleted">已删除分类</string>
+    <string name="category_saved">已保存分类</string>
+    <string name="category_name_error">请输入分类名称</string>
+    <string name="category_empty">还没有分类，点击下方按钮新增</string>
+    <string name="category_default_badge">系统默认</string>
+
+    <!-- ============ 外观设置 ============ -->
+    <string name="appearance_title">外观设置</string>
+    <string name="appearance_theme_light">浅色</string>
+    <string name="appearance_theme_system">跟随系统</string>
+    <string name="appearance_subtitle">默认以蓝白浅色为主视觉</string>
+    <string name="appearance_saved">外观已更新</string>
+
+    <!-- ============ 数据管理 ============ -->
+    <string name="data_title">数据管理</string>
+    <string name="data_transaction_count">账单</string>
+    <string name="data_category_count">分类</string>
+    <string name="data_budget_count">预算</string>
+    <string name="data_count_format">%1$d 条</string>
+    <string name="data_local_only">所有数据只保存在本机，V1 不含账号与云同步，断网也可完整使用。</string>
+    <string name="data_clear_title">清空所有本地数据</string>
+    <string name="data_clear_subtitle">删除全部账单、预算与自定义分类，并恢复系统默认分类</string>
+    <string name="data_clear_button">清空所有本地数据</string>
+    <string name="data_clear_dialog_title">确定清空所有本地数据？</string>
+    <string name="data_clear_dialog_message">将删除全部账单、预算与自定义分类，并恢复系统默认分类与默认外观。此操作不可恢复。</string>
+    <string name="data_cleared">本地数据已清空</string>
+
+    <!-- ============ 关于 ============ -->
+    <string name="about_title">关于 App</string>
+    <string name="about_version_format">版本 %1$s</string>
+    <string name="about_intro_title">产品简介</string>
+    <string name="about_intro">极简记账是一个以快速记录为入口、以周/月/年消费分析为核心价值、以月预算为控制手段的个人记账 App。</string>
+    <string name="about_loop">记 → 看 → 懂 → 控</string>
+    <string name="about_offline">离线可用：核心记账与统计不依赖网络，也不申请任何网络权限。</string>
+    <string name="about_agreement">用户协议</string>
+    <string name="about_privacy">隐私说明</string>
+    <string name="about_agreement_content">本应用按「现状」提供个人记账能力，统计结果仅基于你在本机录入的数据，不构成任何财务、税务或投资建议。清空本地数据后不可恢复，请自行留意。</string>
+    <string name="about_privacy_content">本应用不收集、不上传任何个人信息。全部账单、分类、预算与设置数据仅保存在本机应用私有目录的 SQLite 数据库中，V1 不含账号体系、云同步与网络权限。</string>
+
+    <!-- ============ 无障碍描述 ============ -->
+    <string name="cd_navigate_up">返回</string>
+    <string name="cd_add_transaction">新增账单</string>
+    <string name="cd_previous_period">上一周期</string>
+    <string name="cd_next_period">下一周期</string>
+    <string name="cd_pick_date">选择日期</string>
+    <string name="cd_category_icon">分类图标</string>
+    <string name="cd_empty_state">空状态插图</string>
+    <string name="cd_trend_chart">支出趋势折线图</string>
+    <string name="cd_category_chart">消费分类占比环形图</string>
+
+</resources>

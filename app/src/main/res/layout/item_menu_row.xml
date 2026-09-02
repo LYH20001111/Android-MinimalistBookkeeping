@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    style="@style/AppMenuRow">
+
+    <!--
+      「我的」页的通用菜单行。根节点刻意不设 id：
+      include 处的 id 会覆盖被包含布局根节点的 id，保留两份会让 ViewBinding 绑定失败。
+      图标与文案由 MineFragment 按 string / drawable 资源注入，这里不硬编码任何内容。
+    -->
+
+    <ImageView
+        android:id="@+id/menuIcon"
+        android:layout_width="@dimen/icon_size_sm"
+        android:layout_height="@dimen/icon_size_sm"
+        android:importantForAccessibility="no"
+        app:tint="@color/text_secondary" />
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="@dimen/spacing_md"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/menuTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:maxLines="1"
+            android:textAppearance="@style/TextAppearance.App.Body" />
+
+        <TextView
+            android:id="@+id/menuSubtitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/spacing_xxs"
+            android:maxLines="1"
+            android:textAppearance="@style/TextAppearance.App.Caption" />
+
+    </LinearLayout>
+
+    <ImageView
+        android:layout_width="@dimen/icon_size_sm"
+        android:layout_height="@dimen/icon_size_sm"
+        android:importantForAccessibility="no"
+        android:src="@drawable/ic_chevron_right"
+        app:tint="@color/text_tertiary" />
+
+</LinearLayout>

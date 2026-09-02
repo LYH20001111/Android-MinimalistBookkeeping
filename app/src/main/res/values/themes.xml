@@ -1,0 +1,250 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- ============================================================== -->
+    <!-- 应用主题：极简、蓝白、弱阴影、统一圆角（V1 基线第 14 章）              -->
+    <!-- ============================================================== -->
+
+    <style name="Base.V1.Theme.MinimalistBookkeeping" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/primary</item>
+        <item name="colorOnPrimary">@color/text_on_primary</item>
+        <item name="colorPrimaryContainer">@color/primary_light</item>
+        <item name="colorOnPrimaryContainer">@color/primary_dark</item>
+        <item name="colorSecondary">@color/primary</item>
+        <item name="colorOnSecondary">@color/text_on_primary</item>
+        <item name="colorTertiary">@color/primary_dark</item>
+
+        <item name="android:colorBackground">@color/background</item>
+        <item name="colorOnBackground">@color/text_primary</item>
+        <item name="colorSurface">@color/surface</item>
+        <item name="colorOnSurface">@color/text_primary</item>
+        <item name="colorSurfaceVariant">@color/surface_subtle</item>
+        <item name="colorOnSurfaceVariant">@color/text_secondary</item>
+        <item name="colorSurfaceContainer">@color/surface</item>
+        <item name="colorSurfaceContainerLow">@color/surface</item>
+        <item name="colorSurfaceContainerHigh">@color/surface_subtle</item>
+
+        <item name="colorOutline">@color/divider</item>
+        <item name="colorOutlineVariant">@color/divider</item>
+        <item name="colorError">@color/danger</item>
+        <item name="colorOnError">@color/text_on_primary</item>
+
+        <item name="android:windowBackground">@color/background</item>
+        <item name="android:statusBarColor">@color/background</item>
+        <item name="android:navigationBarColor">@color/surface</item>
+
+        <item name="android:textColorPrimary">@color/text_primary</item>
+        <item name="android:textColorSecondary">@color/text_secondary</item>
+        <item name="android:textColorTertiary">@color/text_tertiary</item>
+
+        <item name="textAppearanceDisplaySmall">@style/TextAppearance.App.Display</item>
+        <item name="textAppearanceTitleLarge">@style/TextAppearance.App.PageTitle</item>
+        <item name="textAppearanceTitleMedium">@style/TextAppearance.App.SectionTitle</item>
+        <item name="textAppearanceBodyLarge">@style/TextAppearance.App.Body</item>
+        <item name="textAppearanceBodyMedium">@style/TextAppearance.App.Secondary</item>
+        <item name="textAppearanceLabelSmall">@style/TextAppearance.App.Caption</item>
+    </style>
+
+    <!-- 明暗两套只在这一层分叉，颜色 Token 由 values-night/colors.xml 负责切换 -->
+    <style name="Base.Theme.MinimalistBookkeeping" parent="Base.V1.Theme.MinimalistBookkeeping">
+        <item name="android:windowLightStatusBar" tools:targetApi="m">true</item>
+        <item name="android:windowLightNavigationBar" tools:targetApi="o_mr1">true</item>
+    </style>
+
+    <style name="Theme.MinimalistBookkeeping" parent="Base.Theme.MinimalistBookkeeping" />
+
+    <!-- ============================================================== -->
+    <!-- 字体 Token                                                       -->
+    <!-- ============================================================== -->
+
+    <style name="TextAppearance.App.Display" parent="TextAppearance.Material3.DisplaySmall">
+        <item name="android:textSize">@dimen/font_display</item>
+        <item name="android:textColor">@color/text_primary</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="TextAppearance.App.PageTitle" parent="TextAppearance.Material3.TitleLarge">
+        <item name="android:textSize">@dimen/font_page_title</item>
+        <item name="android:textColor">@color/text_primary</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="TextAppearance.App.SectionTitle" parent="TextAppearance.Material3.TitleMedium">
+        <item name="android:textSize">@dimen/font_section_title</item>
+        <item name="android:textColor">@color/text_primary</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="TextAppearance.App.Body" parent="TextAppearance.Material3.BodyLarge">
+        <item name="android:textSize">@dimen/font_body</item>
+        <item name="android:textColor">@color/text_primary</item>
+    </style>
+
+    <style name="TextAppearance.App.Secondary" parent="TextAppearance.Material3.BodyMedium">
+        <item name="android:textSize">@dimen/font_secondary</item>
+        <item name="android:textColor">@color/text_secondary</item>
+    </style>
+
+    <style name="TextAppearance.App.Caption" parent="TextAppearance.Material3.LabelSmall">
+        <item name="android:textSize">@dimen/font_caption</item>
+        <item name="android:textColor">@color/text_tertiary</item>
+    </style>
+
+    <!-- ============================================================== -->
+    <!-- 组件样式                                                          -->
+    <!-- ============================================================== -->
+
+    <style name="Widget.App.Card" parent="Widget.Material3.CardView.Outlined">
+        <item name="cardBackgroundColor">@color/surface</item>
+        <item name="cardCornerRadius">@dimen/radius_md</item>
+        <item name="cardElevation">0dp</item>
+        <item name="strokeColor">@color/divider</item>
+        <item name="strokeWidth">@dimen/stroke_width</item>
+        <item name="contentPadding">@dimen/spacing_lg</item>
+    </style>
+
+    <style name="Widget.App.Button.Primary" parent="Widget.Material3.Button">
+        <item name="android:minHeight">@dimen/button_height</item>
+        <item name="android:textSize">@dimen/font_body</item>
+        <item name="android:textColor">@color/text_on_primary</item>
+        <item name="android:textStyle">bold</item>
+        <item name="backgroundTint">@color/primary</item>
+        <item name="cornerRadius">@dimen/radius_sm</item>
+        <item name="elevation">0dp</item>
+    </style>
+
+    <style name="Widget.App.Button.Danger" parent="Widget.Material3.Button.OutlinedButton">
+        <item name="android:minHeight">@dimen/button_height</item>
+        <item name="android:textSize">@dimen/font_body</item>
+        <item name="android:textColor">@color/danger</item>
+        <item name="cornerRadius">@dimen/radius_sm</item>
+        <item name="strokeColor">@color/danger</item>
+    </style>
+
+    <style name="Widget.App.Button.Quiet" parent="Widget.Material3.Button.TextButton">
+        <item name="android:minHeight">@dimen/touch_target</item>
+        <item name="android:textSize">@dimen/font_secondary</item>
+        <item name="android:textColor">@color/text_secondary</item>
+        <item name="cornerRadius">@dimen/radius_sm</item>
+    </style>
+
+    <style name="Widget.App.Button.Segment" parent="Widget.Material3.Button.OutlinedButton">
+        <item name="android:minHeight">@dimen/touch_target</item>
+        <item name="android:textSize">@dimen/font_secondary</item>
+        <item name="android:textColor">@color/segment_text</item>
+        <item name="cornerRadius">@dimen/radius_sm</item>
+        <item name="strokeColor">@color/segment_stroke</item>
+        <item name="backgroundTint">@color/segment_background</item>
+    </style>
+
+    <style name="Widget.App.Button.Icon" parent="Widget.Material3.Button.TextButton.Icon">
+        <item name="android:minWidth">@dimen/touch_target</item>
+        <item name="android:minHeight">@dimen/touch_target</item>
+        <item name="android:paddingStart">@dimen/spacing_sm</item>
+        <item name="android:paddingEnd">@dimen/spacing_sm</item>
+        <item name="iconTint">@color/text_secondary</item>
+        <item name="iconSize">@dimen/icon_size</item>
+        <item name="cornerRadius">@dimen/radius_circle</item>
+    </style>
+
+    <style name="Widget.App.BottomNavigation" parent="Widget.Material3.BottomNavigationView">
+        <item name="android:background">@color/surface</item>
+        <item name="itemIconTint">@color/bottom_nav_item</item>
+        <item name="itemTextColor">@color/bottom_nav_item</item>
+        <item name="itemActiveIndicatorStyle">@style/Widget.App.BottomNavigation.Indicator</item>
+        <item name="labelVisibilityMode">labeled</item>
+        <item name="elevation">0dp</item>
+    </style>
+
+    <style name="Widget.App.BottomNavigation.Indicator" parent="Widget.Material3.BottomNavigationView.ActiveIndicator">
+        <item name="android:color">@color/primary_light</item>
+    </style>
+
+    <style name="Widget.App.TabLayout" parent="Widget.Material3.TabLayout">
+        <item name="tabBackground">@color/surface</item>
+        <item name="tabIndicatorColor">@color/primary</item>
+        <item name="tabSelectedTextColor">@color/primary</item>
+        <item name="tabTextColor">@color/text_secondary</item>
+        <item name="tabRippleColor">@color/primary_light</item>
+        <item name="tabIndicatorFullWidth">false</item>
+        <item name="elevation">0dp</item>
+    </style>
+
+    <style name="Widget.App.TextInputLayout" parent="Widget.Material3.TextInputLayout.OutlinedBox">
+        <item name="boxCornerRadiusTopStart">@dimen/radius_sm</item>
+        <item name="boxCornerRadiusTopEnd">@dimen/radius_sm</item>
+        <item name="boxCornerRadiusBottomStart">@dimen/radius_sm</item>
+        <item name="boxCornerRadiusBottomEnd">@dimen/radius_sm</item>
+        <item name="boxStrokeColor">@color/primary</item>
+        <item name="hintTextColor">@color/primary</item>
+        <item name="android:textColorHint">@color/text_secondary</item>
+    </style>
+
+    <style name="Widget.App.Progress" parent="Widget.Material3.LinearProgressIndicator">
+        <item name="trackThickness">@dimen/progress_height</item>
+        <item name="trackCornerRadius">@dimen/radius_circle</item>
+        <item name="trackColor">@color/surface_subtle</item>
+        <item name="indicatorColor">@color/primary</item>
+    </style>
+
+    <style name="Widget.App.FloatingActionButton" parent="Widget.Material3.FloatingActionButton.Primary">
+        <item name="backgroundTint">@color/primary</item>
+        <item name="tint">@color/text_on_primary</item>
+        <item name="elevation">@dimen/spacing_xs</item>
+        <item name="shapeAppearanceOverlay">@style/ShapeAppearance.App.Circle</item>
+    </style>
+
+    <style name="Widget.App.Toolbar" parent="Widget.Material3.Toolbar">
+        <item name="android:background">@color/background</item>
+        <item name="titleTextColor">@color/text_primary</item>
+        <item name="titleTextAppearance">@style/TextAppearance.App.SectionTitle</item>
+        <item name="navigationIconTint">@color/text_primary</item>
+    </style>
+
+    <!-- 列表行内的图标动作按钮：44dp 触区 + 无边框水波纹 -->
+    <!-- 显式 parent=""：点号命名会隐式继承 Widget.App，而该父样式并不存在 -->
+    <style name="Widget.App.RowAction" parent="">
+        <item name="android:layout_width">@dimen/row_action_size</item>
+        <item name="android:layout_height">@dimen/row_action_size</item>
+        <item name="android:padding">@dimen/spacing_sm</item>
+        <item name="android:background">?attr/selectableItemBackgroundBorderless</item>
+        <item name="android:clickable">true</item>
+        <item name="android:focusable">true</item>
+        <item name="android:tint">@color/row_action_tint</item>
+    </style>
+
+    <style name="Widget.App.RowAction.Danger">
+        <item name="android:tint">@color/danger</item>
+    </style>
+
+    <style name="ShapeAppearance.App.Circle" parent="">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">50%</item>
+    </style>
+
+    <!-- ============================================================== -->
+    <!-- 通用布局片段                                                      -->
+    <!-- ============================================================== -->
+
+    <style name="AppDivider">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">@dimen/divider_height</item>
+        <item name="android:background">@color/divider</item>
+    </style>
+
+    <style name="AppMenuRow">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:minHeight">@dimen/menu_item_min_height</item>
+        <item name="android:orientation">horizontal</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:paddingStart">@dimen/spacing_lg</item>
+        <item name="android:paddingEnd">@dimen/spacing_lg</item>
+        <item name="android:paddingTop">@dimen/spacing_md</item>
+        <item name="android:paddingBottom">@dimen/spacing_md</item>
+        <item name="android:background">?attr/selectableItemBackground</item>
+        <item name="android:clickable">true</item>
+        <item name="android:focusable">true</item>
+    </style>
+
+</resources>

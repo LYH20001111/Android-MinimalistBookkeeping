@@ -1,0 +1,197 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.coordinatorlayout.widget.CoordinatorLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/recordRoot"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical">
+
+        <!-- 顶栏：页面标题 + 业务日期选择 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="@dimen/page_margin"
+            android:paddingTop="@dimen/spacing_lg"
+            android:paddingEnd="@dimen/spacing_sm"
+            android:paddingBottom="@dimen/spacing_sm">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/record_title"
+                android:textAppearance="@style/TextAppearance.App.PageTitle" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/dateButton"
+                style="@style/Widget.App.Button.Quiet"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:contentDescription="@string/record_pick_business_date"
+                app:icon="@drawable/ic_calendar"
+                app:iconSize="@dimen/icon_size_sm" />
+
+        </LinearLayout>
+
+        <!-- 今日概览：支出 / 收入 / 结余 -->
+        <com.google.android.material.card.MaterialCardView
+            style="@style/Widget.App.Card"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="@dimen/page_margin"
+            android:layout_marginEnd="@dimen/page_margin">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:baselineAligned="false"
+                android:orientation="horizontal">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/record_today_expense"
+                        android:textAppearance="@style/TextAppearance.App.Caption" />
+
+                    <TextView
+                        android:id="@+id/dayExpenseValue"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/spacing_xs"
+                        android:maxLines="1"
+                        android:text="@string/amount_zero"
+                        android:textAppearance="@style/TextAppearance.App.SectionTitle"
+                        app:autoSizeMaxTextSize="@dimen/font_section_title"
+                        app:autoSizeMinTextSize="@dimen/font_caption"
+                        app:autoSizeStepGranularity="@dimen/autosize_step_granularity"
+                        app:autoSizeTextType="uniform" />
+
+                </LinearLayout>
+
+                <View
+                    android:layout_width="@dimen/divider_height"
+                    android:layout_height="match_parent"
+                    android:layout_marginStart="@dimen/spacing_md"
+                    android:layout_marginEnd="@dimen/spacing_md"
+                    android:background="@color/divider" />
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/record_today_income"
+                        android:textAppearance="@style/TextAppearance.App.Caption" />
+
+                    <TextView
+                        android:id="@+id/dayIncomeValue"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/spacing_xs"
+                        android:maxLines="1"
+                        android:text="@string/amount_zero"
+                        android:textAppearance="@style/TextAppearance.App.SectionTitle"
+                        app:autoSizeMaxTextSize="@dimen/font_section_title"
+                        app:autoSizeMinTextSize="@dimen/font_caption"
+                        app:autoSizeStepGranularity="@dimen/autosize_step_granularity"
+                        app:autoSizeTextType="uniform" />
+
+                </LinearLayout>
+
+                <View
+                    android:layout_width="@dimen/divider_height"
+                    android:layout_height="match_parent"
+                    android:layout_marginStart="@dimen/spacing_md"
+                    android:layout_marginEnd="@dimen/spacing_md"
+                    android:background="@color/divider" />
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/record_today_balance"
+                        android:textAppearance="@style/TextAppearance.App.Caption" />
+
+                    <TextView
+                        android:id="@+id/dayBalanceValue"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/spacing_xs"
+                        android:maxLines="1"
+                        android:text="@string/amount_zero"
+                        android:textAppearance="@style/TextAppearance.App.SectionTitle"
+                        app:autoSizeMaxTextSize="@dimen/font_section_title"
+                        app:autoSizeMinTextSize="@dimen/font_caption"
+                        app:autoSizeStepGranularity="@dimen/autosize_step_granularity"
+                        app:autoSizeTextType="uniform" />
+
+                </LinearLayout>
+
+            </LinearLayout>
+
+        </com.google.android.material.card.MaterialCardView>
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="@dimen/page_margin"
+            android:layout_marginTop="@dimen/spacing_xl"
+            android:layout_marginEnd="@dimen/page_margin"
+            android:text="@string/record_bill_list_title"
+            android:textAppearance="@style/TextAppearance.App.SectionTitle" />
+
+        <!-- 账单列表与空状态互斥展示 -->
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_marginTop="@dimen/spacing_sm"
+            android:layout_weight="1">
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/transactionList"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:clipToPadding="false"
+                android:paddingBottom="@dimen/spacing_xxl"
+                android:scrollbars="vertical" />
+
+            <include
+                android:id="@+id/emptyState"
+                layout="@layout/view_empty_state" />
+
+        </FrameLayout>
+
+    </LinearLayout>
+
+    <com.google.android.material.floatingactionbutton.FloatingActionButton
+        android:id="@+id/fabAdd"
+        style="@style/Widget.App.FloatingActionButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|end"
+        android:layout_margin="@dimen/fab_margin"
+        android:contentDescription="@string/cd_add_transaction"
+        app:srcCompat="@drawable/ic_add" />
+
+</androidx.coordinatorlayout.widget.CoordinatorLayout>

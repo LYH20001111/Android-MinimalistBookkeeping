@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- ============================================================== -->
+    <!-- 字号 Token（V1 基线 14.2）                                        -->
+    <!-- ============================================================== -->
+
+    <dimen name="font_display">32sp</dimen>
+    <dimen name="font_page_title">24sp</dimen>
+    <dimen name="font_section_title">18sp</dimen>
+    <dimen name="font_body">16sp</dimen>
+    <dimen name="font_secondary">14sp</dimen>
+    <dimen name="font_caption">12sp</dimen>
+    <dimen name="font_emoji">20sp</dimen>
+    <dimen name="font_emoji_small">16sp</dimen>
+    <!-- 金额自适应缩放的步进，同样归入 Token，避免布局里出现裸数值 -->
+    <dimen name="autosize_step_granularity">1sp</dimen>
+
+    <!-- ============================================================== -->
+    <!-- 间距 Token                                                       -->
+    <!-- ============================================================== -->
+
+    <dimen name="spacing_xxs">2dp</dimen>
+    <!-- 卡片内零内距：菜单卡片由每行自带 padding，需要抵消 Widget.App.Card 的 contentPadding -->
+    <dimen name="spacing_none">0dp</dimen>
+    <dimen name="spacing_xs">4dp</dimen>
+    <dimen name="spacing_sm">8dp</dimen>
+    <dimen name="spacing_md">12dp</dimen>
+    <dimen name="spacing_lg">16dp</dimen>
+    <dimen name="spacing_xl">24dp</dimen>
+    <dimen name="spacing_xxl">32dp</dimen>
+
+    <!-- ============================================================== -->
+    <!-- 圆角 Token                                                       -->
+    <!-- ============================================================== -->
+
+    <dimen name="radius_sm">8dp</dimen>
+    <dimen name="radius_md">12dp</dimen>
+    <dimen name="radius_lg">16dp</dimen>
+    <dimen name="radius_xl">20dp</dimen>
+    <dimen name="radius_circle">999dp</dimen>
+
+    <!-- ============================================================== -->
+    <!-- 组件尺寸                                                          -->
+    <!-- ============================================================== -->
+
+    <dimen name="icon_size">24dp</dimen>
+    <dimen name="icon_size_sm">20dp</dimen>
+    <dimen name="input_height">48dp</dimen>
+    <dimen name="button_height">48dp</dimen>
+    <dimen name="category_icon_size">44dp</dimen>
+    <dimen name="list_category_icon_size">40dp</dimen>
+    <dimen name="list_item_min_height">60dp</dimen>
+    <dimen name="menu_item_min_height">56dp</dimen>
+    <!-- 菜单行分隔线缩进：行 padding + 图标宽 + 图标与文字间距，与标题左对齐 -->
+    <dimen name="menu_divider_indent">48dp</dimen>
+    <dimen name="divider_height">1dp</dimen>
+    <dimen name="stroke_width">1dp</dimen>
+    <dimen name="progress_height">6dp</dimen>
+    <dimen name="stat_dot_size">10dp</dimen>
+    <dimen name="stat_percent_min_width">48dp</dimen>
+    <dimen name="chart_line_height">200dp</dimen>
+    <dimen name="chart_donut_size">168dp</dimen>
+    <dimen name="chart_stroke_width">2dp</dimen>
+    <dimen name="chart_dot_radius">3dp</dimen>
+    <dimen name="donut_ring_width">20dp</dimen>
+    <dimen name="page_margin">16dp</dimen>
+    <dimen name="fab_margin">16dp</dimen>
+    <dimen name="touch_target">48dp</dimen>
+    <dimen name="empty_icon_size">96dp</dimen>
+    <dimen name="emoji_cell_size">44dp</dimen>
+    <!-- 分类管理行内的上移/下移/编辑/删除图标按钮边长 -->
+    <dimen name="row_action_size">44dp</dimen>
+    <!-- 分类编辑弹窗中 emoji 网格的可视高度，内部可滚动 -->
+    <dimen name="emoji_grid_height">220dp</dimen>
+
+</resources>

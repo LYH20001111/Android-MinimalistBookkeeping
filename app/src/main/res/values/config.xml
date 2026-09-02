@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- 备注字数上限，与 V1 基线第 12.1 章 note ≤ 100 保持一致 -->
+    <integer name="note_max_length">100</integer>
+
+    <!-- 记一笔页面分类网格列数 -->
+    <integer name="category_grid_span">4</integer>
+
+    <!-- 分类管理页 emoji 选择网格列数 -->
+    <integer name="emoji_grid_span">6</integer>
+
+    <!-- 折线图重绘动画时长（毫秒） -->
+    <integer name="chart_anim_duration">250</integer>
+
+    <!-- 占比统一使用千分比整数（percentX10），进度条 max 与之对齐 -->
+    <integer name="percent_scale">1000</integer>
+
+    <!-- 折线图横向网格线条数，Y 轴刻度数与之相同 -->
+    <integer name="chart_grid_lines">4</integer>
+
+    <!-- X 轴标签数量不超过该值时逐个绘制，超过则按「1/5/10/15/20/25/末日」抽样 -->
+    <integer name="chart_dense_label_limit">12</integer>
+
+    <!-- 折线下方渐变填充的顶部透明度，约为主色 12% -->
+    <integer name="chart_fill_alpha">31</integer>
+
+</resources>

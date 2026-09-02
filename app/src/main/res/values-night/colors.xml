@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- 深色模式下的同名 Token 取值：主色系微调以保证对比度，语义色提亮 -->
+
+    <color name="primary">#3B82F6</color>
+    <color name="primary_dark">#2563EB</color>
+    <color name="primary_light">#1E3A8A</color>
+
+    <color name="background">#0F172A</color>
+    <color name="surface">#1E293B</color>
+    <color name="surface_subtle">#243449</color>
+
+    <color name="text_primary">#F1F5F9</color>
+    <color name="text_secondary">#94A3B8</color>
+    <color name="text_tertiary">#64748B</color>
+    <color name="text_on_primary">#FFFFFF</color>
+
+    <color name="divider">#334155</color>
+
+    <color name="success">#22C55E</color>
+    <color name="warning">#FBBF24</color>
+    <color name="danger">#F87171</color>
+
+    <color name="success_light">#14532D</color>
+    <color name="warning_light">#78350F</color>
+    <color name="danger_light">#7F1D1D</color>
+
+    <color name="chart_1">#3B82F6</color>
+    <color name="chart_2">#38BDF8</color>
+    <color name="chart_3">#2DD4BF</color>
+    <color name="chart_4">#22C55E</color>
+    <color name="chart_5">#A3E635</color>
+    <color name="chart_6">#FBBF24</color>
+    <color name="chart_7">#FB923C</color>
+    <color name="chart_8">#F87171</color>
+    <color name="chart_9">#C084FC</color>
+    <color name="chart_10">#94A3B8</color>
+
+</resources>

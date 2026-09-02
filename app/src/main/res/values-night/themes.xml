@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- 深色模式下系统栏图标需要反白；其余颜色 Token 由 values-night/colors.xml 接管 -->
+    <style name="Base.Theme.MinimalistBookkeeping" parent="Base.V1.Theme.MinimalistBookkeeping">
+        <item name="android:windowLightStatusBar" tools:targetApi="m">false</item>
+        <item name="android:windowLightNavigationBar" tools:targetApi="o_mr1">false</item>
+    </style>
+
+</resources>

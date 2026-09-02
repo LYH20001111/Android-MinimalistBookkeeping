@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/mineRoot"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/background"
+    android:clipToPadding="false"
+    android:fillViewport="true">
+
+    <!--
+      「我的」页（V1 基线第 9 章）：只有本地设置入口，
+      不出现任何登录、注册、会员或云同步入口。
+    -->
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingStart="@dimen/page_margin"
+        android:paddingTop="@dimen/spacing_lg"
+        android:paddingEnd="@dimen/page_margin"
+        android:paddingBottom="@dimen/spacing_xxl">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/mine_title"
+            android:textAppearance="@style/TextAppearance.App.PageTitle" />
+
+        <com.google.android.material.card.MaterialCardView
+            style="@style/Widget.App.Card"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/spacing_lg"
+            app:contentPadding="@dimen/spacing_none">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <include
+                    android:id="@+id/menuCategory"
+                    layout="@layout/item_menu_row" />
+
+                <View
+                    style="@style/AppDivider"
+                    android:layout_marginStart="@dimen/menu_divider_indent" />
+
+                <include
+                    android:id="@+id/menuBudget"
+                    layout="@layout/item_menu_row" />
+
+                <View
+                    style="@style/AppDivider"
+                    android:layout_marginStart="@dimen/menu_divider_indent" />
+
+                <include
+                    android:id="@+id/menuAppearance"
+                    layout="@layout/item_menu_row" />
+
+                <View
+                    style="@style/AppDivider"
+                    android:layout_marginStart="@dimen/menu_divider_indent" />
+
+                <include
+                    android:id="@+id/menuData"
+                    layout="@layout/item_menu_row" />
+
+                <View
+                    style="@style/AppDivider"
+                    android:layout_marginStart="@dimen/menu_divider_indent" />
+
+                <include
+                    android:id="@+id/menuAbout"
+                    layout="@layout/item_menu_row" />
+
+            </LinearLayout>
+
+        </com.google.android.material.card.MaterialCardView>
+
+    </LinearLayout>
+
+</ScrollView>

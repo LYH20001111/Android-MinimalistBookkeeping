@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- ============================================================== -->
+    <!-- 颜色 Token（V1 基线 14.1）                                        -->
+    <!-- ============================================================== -->
+
+    <color name="primary">#2563EB</color>
+    <color name="primary_dark">#1D4ED8</color>
+    <color name="primary_light">#DBEAFE</color>
+
+    <color name="background">#F8FAFC</color>
+    <color name="surface">#FFFFFF</color>
+    <color name="surface_subtle">#F1F5F9</color>
+
+    <color name="text_primary">#0F172A</color>
+    <color name="text_secondary">#64748B</color>
+    <color name="text_tertiary">#94A3B8</color>
+    <color name="text_on_primary">#FFFFFF</color>
+
+    <color name="divider">#E2E8F0</color>
+
+    <color name="success">#16A34A</color>
+    <color name="warning">#F59E0B</color>
+    <color name="danger">#EF4444</color>
+
+    <!-- 语义弱化背景，用于预算状态与分类图标底 -->
+    <color name="success_light">#DCFCE7</color>
+    <color name="warning_light">#FEF3C7</color>
+    <color name="danger_light">#FEE2E2</color>
+
+    <!-- ============================================================== -->
+    <!-- 分类图表配色板 chart_1..chart_10                                  -->
+    <!-- ============================================================== -->
+
+    <color name="chart_1">#2563EB</color>
+    <color name="chart_2">#0EA5E9</color>
+    <color name="chart_3">#14B8A6</color>
+    <color name="chart_4">#16A34A</color>
+    <color name="chart_5">#84CC16</color>
+    <color name="chart_6">#F59E0B</color>
+    <color name="chart_7">#F97316</color>
+    <color name="chart_8">#EF4444</color>
+    <color name="chart_9">#A855F7</color>
+    <color name="chart_10">#64748B</color>
+
+    <!-- 兼容 Android Studio 模板引用 -->
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+
+</resources>
