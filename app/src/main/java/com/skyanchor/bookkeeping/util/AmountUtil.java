@@ -118,6 +118,32 @@ public final class AmountUtil {
     }
 
     /**
+     * 把输入框文本解析为「分」，允许负数（V2：用于账户初始余额，可正可负）。
+     * 同样使用 {@link BigDecimal} 保证精确，超过 2 位小数按四舍五入。
+     *
+     * @return 对应的分值（可为负）；文本为空、非法或绝对值超出上限时返回 {@link #INVALID}
+     */
+    public static long parseToCentsSigned(@Nullable String text) {
+        if (text == null) {
+            return INVALID;
+        }
+        String trimmed = text.trim();
+        if (trimmed.isEmpty()) {
+            return INVALID;
+        }
+        try {
+            BigDecimal value = new BigDecimal(trimmed);
+            BigDecimal cents = value.movePointRight(2).setScale(0, RoundingMode.HALF_UP);
+            if (cents.abs().compareTo(MAX_CENTS_DECIMAL) > 0) {
+                return INVALID;
+            }
+            return cents.longValueExact();
+        } catch (NumberFormatException | ArithmeticException e) {
+            return INVALID;
+        }
+    }
+
+    /**
      * 把「分」转成输入框文本「35.80」，不带货币符号与千分位。
      */
     @NonNull

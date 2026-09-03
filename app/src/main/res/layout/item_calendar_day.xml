@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- 日历选择器单日格：日期数字 + 可选支出摘要 + 可选收入摘要 -->
+<!-- V2 Risk D：格高与金额字号抽成 dimens Token；金额单行 + autosize，字体放大时不重叠 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/dayCellRoot"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
@@ -8,7 +10,7 @@
     android:clickable="true"
     android:focusable="true"
     android:gravity="center_horizontal"
-    android:minHeight="64dp"
+    android:minHeight="@dimen/calendar_cell_min_height"
     android:orientation="vertical"
     android:paddingTop="@dimen/spacing_xs"
     android:paddingBottom="@dimen/spacing_xs">
@@ -22,28 +24,36 @@
         android:textColor="@color/text_primary"
         android:textSize="13sp" />
 
-    <!-- 支出摘要：-¥X.XX，有支出时显示，text_primary 色 -->
+    <!-- 支出摘要：-¥X.XX，有支出时显示，text_primary 色；单行 + autosize 缩放不溢出 -->
     <TextView
         android:id="@+id/expenseText"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:ellipsize="end"
+        android:ellipsize="none"
         android:gravity="center"
+        android:lines="1"
         android:maxLines="1"
         android:textColor="@color/text_primary"
-        android:textSize="9sp"
+        app:autoSizeMaxTextSize="@dimen/calendar_cell_amount_text"
+        app:autoSizeMinTextSize="@dimen/calendar_cell_amount_text_min"
+        app:autoSizeStepGranularity="@dimen/autosize_step_granularity"
+        app:autoSizeTextType="uniform"
         android:visibility="gone" />
 
-    <!-- 收入摘要：+¥X.XX，有收入时显示，success 色 -->
+    <!-- 收入摘要：+¥X.XX，有收入时显示，success 色；单行 + autosize 缩放不溢出 -->
     <TextView
         android:id="@+id/incomeText"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:ellipsize="end"
+        android:ellipsize="none"
         android:gravity="center"
+        android:lines="1"
         android:maxLines="1"
         android:textColor="@color/success"
-        android:textSize="9sp"
+        app:autoSizeMaxTextSize="@dimen/calendar_cell_amount_text"
+        app:autoSizeMinTextSize="@dimen/calendar_cell_amount_text_min"
+        app:autoSizeStepGranularity="@dimen/autosize_step_granularity"
+        app:autoSizeTextType="uniform"
         android:visibility="gone" />
 
 </LinearLayout>

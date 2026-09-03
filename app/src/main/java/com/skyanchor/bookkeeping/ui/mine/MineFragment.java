@@ -15,17 +15,20 @@ import androidx.fragment.app.Fragment;
 import com.skyanchor.bookkeeping.R;
 import com.skyanchor.bookkeeping.databinding.FragmentMineBinding;
 import com.skyanchor.bookkeeping.databinding.ItemMenuRowBinding;
+import com.skyanchor.bookkeeping.ui.account.AccountManageActivity;
 import com.skyanchor.bookkeeping.ui.budget.BudgetSettingActivity;
 import com.skyanchor.bookkeeping.ui.category.CategoryManageActivity;
+import com.skyanchor.bookkeeping.ui.importexport.DataExportActivity;
+import com.skyanchor.bookkeeping.ui.importexport.DataImportActivity;
 import com.skyanchor.bookkeeping.ui.settings.AboutActivity;
 import com.skyanchor.bookkeeping.ui.settings.AppearanceActivity;
 import com.skyanchor.bookkeeping.ui.settings.DataManageActivity;
 
 /**
- * 「我的」页（V1 基线第 9 章）。
+ * 「我的」页（V1 基线第 9 章，V2 扩展入口）。
  *
- * <p>V1 只有五项本地设置入口：分类管理 / 预算设置 / 外观设置 / 数据管理 / 关于 App。
- * 不含账号体系与云同步，因此这里没有任何登录、注册或同步入口。
+ * <p>全部为本地设置入口：分类管理 / 账户管理 / 预算设置 / 外观设置 / 数据管理 /
+ * 数据导出 / 数据导入 / 关于 App。不含账号体系与云同步，因此这里没有任何登录、注册或同步入口。
  */
 public class MineFragment extends Fragment {
 
@@ -51,6 +54,10 @@ public class MineFragment extends Fragment {
                 R.string.mine_category, R.string.mine_category_subtitle,
                 v -> startActivity(new Intent(requireContext(), CategoryManageActivity.class)));
 
+        bindRow(binding.menuAccount, R.drawable.ic_account,
+                R.string.mine_account, R.string.mine_account_subtitle,
+                v -> startActivity(new Intent(requireContext(), AccountManageActivity.class)));
+
         // 从「我的」进入时不指定月份，由预算页默认落到当前月。
         bindRow(binding.menuBudget, R.drawable.ic_budget,
                 R.string.mine_budget, R.string.mine_budget_subtitle,
@@ -63,6 +70,14 @@ public class MineFragment extends Fragment {
         bindRow(binding.menuData, R.drawable.ic_database,
                 R.string.mine_data, R.string.mine_data_subtitle,
                 v -> startActivity(new Intent(requireContext(), DataManageActivity.class)));
+
+        bindRow(binding.menuExport, R.drawable.ic_export,
+                R.string.mine_export, R.string.mine_export_subtitle,
+                v -> startActivity(new Intent(requireContext(), DataExportActivity.class)));
+
+        bindRow(binding.menuImport, R.drawable.ic_import,
+                R.string.mine_import, R.string.mine_import_subtitle,
+                v -> startActivity(new Intent(requireContext(), DataImportActivity.class)));
 
         bindRow(binding.menuAbout, R.drawable.ic_info,
                 R.string.mine_about, R.string.mine_about_subtitle,

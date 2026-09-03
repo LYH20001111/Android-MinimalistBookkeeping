@@ -1,5 +1,6 @@
 package com.skyanchor.bookkeeping.ui.record;
 
+import android.content.Intent;
 import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -18,6 +19,7 @@ import com.skyanchor.bookkeeping.R;
 import com.skyanchor.bookkeeping.data.entity.TransactionItem;
 import com.skyanchor.bookkeeping.databinding.FragmentRecordBinding;
 import com.skyanchor.bookkeeping.ui.adapter.TransactionListAdapter;
+import com.skyanchor.bookkeeping.ui.search.SearchActivity;
 import com.skyanchor.bookkeeping.util.AmountUtil;
 import com.skyanchor.bookkeeping.util.DateUtil;
 
@@ -27,8 +29,7 @@ import com.skyanchor.bookkeeping.util.DateUtil;
  * <p>页面本身不持有任何统计逻辑，全部渲染数据来自 {@link RecordViewModel} 派生的
  * {@link RecordUiState}，因此新增/编辑/删除后概览与列表必然同源刷新。
  */
-public class RecordFragment extends Fragment
-        implements CalendarSummaryDialog.OnDateSelectedListener {
+public class RecordFragment extends Fragment {
 
     private static final String TAG_CALENDAR_DIALOG = "record_calendar_dialog";
 
@@ -68,8 +69,19 @@ public class RecordFragment extends Fragment
         binding.transactionList.setAdapter(adapter);
 
         binding.dateButton.setOnClickListener(v -> showCalendarSummaryDialog());
+        binding.searchButton.setOnClickListener(v ->
+                startActivity(new Intent(requireContext(), SearchActivity.class)));
         binding.fabAdd.setOnClickListener(v -> startAdd());
         binding.emptyState.emptyAction.setOnClickListener(v -> startAdd());
+
+        // V2 Risk B：用 FragmentResult 接收日历弹窗选中日期，旋转/重建后不丢失。
+        getChildFragmentManager().setFragmentResultListener(
+                CalendarSummaryDialog.REQUEST_DATE_SELECTED, getViewLifecycleOwner(),
+                (requestKey, result) -> {
+                    long dayMillis = result.getLong(CalendarSummaryDialog.RESULT_KEY_DAY_MILLIS,
+                            DateUtil.today());
+                    viewModel.setBusinessDate(dayMillis);
+                });
 
         viewModel.getUiState().observe(getViewLifecycleOwner(), this::render);
     }
@@ -117,12 +129,6 @@ public class RecordFragment extends Fragment
         long current = businessDate == null ? DateUtil.today() : businessDate;
         CalendarSummaryDialog.newInstance(current)
                 .show(getChildFragmentManager(), TAG_CALENDAR_DIALOG);
-    }
-
-    /** 日历弹窗确认回调：把业务日期切到选中的当天。 */
-    @Override
-    public void onDateSelected(long dayMillis) {
-        viewModel.setBusinessDate(dayMillis);
     }
 
     // ------------------------------------------------------------------

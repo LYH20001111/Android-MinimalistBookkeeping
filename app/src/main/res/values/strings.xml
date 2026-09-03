@@ -25,7 +25,8 @@
     <string name="date_format_full">%1$d年%2$d月%3$d日</string>
     <string name="date_format_week_range">%1$d月%2$d日 - %3$d月%4$d日</string>
     <!-- V1.1 新增：周期选择器与导航副标题格式 -->
-    <string name="date_format_week_label">Week %1$d</string>
+    <!-- V2 Risk A：周标题带年份，消除跨年周序号歧义（周期身份仍以 start/end 为准） -->
+    <string name="date_format_week_label">%1$d年第%2$d周</string>
     <string name="date_format_range_dot">%1$02d.%2$02d-%3$02d.%4$02d</string>
     <string name="day_label_today">今天</string>
     <string name="day_label_yesterday">昨天</string>
@@ -68,6 +69,8 @@
     <string name="record_delete_title">删除这笔账单？</string>
     <string name="record_delete_message">%1$s %2$s 将从统计中移除，此操作不可恢复。</string>
     <string name="record_deleted">已删除</string>
+    <!-- V2 新增：转账行标题「转出账户 → 转入账户」 -->
+    <string name="record_transfer_format">%1$s → %2$s</string>
 
     <!-- ============ 新增/编辑账单 ============ -->
     <string name="edit_title_new">记一笔</string>
@@ -84,6 +87,15 @@
     <string name="edit_saved">已保存</string>
     <string name="edit_delete_button">删除账单</string>
     <string name="edit_category_empty">该类型下还没有分类，请先到「我的 → 分类管理」新增</string>
+    <!-- V2 新增：记一笔的账户选择（支出 / 收入必选落账账户） -->
+    <string name="edit_account_title">账户</string>
+    <string name="edit_error_account">请选择账户</string>
+    <string name="edit_account_empty">还没有账户，请先到「我的 → 账户管理」新增</string>
+    <!-- V2 新增：转账（两账户必填且不同，不计收支） -->
+    <string name="edit_type_transfer">转账</string>
+    <string name="edit_transfer_from_title">转出账户</string>
+    <string name="edit_transfer_to_title">转入账户</string>
+    <string name="edit_error_transfer_same">转出与转入不能是同一账户</string>
 
     <!-- ============ 图表页 ============ -->
     <string name="chart_title">图表</string>
@@ -110,6 +122,10 @@
     <string name="chart_back_to_current">回到当前周期</string>
     <string name="chart_previous_period">上一周期</string>
     <string name="chart_next_period">下一周期</string>
+    <!-- V2 新增：账户资金卡片（总资产 + 各账户余额） -->
+    <string name="chart_account_title">账户资金</string>
+    <string name="chart_total_assets">总资产</string>
+    <string name="chart_account_empty">还没有账户，请先到「我的 → 账户管理」新增</string>
 
     <!-- ============ V1.1 新增：周期选择器 ============ -->
     <string name="period_picker_title_week">选择周</string>
@@ -145,12 +161,18 @@
     <string name="mine_title">我的</string>
     <string name="mine_category">分类管理</string>
     <string name="mine_category_subtitle">新增、编辑、删除与排序</string>
+    <string name="mine_account">账户管理</string>
+    <string name="mine_account_subtitle">现金、微信、银行卡与余额</string>
     <string name="mine_budget">预算设置</string>
     <string name="mine_budget_subtitle">按月份设置一个总预算</string>
     <string name="mine_appearance">外观设置</string>
     <string name="mine_appearance_subtitle">浅色 / 跟随系统</string>
     <string name="mine_data">数据管理</string>
     <string name="mine_data_subtitle">查看数据量与清空本地数据</string>
+    <string name="mine_export">数据导出</string>
+    <string name="mine_export_subtitle">将全部账单导出为 CSV 文件</string>
+    <string name="mine_import">数据导入</string>
+    <string name="mine_import_subtitle">从 CSV 文件预览并导入账单</string>
     <string name="mine_about">关于 App</string>
     <string name="mine_about_subtitle">版本号与产品说明</string>
 
@@ -173,6 +195,103 @@
     <string name="category_name_error">请输入分类名称</string>
     <string name="category_empty">还没有分类，点击下方按钮新增</string>
     <string name="category_default_badge">系统默认</string>
+
+    <!-- ============ V2 账户管理 ============ -->
+    <string name="account_title">账户管理</string>
+    <string name="account_add">新增账户</string>
+    <string name="account_edit_title">编辑账户</string>
+    <string name="account_name_hint">账户名称</string>
+    <string name="account_name_error">请输入账户名称</string>
+    <string name="account_type_title">账户类型</string>
+    <string name="account_initial_balance_hint">初始余额（可正可负）</string>
+    <string name="account_initial_balance_error">请输入有效的初始余额</string>
+    <string name="account_saved">已保存账户</string>
+    <string name="account_empty">还没有账户，点击下方按钮新增</string>
+    <string name="account_archived_badge">已归档</string>
+    <string name="account_archive">归档</string>
+    <string name="account_unarchive">取消归档</string>
+    <string name="account_archived_toast">已归档账户</string>
+    <string name="account_unarchived_toast">已取消归档</string>
+    <string name="account_delete_title">删除账户「%1$s」？</string>
+    <string name="account_delete_message">删除后不可恢复。</string>
+    <string name="account_delete_blocked_title">无法删除</string>
+    <string name="account_delete_blocked_message">账户「%1$s」已被 %2$d 笔账单使用，可改为归档以保留资金流水。</string>
+    <string name="account_deleted">已删除账户</string>
+    <!-- 账户类型标签 -->
+    <string name="account_type_cash">现金</string>
+    <string name="account_type_wechat">微信</string>
+    <string name="account_type_alipay">支付宝</string>
+    <string name="account_type_debit">储蓄卡</string>
+    <string name="account_type_credit">信用卡</string>
+    <string name="account_type_other">其他</string>
+
+    <!-- 账户类型下拉项，顺序必须与 AccountTypes.ALL 一致（代码按 position 回取类型） -->
+    <string-array name="account_type_labels">
+        <item>@string/account_type_cash</item>
+        <item>@string/account_type_wechat</item>
+        <item>@string/account_type_alipay</item>
+        <item>@string/account_type_debit</item>
+        <item>@string/account_type_credit</item>
+        <item>@string/account_type_other</item>
+    </string-array>
+
+    <!-- ============ V2 搜索 + 筛选 ============ -->
+    <string name="search_title">搜索</string>
+    <string name="search_hint">搜索备注、分类或账户</string>
+    <string name="search_category_title">分类</string>
+    <string name="search_account_title">账户</string>
+    <string name="search_all_categories">全部分类</string>
+    <string name="search_all_accounts">全部账户</string>
+    <string name="search_min_amount">最低金额</string>
+    <string name="search_max_amount">最高金额</string>
+    <string name="search_reset">清空筛选</string>
+    <!-- 顶部合计：笔数含转账，支出 / 收入不含转账（与列表同源） -->
+    <string name="search_summary_format">共 %1$d 笔 · 支出 %2$s · 收入 %3$s</string>
+    <string name="search_empty">没有匹配的账单</string>
+    <string name="search_empty_hint">换个关键词或放宽筛选条件试试</string>
+
+    <!-- ============ V2 数据导出 / 导入 ============ -->
+    <string name="export_title">数据导出</string>
+    <string name="export_desc">把全部账单导出为 CSV 文件（UTF-8 带 BOM，可用 Excel 直接打开）。保存位置由你选择，App 不联网、不申请存储权限。</string>
+    <string name="export_count_format">当前共 %1$d 笔账单可导出</string>
+    <string name="export_action">导出 CSV 文件</string>
+    <string name="export_running">正在导出…</string>
+    <string name="export_success_title">导出完成</string>
+    <string name="export_success_message">已导出 %1$d 笔账单到所选文件。</string>
+    <string name="export_failed">导出失败，请重试或换个保存位置</string>
+    <string name="export_empty">当前没有可导出的账单</string>
+    <!-- 导出默认文件名前缀，后面拼接时间戳与 .csv -->
+    <string name="export_file_prefix">极简记账-账单</string>
+
+    <string name="import_title">数据导入</string>
+    <string name="import_desc">从 CSV 文件导入账单。导入前先解析并预览，只有合法且不重复的行才会写入，错误与重复行会被跳过并标注原因。</string>
+    <string name="import_pick">选择 CSV 文件</string>
+    <string name="import_parsing">正在解析文件…</string>
+    <string name="import_preview_title">导入预览</string>
+    <string name="import_preview_hint">确认无误后导入，重复与错误行不会写入</string>
+    <string name="import_preview_placeholder">选择 CSV 文件后，这里会显示逐行导入预览</string>
+    <string name="import_summary_format">有效 %1$d · 跳过 %2$d · 错误 %3$d</string>
+    <string name="import_confirm_format">确认导入 %1$d 笔</string>
+    <string name="import_committing">正在导入…</string>
+    <string name="import_success_title">导入完成</string>
+    <string name="import_success_message">成功导入 %1$d 笔，跳过 %2$d 笔，错误 %3$d 笔。</string>
+    <string name="import_failed">导入失败，请检查文件后重试</string>
+    <string name="import_invalid_format">无法识别的文件格式：请使用本 App 导出的 CSV，或确保含「类型 / 金额 / 日期」列</string>
+    <string name="import_empty">文件里没有可导入的账单</string>
+    <string name="import_status_valid">有效</string>
+    <string name="import_status_duplicate">重复跳过</string>
+    <string name="import_status_error">错误</string>
+    <!-- 预览行号（对应 CSV 中的行，表头为第 1 行） -->
+    <string name="import_line_format">第 %1$d 行</string>
+    <!-- 导入错误 / 跳过原因（domain 只给语义码，文案在此本地化） -->
+    <string name="import_reason_duplicate">疑似重复：已存在相同日期、时间、金额、分类、账户与备注的账单</string>
+    <string name="import_reason_malformed">行数据不完整</string>
+    <string name="import_reason_type_invalid">类型无效（应为支出 / 收入 / 转账）</string>
+    <string name="import_reason_amount_invalid">金额无效（应为大于 0 的数字）</string>
+    <string name="import_reason_date_invalid">日期无效（应为 yyyy-MM-dd）</string>
+    <string name="import_reason_category_missing">分类不存在，请先在分类管理中创建</string>
+    <string name="import_reason_account_missing">账户不存在，请先在账户管理中创建</string>
+    <string name="import_reason_transfer_invalid">转账需要两个不同的账户</string>
 
     <!-- ============ 外观设置 ============ -->
     <string name="appearance_title">外观设置</string>
@@ -216,6 +335,8 @@
     <string name="cd_period_center">点击选择周期</string>
     <string name="cd_pick_date">选择日期</string>
     <string name="cd_category_icon">分类图标</string>
+    <string name="cd_account_icon">账户图标</string>
+    <string name="cd_search">搜索账单</string>
     <string name="cd_empty_state">空状态插图</string>
     <string name="cd_trend_chart">支出趋势折线图</string>
     <string name="cd_category_chart">消费分类占比环形图</string>

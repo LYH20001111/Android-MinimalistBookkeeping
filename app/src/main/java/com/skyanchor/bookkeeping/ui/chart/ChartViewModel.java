@@ -16,6 +16,7 @@ import com.skyanchor.bookkeeping.R;
 import com.skyanchor.bookkeeping.data.entity.BudgetEntity;
 import com.skyanchor.bookkeeping.data.entity.CategoryEntity;
 import com.skyanchor.bookkeeping.data.entity.TransactionItem;
+import com.skyanchor.bookkeeping.data.model.AccountBalance;
 import com.skyanchor.bookkeeping.data.model.BudgetState;
 import com.skyanchor.bookkeeping.data.model.CategoryStat;
 import com.skyanchor.bookkeeping.data.model.ChartUiState;
@@ -90,10 +91,13 @@ public class ChartViewModel extends AndroidViewModel {
     private final MutableLiveData<PeriodQuery> query;
     private final LiveData<ChartUiState> uiState;
 
-    /** 周期选择器数据源：单次查询每天笔数，Java 侧聚合为周/月/年选项（V1.1 目标 C）。 */
+    /** 周期选择器数据源：按周/月/年分别有界聚合（V2 Risk C，不再全量扫描每日笔数）。 */
     private final LiveData<List<PeriodOption>> weekOptions;
     private final LiveData<List<PeriodOption>> monthOptions;
     private final LiveData<List<PeriodOption>> yearOptions;
+
+    /** 未归档账户余额（联表重算），供「账户资金」卡片；与周期无关，单独观察刷新。 */
+    private final LiveData<List<AccountBalance>> accountBalances;
 
     public ChartViewModel(@NonNull Application application) {
         super(application);
@@ -102,15 +106,22 @@ public class ChartViewModel extends AndroidViewModel {
         this.query = new MutableLiveData<>(new PeriodQuery(PeriodType.MONTH, DateUtil.today()));
         this.uiState = Transformations.switchMap(query, this::observe);
 
-        // 每天账单笔数只查一次，三份派生数据分别聚合为周/月/年选项，避免逐周期查库。
-        LiveData<List<DayCount>> dayCounts = repository.observeDayCounts();
-        this.weekOptions = Transformations.map(dayCounts, this::buildWeekOptions);
-        this.monthOptions = Transformations.map(dayCounts, this::buildMonthOptions);
-        this.yearOptions = Transformations.map(dayCounts, this::buildYearOptions);
+        // V2 Risk C：周/月/年各自一条有界聚合查询（一行 = 一个周期），
+        // 避免全量加载每日笔数带来的扫描；Java 侧再做区间补全与标题本地化。
+        this.weekOptions = Transformations.map(repository.observeWeekCounts(), this::buildWeekOptions);
+        this.monthOptions =
+                Transformations.map(repository.observeMonthCounts(), this::buildMonthOptions);
+        this.yearOptions = Transformations.map(repository.observeYearCounts(), this::buildYearOptions);
+        this.accountBalances = repository.observeActiveAccountBalances();
     }
 
     public LiveData<ChartUiState> getUiState() {
         return uiState;
+    }
+
+    /** 未归档账户余额，按 sort_order 升序；总资产 = 这些账户余额之和。 */
+    public LiveData<List<AccountBalance>> getAccountBalances() {
+        return accountBalances;
     }
 
     @Nullable

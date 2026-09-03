@@ -180,6 +180,17 @@
         <item name="android:textColorHint">@color/text_secondary</item>
     </style>
 
+    <!-- V2：账户类型 / 账户选择用的下拉框，与 Widget.App.TextInputLayout 同一视觉 Token -->
+    <style name="Widget.App.TextInputLayout.Dropdown" parent="Widget.Material3.TextInputLayout.OutlinedBox.ExposedDropdownMenu">
+        <item name="boxCornerRadiusTopStart">@dimen/radius_sm</item>
+        <item name="boxCornerRadiusTopEnd">@dimen/radius_sm</item>
+        <item name="boxCornerRadiusBottomStart">@dimen/radius_sm</item>
+        <item name="boxCornerRadiusBottomEnd">@dimen/radius_sm</item>
+        <item name="boxStrokeColor">@color/primary</item>
+        <item name="hintTextColor">@color/primary</item>
+        <item name="android:textColorHint">@color/text_secondary</item>
+    </style>
+
     <style name="Widget.App.Progress" parent="Widget.Material3.LinearProgressIndicator">
         <item name="trackThickness">@dimen/progress_height</item>
         <item name="trackCornerRadius">@dimen/radius_circle</item>

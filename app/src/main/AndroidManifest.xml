@@ -37,6 +37,15 @@
             android:exported="false"
             android:parentActivityName=".MainActivity" />
         <activity
+            android:name=".ui.account.AccountManageActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity" />
+        <activity
+            android:name=".ui.search.SearchActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity"
+            android:windowSoftInputMode="adjustResize" />
+        <activity
             android:name=".ui.budget.BudgetSettingActivity"
             android:exported="false"
             android:parentActivityName=".MainActivity" />
@@ -46,6 +55,14 @@
             android:parentActivityName=".MainActivity" />
         <activity
             android:name=".ui.settings.DataManageActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity" />
+        <activity
+            android:name=".ui.importexport.DataExportActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity" />
+        <activity
+            android:name=".ui.importexport.DataImportActivity"
             android:exported="false"
             android:parentActivityName=".MainActivity" />
         <activity

@@ -15,7 +15,6 @@ import android.widget.NumberPicker;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.fragment.app.DialogFragment;
-import androidx.fragment.app.Fragment;
 import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MutableLiveData;
 import androidx.lifecycle.Transformations;
@@ -43,12 +42,19 @@ import java.util.List;
  * <p>数据只查询「当前展示月」的聚合摘要（{@code observeDailySummaries}），不加载全量明细；
  * 切换月份时通过 {@link Transformations#switchMap} 重新订阅，天然避免旧月份数据残留。
  *
- * <p>选中结果通过 {@link OnDateSelectedListener} 回调给宿主（{@link RecordFragment}），
- * 监听器在 {@link #onAttach} 中从父 Fragment 解析，因此旋转重建后仍能重新挂上。
+ * <p>选中结果通过 FragmentResult API 回传给宿主（{@link RecordFragment}）：
+ * {@code setFragmentResult(REQUEST_DATE_SELECTED, bundle(dayMillis))}。V2 Risk B：
+ * 相比匿名回调接口，FragmentResult 由 FragmentManager 托管，旋转/进程重建后不会丢失。
  */
 public class CalendarSummaryDialog extends DialogFragment {
 
     private static final String ARG_SELECTED_DATE = "arg_selected_date";
+
+    /** FragmentResult 的请求键，宿主用同一键监听。 */
+    public static final String REQUEST_DATE_SELECTED = "calendar_date_selected";
+
+    /** FragmentResult Bundle 中存放选中日期（当天 00:00 millis）的键。 */
+    public static final String RESULT_KEY_DAY_MILLIS = "day_millis";
 
     /** 日历网格列数：一周七天，周一为首列。 */
     private static final int SPAN_COUNT = 7;
@@ -75,32 +81,12 @@ public class CalendarSummaryDialog extends DialogFragment {
     @Nullable
     private List<DailySummary> latestSummaries;
 
-    @Nullable
-    private OnDateSelectedListener listener;
-
     public static CalendarSummaryDialog newInstance(long selectedDate) {
         CalendarSummaryDialog dialog = new CalendarSummaryDialog();
         Bundle args = new Bundle();
         args.putLong(ARG_SELECTED_DATE, selectedDate);
         dialog.setArguments(args);
         return dialog;
-    }
-
-    @Override
-    public void onAttach(@NonNull Context context) {
-        super.onAttach(context);
-        Fragment parent = getParentFragment();
-        if (parent instanceof OnDateSelectedListener) {
-            listener = (OnDateSelectedListener) parent;
-        } else if (context instanceof OnDateSelectedListener) {
-            listener = (OnDateSelectedListener) context;
-        }
-    }
-
-    @Override
-    public void onDetach() {
-        listener = null;
-        super.onDetach();
     }
 
     @Override
@@ -272,10 +258,14 @@ public class CalendarSummaryDialog extends DialogFragment {
         visibleMonthAnchor.setValue(shifted.start);
     }
 
+    /** 日期确认回调接口已移除，改用 FragmentResult（V2 Risk B）。 */
     private void onConfirm() {
         Long selected = selectedDate.getValue();
-        if (selected != null && listener != null) {
-            listener.onDateSelected(selected);
+        if (selected != null) {
+            Bundle result = new Bundle();
+            result.putLong(RESULT_KEY_DAY_MILLIS, selected);
+            // 弹窗挂在宿主的 childFragmentManager 上，结果回传到同一个 FragmentManager。
+            getParentFragmentManager().setFragmentResult(REQUEST_DATE_SELECTED, result);
         }
         dismiss();
     }

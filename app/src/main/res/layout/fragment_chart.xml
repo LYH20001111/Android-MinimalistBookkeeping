@@ -529,6 +529,58 @@
 
                 </com.google.android.material.card.MaterialCardView>
 
+                <!-- V2：账户资金卡片（总资产 + 各账户当前余额），与周期无关，单独观察刷新 -->
+                <com.google.android.material.card.MaterialCardView
+                    android:id="@+id/accountCard"
+                    style="@style/Widget.App.Card"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/spacing_md"
+                    android:visibility="gone">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="@string/chart_account_title"
+                            android:textAppearance="@style/TextAppearance.App.SectionTitle" />
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="@dimen/spacing_md"
+                            android:text="@string/chart_total_assets"
+                            android:textAppearance="@style/TextAppearance.App.Caption" />
+
+                        <TextView
+                            android:id="@+id/totalAssetsValue"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="@dimen/spacing_xs"
+                            android:maxLines="1"
+                            android:text="@string/amount_zero"
+                            android:textAppearance="@style/TextAppearance.App.Display" />
+
+                        <View
+                            style="@style/AppDivider"
+                            android:layout_marginTop="@dimen/spacing_md" />
+
+                        <!-- 各账户余额行由代码按活跃账户程序化 inflate，账户数量少不需 adapter -->
+                        <LinearLayout
+                            android:id="@+id/accountBalanceList"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="@dimen/spacing_xs"
+                            android:orientation="vertical" />
+
+                    </LinearLayout>
+
+                </com.google.android.material.card.MaterialCardView>
+
                 <!-- 有账单但本周期没有支出时给出文字说明，不允许出现空白图表块 -->
                 <TextView
                     android:id="@+id/noExpenseHint"

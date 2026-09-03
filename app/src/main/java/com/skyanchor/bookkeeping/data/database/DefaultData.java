@@ -1,5 +1,6 @@
 package com.skyanchor.bookkeeping.data.database;
 
+import com.skyanchor.bookkeeping.data.entity.AccountEntity;
 import com.skyanchor.bookkeeping.data.entity.CategoryEntity;
 import com.skyanchor.bookkeeping.data.entity.UserSettingsEntity;
 
@@ -37,6 +38,19 @@ public final class DefaultData {
             {"其他", "\uD83D\uDCB0"},
     };
 
+    /**
+     * 默认账户：名称 + 类型 + 是否信用账户（V2 新增）。
+     * 初始余额均为 0，sortOrder 按定义顺序从 1 开始。
+     */
+    private static final Object[][] DEFAULT_ACCOUNTS = {
+            {"现金", AccountEntity.TYPE_CASH, Boolean.FALSE},
+            {"微信", AccountEntity.TYPE_WECHAT, Boolean.FALSE},
+            {"支付宝", AccountEntity.TYPE_ALIPAY, Boolean.FALSE},
+            {"储蓄卡", AccountEntity.TYPE_DEBIT, Boolean.FALSE},
+            {"信用卡", AccountEntity.TYPE_CREDIT, Boolean.TRUE},
+            {"其他", AccountEntity.TYPE_OTHER, Boolean.FALSE},
+    };
+
     private DefaultData() {
     }
 
@@ -52,6 +66,22 @@ public final class DefaultData {
         for (int i = 0; i < source.length; i++) {
             target.add(new CategoryEntity(source[i][0], source[i][1], type, i + 1, true));
         }
+    }
+
+    /**
+     * 构造全部系统默认账户（V2），初始余额 0，sortOrder 从 1 开始。
+     * 建库回调与「清空所有本地数据」后的重置共用这一份定义。
+     */
+    public static List<AccountEntity> defaultAccounts() {
+        List<AccountEntity> list = new ArrayList<>();
+        for (int i = 0; i < DEFAULT_ACCOUNTS.length; i++) {
+            Object[] row = DEFAULT_ACCOUNTS[i];
+            String name = (String) row[0];
+            int type = (Integer) row[1];
+            boolean isCredit = (Boolean) row[2];
+            list.add(new AccountEntity(name, type, 0L, isCredit, i + 1));
+        }
+        return list;
     }
 
     /** 构造默认的本地设置单例。 */

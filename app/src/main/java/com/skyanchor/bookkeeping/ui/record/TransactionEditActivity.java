@@ -21,16 +21,20 @@ import com.google.android.material.snackbar.Snackbar;
 import com.google.android.material.timepicker.MaterialTimePicker;
 import com.google.android.material.timepicker.TimeFormat;
 import com.skyanchor.bookkeeping.R;
+import com.skyanchor.bookkeeping.data.entity.AccountEntity;
 import com.skyanchor.bookkeeping.data.entity.CategoryEntity;
 import com.skyanchor.bookkeeping.data.entity.TransactionEntity;
 import com.skyanchor.bookkeeping.data.entity.TransactionItem;
 import com.skyanchor.bookkeeping.databinding.ActivityTransactionEditBinding;
+import com.skyanchor.bookkeeping.domain.transaction.TransferValidator;
 import com.skyanchor.bookkeeping.ui.adapter.CategoryGridAdapter;
+import com.skyanchor.bookkeeping.util.AccountTypes;
 import com.skyanchor.bookkeeping.util.AmountUtil;
 import com.skyanchor.bookkeeping.util.DateLabels;
 import com.skyanchor.bookkeeping.util.DateUtil;
 import com.skyanchor.bookkeeping.util.InsetsUtil;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -54,6 +58,9 @@ public class TransactionEditActivity extends AppCompatActivity {
     private static final String STATE_HOUR = "state_hour";
     private static final String STATE_MINUTE = "state_minute";
     private static final String STATE_CATEGORY_ID = "state_category_id";
+    private static final String STATE_ACCOUNT_ID = "state_account_id";
+    private static final String STATE_FROM_ACCOUNT_ID = "state_from_account_id";
+    private static final String STATE_TO_ACCOUNT_ID = "state_to_account_id";
     private static final String STATE_TYPE = "state_type";
 
     private ActivityTransactionEditBinding binding;
@@ -66,6 +73,19 @@ public class TransactionEditActivity extends AppCompatActivity {
     private int selectedHour;
     private int selectedMinute;
     private long selectedCategoryId;
+    private long selectedAccountId;
+
+    /** 转账：转出账户与转入账户（V2 新增，两账户必填且不同）。 */
+    private long selectedFromAccountId;
+    private long selectedToAccountId;
+
+    /** 最近一次活跃账户列表，下拉 position → 账户 id 靠它映射。 */
+    @NonNull
+    private List<AccountEntity> accountList = new ArrayList<>();
+
+    /** 当前是否没有任何账户 / 分类，用于统一控制表单区块可见性。 */
+    private boolean accountsEmpty;
+    private boolean categoriesEmpty;
 
     /** 表单是否已回灌过，避免重建 Activity 时覆盖用户正在编辑的内容。 */
     private boolean formApplied;
@@ -138,8 +158,28 @@ public class TransactionEditActivity extends AppCompatActivity {
             // 换类型后原分类不再合法，清空选中项，等新分类列表到达时自动落到首项。
             selectedCategoryId = 0L;
             categoryAdapter.setSelectedId(0L);
-            viewModel.selectType(checkedId == R.id.typeIncome
-                    ? CategoryEntity.TYPE_INCOME : CategoryEntity.TYPE_EXPENSE);
+            viewModel.selectType(typeOfButton(checkedId));
+        });
+
+        binding.accountInput.setOnItemClickListener((parent, view, position, id) -> {
+            if (position >= 0 && position < accountList.size()) {
+                selectedAccountId = accountList.get(position).id;
+            }
+        });
+        binding.transferFromInput.setOnItemClickListener((parent, view, position, id) -> {
+            if (position >= 0 && position < accountList.size()) {
+                selectedFromAccountId = accountList.get(position).id;
+                // 转出改动后若与转入撞成同一账户，清空转入待用户重选。
+                if (selectedToAccountId == selectedFromAccountId) {
+                    selectedToAccountId = 0L;
+                }
+                renderTransferSelection();
+            }
+        });
+        binding.transferToInput.setOnItemClickListener((parent, view, position, id) -> {
+            if (position >= 0 && position < accountList.size()) {
+                selectedToAccountId = accountList.get(position).id;
+            }
         });
 
         binding.dateButton.setOnClickListener(v -> showDatePicker());
@@ -149,6 +189,7 @@ public class TransactionEditActivity extends AppCompatActivity {
         viewModel.getType().observe(this, type -> renderType(
                 type == null ? CategoryEntity.TYPE_EXPENSE : type));
         viewModel.getCategories().observe(this, this::onCategoriesChanged);
+        viewModel.getAccounts().observe(this, this::onAccountsChanged);
 
         if (transactionId != 0L) {
             binding.deleteButton.setOnClickListener(v -> showDeleteDialog());
@@ -169,6 +210,9 @@ public class TransactionEditActivity extends AppCompatActivity {
             selectedHour = savedInstanceState.getInt(STATE_HOUR, 0);
             selectedMinute = savedInstanceState.getInt(STATE_MINUTE, 0);
             selectedCategoryId = savedInstanceState.getLong(STATE_CATEGORY_ID, 0L);
+            selectedAccountId = savedInstanceState.getLong(STATE_ACCOUNT_ID, 0L);
+            selectedFromAccountId = savedInstanceState.getLong(STATE_FROM_ACCOUNT_ID, 0L);
+            selectedToAccountId = savedInstanceState.getLong(STATE_TO_ACCOUNT_ID, 0L);
             viewModel.selectType(savedInstanceState.getInt(STATE_TYPE, CategoryEntity.TYPE_EXPENSE));
             // 编辑模式下的表单文本已被系统恢复，不能再让回读结果覆盖一遍。
             formApplied = transactionId != 0L;
@@ -188,6 +232,9 @@ public class TransactionEditActivity extends AppCompatActivity {
         outState.putInt(STATE_HOUR, selectedHour);
         outState.putInt(STATE_MINUTE, selectedMinute);
         outState.putLong(STATE_CATEGORY_ID, selectedCategoryId);
+        outState.putLong(STATE_ACCOUNT_ID, selectedAccountId);
+        outState.putLong(STATE_FROM_ACCOUNT_ID, selectedFromAccountId);
+        outState.putLong(STATE_TO_ACCOUNT_ID, selectedToAccountId);
         Integer type = viewModel.getType().getValue();
         outState.putInt(STATE_TYPE, type == null ? CategoryEntity.TYPE_EXPENSE : type);
     }
@@ -198,10 +245,9 @@ public class TransactionEditActivity extends AppCompatActivity {
 
     private void onCategoriesChanged(@Nullable List<CategoryEntity> categories) {
         categoryAdapter.submitList(categories);
-        boolean empty = categories == null || categories.isEmpty();
-        binding.categoryGrid.setVisibility(empty ? View.GONE : View.VISIBLE);
-        binding.categoryEmpty.setVisibility(empty ? View.VISIBLE : View.GONE);
+        categoriesEmpty = categories == null || categories.isEmpty();
         applyDefaultSelection(categories);
+        renderFormVisibility();
     }
 
     /** 当前选中项失效时，落到 sortOrder 最小的分类，对应基线「默认选中常用分类」。 */
@@ -224,14 +270,151 @@ public class TransactionEditActivity extends AppCompatActivity {
     }
 
     // ------------------------------------------------------------------
+    // 账户（V2：支出 / 收入必选落账账户；转账需转出 + 转入两账户）
+    // ------------------------------------------------------------------
+
+    private void onAccountsChanged(@Nullable List<AccountEntity> accounts) {
+        accountList = accounts == null ? new ArrayList<>() : accounts;
+        accountsEmpty = accountList.isEmpty();
+        if (accountsEmpty) {
+            selectedAccountId = 0L;
+            selectedFromAccountId = 0L;
+            selectedToAccountId = 0L;
+            renderFormVisibility();
+            return;
+        }
+        String[] labels = new String[accountList.size()];
+        for (int i = 0; i < accountList.size(); i++) {
+            labels[i] = accountLabel(accountList.get(i));
+        }
+        // 三个下拉共用同一份活跃账户标签：单账户（支出 / 收入）+ 转出 + 转入。
+        binding.accountInput.setSimpleItems(labels);
+        binding.transferFromInput.setSimpleItems(labels);
+        binding.transferToInput.setSimpleItems(labels);
+
+        applyDefaultAccountSelection();
+        applyDefaultTransferSelection();
+        renderAccountSelection();
+        renderTransferSelection();
+        renderFormVisibility();
+    }
+
+    /**
+     * 当前选中账户失效（新增未选 / 编辑历史账单 account_id 为 NULL / 原账户已归档）时，
+     * 落到首个未归档账户，保证「账户必填」且下拉始终有可选项。
+     */
+    private void applyDefaultAccountSelection() {
+        if (!containsAccount(selectedAccountId)) {
+            selectedAccountId = accountList.get(0).id;
+        }
+    }
+
+    /**
+     * 转账默认：转出落到首个账户，转入落到首个「与转出不同」的账户；
+     * 只有一个账户时转入保持未选（0），保存时由校验拦下并提示。
+     */
+    private void applyDefaultTransferSelection() {
+        if (!containsAccount(selectedFromAccountId)) {
+            selectedFromAccountId = accountList.get(0).id;
+        }
+        if (!containsAccount(selectedToAccountId) || selectedToAccountId == selectedFromAccountId) {
+            selectedToAccountId = 0L;
+            for (AccountEntity account : accountList) {
+                if (account.id != selectedFromAccountId) {
+                    selectedToAccountId = account.id;
+                    break;
+                }
+            }
+        }
+    }
+
+    private boolean containsAccount(long accountId) {
+        for (AccountEntity account : accountList) {
+            if (account.id == accountId) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void renderAccountSelection() {
+        binding.accountInput.setText(labelOf(selectedAccountId), false);
+    }
+
+    private void renderTransferSelection() {
+        binding.transferFromInput.setText(labelOf(selectedFromAccountId), false);
+        binding.transferToInput.setText(labelOf(selectedToAccountId), false);
+    }
+
+    @NonNull
+    private String labelOf(long accountId) {
+        for (AccountEntity account : accountList) {
+            if (account.id == accountId) {
+                return accountLabel(account);
+            }
+        }
+        return "";
+    }
+
+    @NonNull
+    private static String accountLabel(@NonNull AccountEntity account) {
+        return AccountTypes.emoji(account.type) + " " + account.name;
+    }
+
+    // ------------------------------------------------------------------
+    // 表单区块可见性与类型映射
+    // ------------------------------------------------------------------
+
+    /**
+     * 按当前交易类型切换表单区块：
+     * 支出 / 收入显示分类区与单账户选择；转账隐藏分类区、显示转出 / 转入两账户。
+     * 没有任何账户时统一显示「先去创建账户」提示并隐藏所有账户选择器。
+     */
+    private void renderFormVisibility() {
+        Integer typeValue = viewModel.getType().getValue();
+        boolean transfer = typeValue != null && typeValue == CategoryEntity.TYPE_TRANSFER;
+
+        boolean showCategory = !transfer && !categoriesEmpty;
+        binding.categoryTitle.setVisibility(showCategory ? View.VISIBLE : View.GONE);
+        binding.categoryGrid.setVisibility(showCategory ? View.VISIBLE : View.GONE);
+        binding.categoryEmpty.setVisibility(!transfer && categoriesEmpty ? View.VISIBLE : View.GONE);
+
+        binding.accountEmpty.setVisibility(accountsEmpty ? View.VISIBLE : View.GONE);
+        binding.accountLayout.setVisibility(!transfer && !accountsEmpty ? View.VISIBLE : View.GONE);
+        binding.transferSection.setVisibility(transfer && !accountsEmpty ? View.VISIBLE : View.GONE);
+    }
+
+    /** 类型 → 分段按钮 id。 */
+    private static int typeButtonId(int type) {
+        if (type == CategoryEntity.TYPE_INCOME) {
+            return R.id.typeIncome;
+        }
+        if (type == CategoryEntity.TYPE_TRANSFER) {
+            return R.id.typeTransfer;
+        }
+        return R.id.typeExpense;
+    }
+
+    /** 分段按钮 id → 类型。 */
+    private static int typeOfButton(int checkedId) {
+        if (checkedId == R.id.typeIncome) {
+            return CategoryEntity.TYPE_INCOME;
+        }
+        if (checkedId == R.id.typeTransfer) {
+            return CategoryEntity.TYPE_TRANSFER;
+        }
+        return CategoryEntity.TYPE_EXPENSE;
+    }
+
+    // ------------------------------------------------------------------
     // 表单渲染
     // ------------------------------------------------------------------
 
     private void renderType(int type) {
         updatingTypeUi = true;
-        binding.typeGroup.check(type == CategoryEntity.TYPE_INCOME
-                ? R.id.typeIncome : R.id.typeExpense);
+        binding.typeGroup.check(typeButtonId(type));
         updatingTypeUi = false;
+        renderFormVisibility();
     }
 
     private void renderDate() {
@@ -326,10 +509,16 @@ public class TransactionEditActivity extends AppCompatActivity {
         selectedMinute = DateUtil.minuteOfTime(item.time);
         selectedCategoryId = item.categoryId;
         categoryAdapter.setSelectedId(selectedCategoryId);
+        selectedAccountId = item.accountId == null ? 0L : item.accountId;
+        // 转账：accountId=转出、transferAccountId=转入；支出 / 收入只用 accountId。
+        selectedFromAccountId = item.accountId == null ? 0L : item.accountId;
+        selectedToAccountId = item.transferAccountId == null ? 0L : item.transferAccountId;
         binding.amountInput.setText(AmountUtil.toInputText(item.amount));
         binding.noteInput.setText(item.note == null ? "" : item.note);
         renderDate();
         renderTime();
+        renderAccountSelection();
+        renderTransferSelection();
         updateAmountPreview();
     }
 
@@ -365,21 +554,42 @@ public class TransactionEditActivity extends AppCompatActivity {
             binding.amountInput.requestFocus();
             return;
         }
-        if (selectedCategoryId == 0L) {
-            Snackbar.make(binding.editRoot, R.string.edit_error_category, Snackbar.LENGTH_SHORT).show();
-            return;
-        }
+        Integer typeValue = viewModel.getType().getValue();
+        int type = typeValue == null ? CategoryEntity.TYPE_EXPENSE : typeValue;
 
         TransactionEntity entity = new TransactionEntity();
         entity.id = transactionId;
-        Integer type = viewModel.getType().getValue();
-        entity.type = type == null ? CategoryEntity.TYPE_EXPENSE : type;
+        entity.type = type;
         entity.amount = cents;
-        entity.categoryId = selectedCategoryId;
         entity.date = selectedDate;
         entity.time = DateUtil.formatHourMinute(selectedHour, selectedMinute);
         String note = textOf(binding.noteInput.getText()).trim();
         entity.note = note.isEmpty() ? null : note;
+
+        if (type == CategoryEntity.TYPE_TRANSFER) {
+            // 转账：两账户必填且不同，不归属任何分类（category_id 写 NULL）。
+            if (!TransferValidator.isValid(selectedFromAccountId, selectedToAccountId)) {
+                int message = TransferValidator.isSameAccount(selectedFromAccountId, selectedToAccountId)
+                        ? R.string.edit_error_transfer_same : R.string.edit_error_account;
+                Snackbar.make(binding.editRoot, message, Snackbar.LENGTH_SHORT).show();
+                return;
+            }
+            entity.categoryId = null;
+            entity.accountId = selectedFromAccountId;
+            entity.transferAccountId = selectedToAccountId;
+        } else {
+            if (selectedCategoryId == 0L) {
+                Snackbar.make(binding.editRoot, R.string.edit_error_category, Snackbar.LENGTH_SHORT).show();
+                return;
+            }
+            if (selectedAccountId == 0L) {
+                Snackbar.make(binding.editRoot, R.string.edit_error_account, Snackbar.LENGTH_SHORT).show();
+                return;
+            }
+            entity.categoryId = selectedCategoryId;
+            entity.accountId = selectedAccountId;
+            entity.transferAccountId = null;
+        }
 
         binding.saveButton.setEnabled(false);
         viewModel.save(entity, id -> {

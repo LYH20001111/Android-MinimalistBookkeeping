@@ -156,6 +156,29 @@ public class DateUtilTest {
         assertEquals(DateUtil.dayMillisOf(2024, 5, 20), next.start);
     }
 
+    /**
+     * V2 Risk A：周标题需含年份。周序号采用周一为首天的 ISO 口径，
+     * 2024-01-01（周一）为第 1 周，2024-05-13 所在周为第 20 周。
+     */
+    @Test
+    public void weekOfYear_isMondayFirstIsoWeek() {
+        assertEquals(1, DateUtil.weekOfYear(DateUtil.dayMillisOf(2024, 1, 1)));
+        assertEquals(20, DateUtil.weekOfYear(MONDAY));
+    }
+
+    /**
+     * V2 Risk A：跨年周（2024-12-30 周一 ~ 2025-01-05 周日）属于同一周，
+     * 周身份用周一 millis，标题年份取周一所在年（2024），消除周序号歧义。
+     */
+    @Test
+    public void crossYearWeek_titleYearComesFromMonday() {
+        long crossYearSunday = DateUtil.dayMillisOf(2025, 1, 5);
+        long monday = DateUtil.startOfWeek(crossYearSunday);
+        assertEquals(DateUtil.dayMillisOf(2024, 12, 30), monday);
+        assertEquals(2024, DateUtil.yearOf(monday));
+        assertEquals(DateUtil.ofWeek(crossYearSunday).start, monday);
+    }
+
     @Test
     public void shiftYear_movesExactlyOneYear() {
         assertEquals(2023, DateUtil.ofYear(2024).previous().year);

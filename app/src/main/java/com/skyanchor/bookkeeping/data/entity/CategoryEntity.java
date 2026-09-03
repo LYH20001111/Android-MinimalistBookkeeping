@@ -19,6 +19,11 @@ public class CategoryEntity {
     public static final int TYPE_EXPENSE = 1;
     /** 收入类型。 */
     public static final int TYPE_INCOME = 2;
+    /**
+     * 转账类型（V2 新增）。转账不归属任何分类（category_id 为 NULL），
+     * 既不计收入也不计支出，只在两个账户之间搬动余额。
+     */
+    public static final int TYPE_TRANSFER = 3;
 
     @PrimaryKey(autoGenerate = true)
     public long id;

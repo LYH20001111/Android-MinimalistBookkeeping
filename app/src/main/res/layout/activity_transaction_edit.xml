@@ -56,6 +56,14 @@
                     android:layout_weight="1"
                     android:text="@string/edit_type_income" />
 
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/typeTransfer"
+                    style="@style/Widget.App.Button.Segment"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/edit_type_transfer" />
+
             </com.google.android.material.button.MaterialButtonToggleGroup>
 
             <!-- 金额：Display 字号实时预览 + 输入框 -->
@@ -90,6 +98,7 @@
             </com.google.android.material.textfield.TextInputLayout>
 
             <TextView
+                android:id="@+id/categoryTitle"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="@dimen/spacing_lg"
@@ -112,6 +121,78 @@
                 android:textAppearance="@style/TextAppearance.App.Secondary"
                 android:textColor="@color/danger"
                 android:visibility="gone" />
+
+            <!-- V2 账户选择：支出 / 收入必选落账账户，默认落到首个未归档账户；账户下拉项由代码按活跃账户动态填充 -->
+            <com.google.android.material.textfield.TextInputLayout
+                android:id="@+id/accountLayout"
+                style="@style/Widget.App.TextInputLayout.Dropdown"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/spacing_lg"
+                android:hint="@string/edit_account_title">
+
+                <com.google.android.material.textfield.MaterialAutoCompleteTextView
+                    android:id="@+id/accountInput"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:inputType="none"
+                    android:textSize="@dimen/font_body" />
+
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <TextView
+                android:id="@+id/accountEmpty"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/spacing_sm"
+                android:text="@string/edit_account_empty"
+                android:textAppearance="@style/TextAppearance.App.Secondary"
+                android:textColor="@color/danger"
+                android:visibility="gone" />
+
+            <!-- V2 转账：转出账户 + 转入账户，仅类型选「转账」时出现；两账户必填且不同 -->
+            <LinearLayout
+                android:id="@+id/transferSection"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/spacing_lg"
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <com.google.android.material.textfield.TextInputLayout
+                    android:id="@+id/transferFromLayout"
+                    style="@style/Widget.App.TextInputLayout.Dropdown"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:hint="@string/edit_transfer_from_title">
+
+                    <com.google.android.material.textfield.MaterialAutoCompleteTextView
+                        android:id="@+id/transferFromInput"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:inputType="none"
+                        android:textSize="@dimen/font_body" />
+
+                </com.google.android.material.textfield.TextInputLayout>
+
+                <com.google.android.material.textfield.TextInputLayout
+                    android:id="@+id/transferToLayout"
+                    style="@style/Widget.App.TextInputLayout.Dropdown"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/spacing_sm"
+                    android:hint="@string/edit_transfer_to_title">
+
+                    <com.google.android.material.textfield.MaterialAutoCompleteTextView
+                        android:id="@+id/transferToInput"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:inputType="none"
+                        android:textSize="@dimen/font_body" />
+
+                </com.google.android.material.textfield.TextInputLayout>
+
+            </LinearLayout>
 
             <!-- 日期与时间 -->
             <LinearLayout

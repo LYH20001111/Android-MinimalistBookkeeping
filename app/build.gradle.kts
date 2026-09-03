@@ -22,6 +22,13 @@ android {
         versionName = "1.1.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // V2：导出 Room schema 到 app/schemas，供 MigrationTestHelper 验证 2→3 迁移。
+        javaCompileOptions {
+            annotationProcessorOptions {
+                arguments.put("room.schemaLocation", "$projectDir/schemas")
+            }
+        }
     }
 
     buildTypes {
@@ -42,6 +49,11 @@ android {
     buildFeatures {
         viewBinding = true
         buildConfig = true
+    }
+
+    // 将导出的 Room schema 目录加入 androidTest assets，MigrationTestHelper 从 assets 读取历史版本。
+    sourceSets {
+        getByName("androidTest").assets.srcDir("$projectDir/schemas")
     }
 }
 
@@ -73,4 +85,5 @@ dependencies {
     testImplementation(libs.junit)
     androidTestImplementation(libs.ext.junit)
     androidTestImplementation(libs.espresso.core)
+    androidTestImplementation(libs.room.testing)
 }

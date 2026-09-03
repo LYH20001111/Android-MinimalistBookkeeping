@@ -29,6 +29,10 @@ public interface CategoryDao {
     @Query("SELECT * FROM category WHERE type = :type ORDER BY sort_order ASC, id ASC")
     List<CategoryEntity> getByType(int type);
 
+    /** 全量分类（含支出与收入），供 CSV 导入时按「类型 + 名称」解析分类 id。 */
+    @Query("SELECT * FROM category ORDER BY type ASC, sort_order ASC, id ASC")
+    List<CategoryEntity> getAll();
+
     @Insert
     long insert(CategoryEntity entity);
 

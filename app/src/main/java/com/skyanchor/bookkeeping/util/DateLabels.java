@@ -71,14 +71,18 @@ public final class DateLabels {
                 DateUtil.dayOfMonthOf(dayMillis));
     }
 
-    /** 周期标题：周显示「Week 5」，月显示「2024年5月」，年显示「2024年」。 */
+    /**
+     * 周期标题：周显示「2026年第5周」（V2 Risk A：含年份消除跨年周序号歧义），
+     * 月显示「2024年5月」，年显示「2024年」。
+     */
     @NonNull
     public static String periodTitle(@NonNull Context context, @NonNull DateRange range) {
         Resources resources = context.getResources();
         switch (range.type) {
             case WEEK:
+                // 年份取周一所在年，与 weekOfYear 的 ISO 口径一致；周期身份仍用 start/end。
                 return resources.getString(R.string.date_format_week_label,
-                        DateUtil.weekOfYear(range.start));
+                        DateUtil.yearOf(range.start), DateUtil.weekOfYear(range.start));
             case YEAR:
                 return resources.getString(R.string.date_format_year, range.year);
             case MONTH:

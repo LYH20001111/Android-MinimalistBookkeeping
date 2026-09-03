@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:minHeight="@dimen/list_item_min_height"
+        android:orientation="horizontal"
+        android:paddingStart="@dimen/page_margin"
+        android:paddingTop="@dimen/spacing_sm"
+        android:paddingEnd="@dimen/page_margin"
+        android:paddingBottom="@dimen/spacing_sm">
+
+        <!-- 状态标签：有效 / 重复跳过 / 错误，颜色由 Adapter 按状态着色 -->
+        <TextView
+            android:id="@+id/previewStatus"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:minWidth="52dp"
+            android:textAppearance="@style/TextAppearance.App.Caption"
+            android:textStyle="bold" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="@dimen/spacing_md"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/previewSummary"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textAppearance="@style/TextAppearance.App.Body" />
+
+            <TextView
+                android:id="@+id/previewReason"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/spacing_xxs"
+                android:textAppearance="@style/TextAppearance.App.Caption"
+                android:visibility="gone" />
+
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/previewLine"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="@dimen/spacing_sm"
+            android:textAppearance="@style/TextAppearance.App.Caption"
+            android:textColor="@color/text_tertiary" />
+
+    </LinearLayout>
+
+    <View
+        style="@style/AppDivider"
+        android:layout_marginStart="@dimen/page_margin" />
+
+</LinearLayout>

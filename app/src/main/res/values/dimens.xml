@@ -73,5 +73,9 @@
     <dimen name="row_action_size">44dp</dimen>
     <!-- 分类编辑弹窗中 emoji 网格的可视高度，内部可滚动 -->
     <dimen name="emoji_grid_height">220dp</dimen>
+    <!-- V2 Risk D：日历格密度 Token，金额单行 + autosize，字体放大时不重叠 -->
+    <dimen name="calendar_cell_min_height">64dp</dimen>
+    <dimen name="calendar_cell_amount_text">9sp</dimen>
+    <dimen name="calendar_cell_amount_text_min">7sp</dimen>
 
 </resources>

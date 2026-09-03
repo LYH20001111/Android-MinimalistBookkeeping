@@ -27,6 +27,9 @@ import com.skyanchor.bookkeeping.util.AmountUtil;
  */
 public class TransactionListAdapter extends ListAdapter<RecordListItem, RecyclerView.ViewHolder> {
 
+    /** 转账行的图标：🔁，与其他行的分类 emoji 保持同一视觉语言。 */
+    private static final String TRANSFER_ICON = "\uD83D\uDD01";
+
     /** 列表交互回调。 */
     public interface Listener {
 
@@ -127,8 +130,22 @@ public class TransactionListAdapter extends ListAdapter<RecordListItem, Recycler
             if (item == null) {
                 return;
             }
-            binding.rowIcon.setText(item.displayIcon());
-            binding.rowTitle.setText(item.displayName());
+            if (item.isTransfer()) {
+                // 转账：🔁 图标 +「转出账户 → 转入账户」标题 + 中性金额色（不计收支、无正负号）。
+                binding.rowIcon.setText(TRANSFER_ICON);
+                binding.rowTitle.setText(itemView.getResources().getString(
+                        R.string.record_transfer_format,
+                        item.displayAccountName(), item.displayTransferAccountName()));
+                binding.rowAmount.setText(AmountUtil.format(item.amount));
+                binding.rowAmount.setTextColor(ContextCompat.getColor(
+                        itemView.getContext(), R.color.text_secondary));
+            } else {
+                binding.rowIcon.setText(item.displayIcon());
+                binding.rowTitle.setText(item.displayName());
+                binding.rowAmount.setText(AmountUtil.formatSigned(item.amount, item.isIncome()));
+                binding.rowAmount.setTextColor(ContextCompat.getColor(itemView.getContext(),
+                        item.isIncome() ? R.color.success : R.color.text_primary));
+            }
 
             if (TextUtils.isEmpty(item.note)) {
                 binding.rowNote.setVisibility(View.GONE);
@@ -137,9 +154,6 @@ public class TransactionListAdapter extends ListAdapter<RecordListItem, Recycler
                 binding.rowNote.setText(item.note);
             }
 
-            binding.rowAmount.setText(AmountUtil.formatSigned(item.amount, item.isIncome()));
-            binding.rowAmount.setTextColor(ContextCompat.getColor(itemView.getContext(),
-                    item.isIncome() ? R.color.success : R.color.text_primary));
             binding.rowTime.setText(item.time);
 
             itemView.setOnClickListener(v -> {

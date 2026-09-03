@@ -21,6 +21,9 @@ import java.util.Map;
  *
  * <p>记录页、图表页、预算页都走这里，保证「列表、首页概览、图表、预算来自同一数据源」。
  * 金额与占比一律使用 long / int 千分比运算，不出现浮点误差。
+ *
+ * <p>V2：所有按 type 过滤的聚合都显式排除转账（type=3）——转账既不计收入也不计支出，
+ * 只在两个账户之间搬动余额，因此不会污染任何收支统计。
  */
 public final class StatisticsCalculator {
 
@@ -29,6 +32,8 @@ public final class StatisticsCalculator {
 
     /**
      * 汇总区间内的收入、支出与笔数。
+     *
+     * <p>V2：转账（type=3）既不计收入也不计支出，仅计入笔数。
      *
      * @param items    账单集合，允许包含区间外的数据（内部会再过滤一次）
      * @param startDay 起始日 00:00 millis（含）
@@ -46,9 +51,10 @@ public final class StatisticsCalculator {
                 count++;
                 if (item.type == CategoryEntity.TYPE_INCOME) {
                     income += item.amount;
-                } else {
+                } else if (item.type == CategoryEntity.TYPE_EXPENSE) {
                     expense += item.amount;
                 }
+                // type == TYPE_TRANSFER：转账不计收入也不计支出（V2）。
             }
         }
         return new PeriodSummary(income, expense, count);
@@ -239,9 +245,10 @@ public final class StatisticsCalculator {
             }
             if (item.type == CategoryEntity.TYPE_INCOME) {
                 income += item.amount;
-            } else {
+            } else if (item.type == CategoryEntity.TYPE_EXPENSE) {
                 expense += item.amount;
             }
+            // 转账不计入当日收支合计，但仍作为一行展示、计入笔数（V2）。
             count++;
             pending.add(new RecordListItem.Row(item));
         }

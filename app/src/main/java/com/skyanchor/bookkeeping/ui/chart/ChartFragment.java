@@ -16,17 +16,22 @@ import androidx.lifecycle.ViewModelProvider;
 import androidx.recyclerview.widget.LinearLayoutManager;
 
 import com.skyanchor.bookkeeping.R;
+import com.skyanchor.bookkeeping.data.model.AccountBalance;
 import com.skyanchor.bookkeeping.data.model.BudgetState;
 import com.skyanchor.bookkeeping.data.model.ChartUiState;
 import com.skyanchor.bookkeeping.data.model.DateRange;
 import com.skyanchor.bookkeeping.data.model.PeriodType;
 import com.skyanchor.bookkeeping.databinding.FragmentChartBinding;
+import com.skyanchor.bookkeeping.databinding.ItemAccountBalanceBinding;
 import com.skyanchor.bookkeeping.ui.adapter.CategoryStatAdapter;
 import com.skyanchor.bookkeeping.ui.budget.BudgetSettingActivity;
 import com.skyanchor.bookkeeping.ui.record.TransactionEditActivity;
+import com.skyanchor.bookkeeping.util.AccountTypes;
 import com.skyanchor.bookkeeping.util.AmountUtil;
 import com.skyanchor.bookkeeping.util.DateLabels;
 import com.skyanchor.bookkeeping.util.DateUtil;
+
+import java.util.List;
 
 /**
  * 图表页：按 V1 基线 7.1 的四层信息优先级渲染 —— 核心数字、周期对比、趋势、分类占比，
@@ -95,6 +100,8 @@ public class ChartFragment extends Fragment {
         binding.chartEmpty.backToCurrentButton.setOnClickListener(v -> viewModel.backToCurrentPeriod());
 
         viewModel.getUiState().observe(getViewLifecycleOwner(), this::render);
+        // 账户资金与周期无关，独立观察：账单或账户变化后总资产 / 各账户余额自动刷新。
+        viewModel.getAccountBalances().observe(getViewLifecycleOwner(), this::renderAccounts);
     }
 
     @Override
@@ -230,6 +237,41 @@ public class ChartFragment extends Fragment {
         if (over) {
             binding.budgetOverValue.setText(
                     getString(R.string.budget_over_format, AmountUtil.format(budget.overAmount)));
+        }
+    }
+
+    /**
+     * 账户资金卡片：总资产 = 未归档账户余额之和，下方逐行列出各账户当前余额。
+     * 余额可正可负（信用卡欠款为负），负数用 danger 语义色；无账户时整卡隐藏。
+     */
+    private void renderAccounts(@Nullable List<AccountBalance> accounts) {
+        if (binding == null) {
+            return;
+        }
+        if (accounts == null || accounts.isEmpty()) {
+            binding.accountCard.setVisibility(View.GONE);
+            return;
+        }
+        long total = 0L;
+        for (AccountBalance account : accounts) {
+            total += account.balance;
+        }
+        binding.accountCard.setVisibility(View.VISIBLE);
+        binding.totalAssetsValue.setText(AmountUtil.format(total));
+        binding.totalAssetsValue.setTextColor(colorOf(
+                total < 0L ? R.color.danger : R.color.text_primary));
+
+        LayoutInflater inflater = LayoutInflater.from(requireContext());
+        binding.accountBalanceList.removeAllViews();
+        for (AccountBalance account : accounts) {
+            ItemAccountBalanceBinding row = ItemAccountBalanceBinding.inflate(
+                    inflater, binding.accountBalanceList, false);
+            row.accountIcon.setText(AccountTypes.emoji(account.type));
+            row.accountName.setText(account.name);
+            row.accountBalance.setText(AmountUtil.format(account.balance));
+            row.accountBalance.setTextColor(colorOf(
+                    account.balance < 0L ? R.color.danger : R.color.text_primary));
+            binding.accountBalanceList.addView(row.getRoot());
         }
     }
 

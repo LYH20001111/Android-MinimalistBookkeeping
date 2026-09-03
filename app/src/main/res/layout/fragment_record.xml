@@ -30,6 +30,15 @@
                 android:textAppearance="@style/TextAppearance.App.PageTitle" />
 
             <com.google.android.material.button.MaterialButton
+                android:id="@+id/searchButton"
+                style="@style/Widget.App.Button.Quiet"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:contentDescription="@string/cd_search"
+                app:icon="@drawable/ic_search"
+                app:iconSize="@dimen/icon_size_sm" />
+
+            <com.google.android.material.button.MaterialButton
                 android:id="@+id/dateButton"
                 style="@style/Widget.App.Button.Quiet"
                 android:layout_width="wrap_content"

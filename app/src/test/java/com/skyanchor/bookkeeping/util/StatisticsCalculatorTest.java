@@ -53,6 +53,27 @@ public class StatisticsCalculatorTest {
         return item(id, CategoryEntity.TYPE_INCOME, amount, date, categoryId, name, "🧧");
     }
 
+    private static final long ACCOUNT_CASH = 1L;
+    private static final long ACCOUNT_WECHAT = 2L;
+
+    /**
+     * 转账（type=3）：不归属分类，{@code categoryId} 经 COALESCE 归 0、{@code categoryName} 为 null，
+     * 只在 {@code accountId}（转出）与 {@code transferAccountId}（转入）之间搬动余额。
+     */
+    private static TransactionItem transfer(long id, long amount, long date, long fromAccount,
+                                            long toAccount) {
+        TransactionItem item = new TransactionItem();
+        item.id = id;
+        item.type = CategoryEntity.TYPE_TRANSFER;
+        item.amount = amount;
+        item.date = date;
+        item.time = "12:00";
+        item.categoryId = 0L;
+        item.accountId = fromAccount;
+        item.transferAccountId = toAccount;
+        return item;
+    }
+
     private static TransactionItem item(long id, int type, long amount, long date, long categoryId,
                                         String name, String icon) {
         TransactionItem item = new TransactionItem();
@@ -112,6 +133,122 @@ public class StatisticsCalculatorTest {
         assertTrue(StatisticsCalculator.summary(null, MAY_1, MAY_31).isEmpty());
         assertEquals(0L, PeriodSummary.EMPTY.income);
         assertEquals(0L, PeriodSummary.EMPTY.expense);
+    }
+
+    // ------------------------------------------------------------------
+    // 转账排除（V2 关键数据模型决策 #6）：type=3 既不计收入也不计支出
+    // ------------------------------------------------------------------
+
+    /**
+     * summary 遇转账：收支合计完全不受影响，但笔数仍 +1（转账是一条真实记录）。
+     * 这保证记录页「共 N 笔」= 显示行数，而概览收支数字不被资金搬动污染。
+     */
+    @Test
+    public void summary_excludesTransferFromIncomeAndExpenseButCountsIt() {
+        List<TransactionItem> items = Arrays.asList(
+                expense(1L, 3580L, MAY_13, CAT_FOOD, "餐饮"),
+                income(2L, 100000L, MAY_15, CAT_SALARY, "工资"),
+                // 从现金转 500.00 元到微信：既不是收入也不是支出
+                transfer(3L, 50000L, MAY_15, ACCOUNT_CASH, ACCOUNT_WECHAT));
+
+        PeriodSummary summary = StatisticsCalculator.summary(items, MAY_13, MAY_19);
+
+        assertEquals(100000L, summary.income);
+        assertEquals(3580L, summary.expense);
+        assertEquals(96420L, summary.balance());
+        // 转账计入笔数
+        assertEquals(3, summary.count);
+    }
+
+    /** 一个区间内只有转账时，收支均为 0、结余为 0，但 count 反映转账笔数、非空。 */
+    @Test
+    public void summary_onlyTransfersHasZeroIncomeAndExpense() {
+        List<TransactionItem> items = Arrays.asList(
+                transfer(1L, 50000L, MAY_13, ACCOUNT_CASH, ACCOUNT_WECHAT),
+                transfer(2L, 20000L, MAY_14, ACCOUNT_WECHAT, ACCOUNT_CASH));
+
+        PeriodSummary summary = StatisticsCalculator.summary(items, MAY_13, MAY_19);
+
+        assertEquals(0L, summary.income);
+        assertEquals(0L, summary.expense);
+        assertEquals(0L, summary.balance());
+        assertEquals(2, summary.count);
+        assertFalse(summary.isEmpty());
+    }
+
+    /**
+     * groupByDay 遇转账：当日收支合计不含转账，但转账仍作为一行展示、计入当日笔数。
+     * 记录页头部「当日支出/收入合计」与列表内容来自同一次遍历，不能互相矛盾。
+     */
+    @Test
+    public void groupByDay_transferShowsAsRowButNotInDayTotals() {
+        List<TransactionItem> items = new ArrayList<>(Arrays.asList(
+                expense(1L, 1000L, MAY_15, CAT_FOOD, "餐饮"),
+                transfer(2L, 50000L, MAY_15, ACCOUNT_CASH, ACCOUNT_WECHAT),
+                income(3L, 5000L, MAY_15, CAT_SALARY, "工资")));
+
+        List<RecordListItem> rows = StatisticsCalculator.groupByDay(items, null);
+
+        // 1 个 Header + 3 个 Row
+        assertEquals(4, rows.size());
+        RecordListItem.Header header = (RecordListItem.Header) rows.get(0);
+        assertEquals(MAY_15, header.dayMillis);
+        // 转账不进入当日收支合计
+        assertEquals(1000L, header.expense);
+        assertEquals(5000L, header.income);
+        // 但转账计入当日笔数、且作为一行展示
+        assertEquals(3, header.count);
+        assertEquals(RecordListItem.VIEW_TYPE_TRANSACTION, rows.get(2).viewType());
+        assertTrue(((RecordListItem.Row) rows.get(2)).item.isTransfer());
+    }
+
+    /** categoryBreakdown 只按传入 type 聚合，转账（type=3）不会出现在支出或收入占比里。 */
+    @Test
+    public void categoryBreakdown_ignoresTransfer() {
+        List<TransactionItem> items = Arrays.asList(
+                expense(1L, 8000L, MAY_14, CAT_FOOD, "餐饮"),
+                transfer(2L, 50000L, MAY_14, ACCOUNT_CASH, ACCOUNT_WECHAT));
+
+        List<CategoryStat> expenseStats = StatisticsCalculator.categoryBreakdown(
+                items, CategoryEntity.TYPE_EXPENSE, MAY_1, MAY_31);
+        assertEquals(1, expenseStats.size());
+        assertEquals(8000L, expenseStats.get(0).amount);
+
+        // 转账不是收入，收入占比为空
+        assertTrue(StatisticsCalculator.categoryBreakdown(
+                items, CategoryEntity.TYPE_INCOME, MAY_1, MAY_31).isEmpty());
+    }
+
+    /** dailyTrend（支出趋势）不含转账：转账当天不会凭空冒出一个支出点。 */
+    @Test
+    public void dailyTrend_ignoresTransfer() {
+        List<TransactionItem> items = Arrays.asList(
+                expense(1L, 1000L, MAY_13, CAT_FOOD, "餐饮"),
+                transfer(2L, 50000L, MAY_15, ACCOUNT_CASH, ACCOUNT_WECHAT));
+
+        List<TrendPoint> points =
+                StatisticsCalculator.dailyTrend(items, DateUtil.ofWeek(MAY_15));
+
+        assertEquals(7, points.size());
+        // MAY_15 只有转账，支出趋势点应为 0
+        assertEquals(1000L, points.get(0).value);
+        assertEquals(0L, points.get(2).value);
+        assertEquals(1000L, totalOf(points));
+    }
+
+    /** monthlyTrend（年支出趋势）不含转账。 */
+    @Test
+    public void monthlyTrend_ignoresTransfer() {
+        List<TransactionItem> items = Arrays.asList(
+                expense(1L, 2000L, DateUtil.dayMillisOf(2024, 5, 1), CAT_FOOD, "餐饮"),
+                transfer(2L, 50000L, DateUtil.dayMillisOf(2024, 5, 20),
+                        ACCOUNT_CASH, ACCOUNT_WECHAT));
+
+        List<TrendPoint> points = StatisticsCalculator.monthlyTrend(items, 2024);
+
+        assertEquals(12, points.size());
+        assertEquals(2000L, points.get(4).value);
+        assertEquals(2000L, totalOf(points));
     }
 
     // ------------------------------------------------------------------

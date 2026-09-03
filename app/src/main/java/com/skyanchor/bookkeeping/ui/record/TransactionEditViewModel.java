@@ -10,6 +10,7 @@ import androidx.lifecycle.MutableLiveData;
 import androidx.lifecycle.Transformations;
 
 import com.skyanchor.bookkeeping.BookkeepingApp;
+import com.skyanchor.bookkeeping.data.entity.AccountEntity;
 import com.skyanchor.bookkeeping.data.entity.CategoryEntity;
 import com.skyanchor.bookkeeping.data.entity.TransactionEntity;
 import com.skyanchor.bookkeeping.data.entity.TransactionItem;
@@ -31,6 +32,9 @@ public class TransactionEditViewModel extends AndroidViewModel {
     private final MutableLiveData<Integer> type;
     private final LiveData<List<CategoryEntity>> categories;
 
+    /** 未归档账户，供记一笔的落账账户选择器（V2 新增）。 */
+    private final LiveData<List<AccountEntity>> accounts;
+
     /** 编辑模式下从库里读出的原始账单，跨配置变更存活，避免重复回读与反复覆盖表单。 */
     private final MutableLiveData<TransactionItem> source = new MutableLiveData<>();
 
@@ -39,6 +43,7 @@ public class TransactionEditViewModel extends AndroidViewModel {
         this.repository = BookkeepingApp.get(application).getRepository();
         this.type = new MutableLiveData<>(CategoryEntity.TYPE_EXPENSE);
         this.categories = Transformations.switchMap(type, repository::observeCategories);
+        this.accounts = repository.observeActiveAccounts();
     }
 
     public LiveData<Integer> getType() {
@@ -48,6 +53,11 @@ public class TransactionEditViewModel extends AndroidViewModel {
     /** 当前类型下的分类，按 sortOrder 升序。 */
     public LiveData<List<CategoryEntity>> getCategories() {
         return categories;
+    }
+
+    /** 未归档账户，按 sort_order 升序，供账户选择器。 */
+    public LiveData<List<AccountEntity>> getAccounts() {
+        return accounts;
     }
 
     /** 正在编辑的原始账单；新增模式下永远为 null。 */
