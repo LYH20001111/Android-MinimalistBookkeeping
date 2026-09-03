@@ -8,6 +8,7 @@ import androidx.annotation.NonNull;
 import androidx.room.Database;
 import androidx.room.Room;
 import androidx.room.RoomDatabase;
+import androidx.room.migration.Migration;
 import androidx.sqlite.db.SupportSQLiteDatabase;
 
 import com.skyanchor.bookkeeping.data.entity.BudgetEntity;
@@ -25,7 +26,7 @@ import com.skyanchor.bookkeeping.data.entity.UserSettingsEntity;
                 BudgetEntity.class,
                 UserSettingsEntity.class
         },
-        version = 1,
+        version = 2,
         exportSchema = false)
 public abstract class AppDatabase extends RoomDatabase {
 
@@ -41,6 +42,40 @@ public abstract class AppDatabase extends RoomDatabase {
 
     public abstract UserSettingsDao userSettingsDao();
 
+    /**
+     * V1.1 基线第 36 章：将 transactions 表的外键从 CASCADE 改为 RESTRICT，
+     * 与业务层「已使用分类禁止删除」的语义保持一致。
+     *
+     * <p>Room 不支持直接修改外键，必须重建表。迁移步骤：
+     * 关闭外键检查 → 创建新表 → 复制数据 → 删除旧表 → 重命名 → 重建索引 → 开启外键检查。
+     * 禁止使用 destructiveMigration，否则用户已有账单数据将丢失。
+     */
+    static final Migration MIGRATION_1_2 = new Migration(1, 2) {
+        @Override
+        public void migrate(@NonNull SupportSQLiteDatabase db) {
+            db.execSQL("PRAGMA foreign_keys=OFF");
+            db.execSQL("CREATE TABLE IF NOT EXISTS transactions_new ("
+                    + "id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, "
+                    + "type INTEGER NOT NULL, "
+                    + "amount INTEGER NOT NULL, "
+                    + "category_id INTEGER NOT NULL, "
+                    + "date INTEGER NOT NULL, "
+                    + "time TEXT NOT NULL, "
+                    + "note TEXT, "
+                    + "created_at INTEGER NOT NULL, "
+                    + "updated_at INTEGER NOT NULL, "
+                    + "FOREIGN KEY(category_id) REFERENCES category(id) ON DELETE RESTRICT)");
+            db.execSQL("INSERT INTO transactions_new SELECT * FROM transactions");
+            db.execSQL("DROP TABLE transactions");
+            db.execSQL("ALTER TABLE transactions_new RENAME TO transactions");
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_transactions_category_id "
+                    + "ON transactions(category_id)");
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_transactions_date "
+                    + "ON transactions(date)");
+            db.execSQL("PRAGMA foreign_keys=ON");
+        }
+    };
+
     public static AppDatabase getInstance(@NonNull Context context) {
         AppDatabase local = instance;
         if (local == null) {
@@ -49,6 +84,7 @@ public abstract class AppDatabase extends RoomDatabase {
                 if (local == null) {
                     local = Room.databaseBuilder(
                                     context.getApplicationContext(), AppDatabase.class, DB_NAME)
+                            .addMigrations(MIGRATION_1_2)
                             .addCallback(SEED_CALLBACK)
                             .build();
                     instance = local;

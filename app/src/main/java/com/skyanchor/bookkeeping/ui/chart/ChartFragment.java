@@ -25,6 +25,7 @@ import com.skyanchor.bookkeeping.ui.adapter.CategoryStatAdapter;
 import com.skyanchor.bookkeeping.ui.budget.BudgetSettingActivity;
 import com.skyanchor.bookkeeping.ui.record.TransactionEditActivity;
 import com.skyanchor.bookkeeping.util.AmountUtil;
+import com.skyanchor.bookkeeping.util.DateLabels;
 import com.skyanchor.bookkeeping.util.DateUtil;
 
 /**
@@ -37,6 +38,8 @@ import com.skyanchor.bookkeeping.util.DateUtil;
  * <p>Insets 已由 {@code MainActivity} 统一处理，Fragment 内不再重复消费。
  */
 public class ChartFragment extends Fragment {
+
+    private static final String TAG_PERIOD_PICKER = "chart_period_picker";
 
     private FragmentChartBinding binding;
     private ChartViewModel viewModel;
@@ -84,10 +87,12 @@ public class ChartFragment extends Fragment {
         binding.nextButton.setOnClickListener(v -> viewModel.nextPeriod());
         binding.budgetSetButton.setOnClickListener(v -> openBudgetSetting());
 
-        binding.chartEmpty.emptyTitle.setText(R.string.chart_empty_title);
-        binding.chartEmpty.emptySubtitle.setText(R.string.chart_empty_subtitle);
-        binding.chartEmpty.emptyAction.setOnClickListener(v ->
-                TransactionEditActivity.startAdd(requireContext(), DateUtil.today()));
+        // 点击周期导航中间区域打开周/月/年选择器，可直接跳到远期周期（V1.1 目标 C）。
+        binding.periodCenter.setOnClickListener(v -> openPeriodPicker());
+
+        // 空状态「记一笔」默认落在当前周期首日，便于补记；「回到当前周期」把锚点复位到今天。
+        binding.chartEmpty.emptyAction.setOnClickListener(v -> startAddForCurrentPeriod());
+        binding.chartEmpty.backToCurrentButton.setOnClickListener(v -> viewModel.backToCurrentPeriod());
 
         viewModel.getUiState().observe(getViewLifecycleOwner(), this::render);
     }
@@ -140,7 +145,10 @@ public class ChartFragment extends Fragment {
         updatingPeriodUi = false;
 
         binding.periodLabel.setText(state.label);
-        binding.periodCount.setText(getString(R.string.chart_count_format, state.summary.count));
+        // 标题（「Week 5」/「2026年9月」）只负责定位，副标题补上精确日期范围与笔数。
+        String subtitle = DateLabels.periodSubtitle(requireContext(), state.range);
+        binding.periodCount.setText(getString(R.string.chart_period_count_with_range,
+                subtitle, state.summary.count));
         // 周期已经包含今天时不允许再往后翻，避免出现永远为空的未来周期。
         binding.nextButton.setEnabled(!state.range.containsToday());
     }
@@ -234,6 +242,23 @@ public class ChartFragment extends Fragment {
                     query == null ? DateUtil.today() : query.anchor);
         }
         BudgetSettingActivity.start(requireContext(), range.year, range.month);
+    }
+
+    /** 空状态「记一笔」：默认日期落在当前周期首日，便于补记该周期。 */
+    private void startAddForCurrentPeriod() {
+        DateRange range = currentRange;
+        long day = range != null ? range.start : DateUtil.today();
+        TransactionEditActivity.startAdd(requireContext(), day);
+    }
+
+    /** 打开与当前周期类型一致的周/月/年选择器（V1.1 目标 C）。 */
+    private void openPeriodPicker() {
+        ChartViewModel.PeriodQuery query = viewModel.getQuery();
+        if (query == null) {
+            return;
+        }
+        PeriodPickerDialog.newInstance(query.type, query.anchor)
+                .show(getChildFragmentManager(), TAG_PERIOD_PICKER);
     }
 
     // ------------------------------------------------------------------

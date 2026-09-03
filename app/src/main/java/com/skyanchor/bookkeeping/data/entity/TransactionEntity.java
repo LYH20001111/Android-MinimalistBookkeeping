@@ -20,7 +20,7 @@ import androidx.room.PrimaryKey;
                 entity = CategoryEntity.class,
                 parentColumns = "id",
                 childColumns = "category_id",
-                onDelete = ForeignKey.CASCADE),
+                onDelete = ForeignKey.RESTRICT),
         indices = {
                 @Index(value = "category_id"),
                 @Index(value = "date")

@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 日历选择器单日格：日期数字 + 可选支出摘要 + 可选收入摘要 -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/dayCellRoot"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="?attr/selectableItemBackground"
+    android:clickable="true"
+    android:focusable="true"
+    android:gravity="center_horizontal"
+    android:minHeight="64dp"
+    android:orientation="vertical"
+    android:paddingTop="@dimen/spacing_xs"
+    android:paddingBottom="@dimen/spacing_xs">
+
+    <!-- 日期数字，选中时背景为 primary 圆形，今天时边框为 primary 圆形 -->
+    <TextView
+        android:id="@+id/dayNumber"
+        android:layout_width="28dp"
+        android:layout_height="28dp"
+        android:gravity="center"
+        android:textColor="@color/text_primary"
+        android:textSize="13sp" />
+
+    <!-- 支出摘要：-¥X.XX，有支出时显示，text_primary 色 -->
+    <TextView
+        android:id="@+id/expenseText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:ellipsize="end"
+        android:gravity="center"
+        android:maxLines="1"
+        android:textColor="@color/text_primary"
+        android:textSize="9sp"
+        android:visibility="gone" />
+
+    <!-- 收入摘要：+¥X.XX，有收入时显示，success 色 -->
+    <TextView
+        android:id="@+id/incomeText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:ellipsize="end"
+        android:gravity="center"
+        android:maxLines="1"
+        android:textColor="@color/success"
+        android:textSize="9sp"
+        android:visibility="gone" />
+
+</LinearLayout>

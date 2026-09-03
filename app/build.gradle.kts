@@ -1,3 +1,7 @@
+import com.android.build.api.variant.impl.VariantOutputImpl
+import java.text.SimpleDateFormat
+import java.util.Date
+
 plugins {
     alias(libs.plugins.android.application)
 }
@@ -14,8 +18,8 @@ android {
         applicationId = "com.skyanchor.bookkeeping"
         minSdk = 24
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -38,6 +42,20 @@ android {
     buildFeatures {
         viewBinding = true
         buildConfig = true
+    }
+}
+
+androidComponents {
+    onVariants { variant ->
+        val time = SimpleDateFormat("yyyyMMddHHmm").format(Date())
+        val vName = android.defaultConfig.versionName ?: "1.0.0"
+        val buildType = variant.buildType ?: ""
+        var apkBaseName = "极简记账-$vName-$buildType-$time.apk"
+        variant.outputs.forEach { output ->
+            if (output is VariantOutputImpl) {
+                output.outputFileName.set(apkBaseName)
+            }
+        }
     }
 }
 

@@ -23,7 +23,7 @@ public final class RecordUiState {
     /** 所选业务日期当天的收支概览。 */
     public final PeriodSummary daySummary;
 
-    /** 日期不晚于业务日期的全部账单，已按天分组。 */
+    /** 截至业务日期的历史账单，按天分组。 */
     public final List<RecordListItem> rows;
 
     public RecordUiState(long businessDate, String businessDateLabel, PeriodSummary daySummary,

@@ -20,6 +20,8 @@ import com.skyanchor.bookkeeping.data.model.BudgetState;
 import com.skyanchor.bookkeeping.data.model.CategoryStat;
 import com.skyanchor.bookkeeping.data.model.ChartUiState;
 import com.skyanchor.bookkeeping.data.model.DateRange;
+import com.skyanchor.bookkeeping.data.model.DayCount;
+import com.skyanchor.bookkeeping.data.model.PeriodOption;
 import com.skyanchor.bookkeeping.data.model.PeriodSummary;
 import com.skyanchor.bookkeeping.data.model.PeriodType;
 import com.skyanchor.bookkeeping.data.model.TrendPoint;
@@ -29,7 +31,9 @@ import com.skyanchor.bookkeeping.util.DateUtil;
 import com.skyanchor.bookkeeping.util.StatisticsCalculator;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 图表页 ViewModel。
@@ -86,12 +90,23 @@ public class ChartViewModel extends AndroidViewModel {
     private final MutableLiveData<PeriodQuery> query;
     private final LiveData<ChartUiState> uiState;
 
+    /** 周期选择器数据源：单次查询每天笔数，Java 侧聚合为周/月/年选项（V1.1 目标 C）。 */
+    private final LiveData<List<PeriodOption>> weekOptions;
+    private final LiveData<List<PeriodOption>> monthOptions;
+    private final LiveData<List<PeriodOption>> yearOptions;
+
     public ChartViewModel(@NonNull Application application) {
         super(application);
         this.repository = BookkeepingApp.get(application).getRepository();
         // 默认月视图：基线 7.2 中月视图信息最全（含预算），是最常用的落脚点
         this.query = new MutableLiveData<>(new PeriodQuery(PeriodType.MONTH, DateUtil.today()));
         this.uiState = Transformations.switchMap(query, this::observe);
+
+        // 每天账单笔数只查一次，三份派生数据分别聚合为周/月/年选项，避免逐周期查库。
+        LiveData<List<DayCount>> dayCounts = repository.observeDayCounts();
+        this.weekOptions = Transformations.map(dayCounts, this::buildWeekOptions);
+        this.monthOptions = Transformations.map(dayCounts, this::buildMonthOptions);
+        this.yearOptions = Transformations.map(dayCounts, this::buildYearOptions);
     }
 
     public LiveData<ChartUiState> getUiState() {
@@ -130,6 +145,37 @@ public class ChartViewModel extends AndroidViewModel {
         DateRange range = DateUtil.rangeOf(current.type, current.anchor);
         DateRange target = delta < 0 ? range.previous() : range.next();
         query.setValue(new PeriodQuery(current.type, target.anchor));
+    }
+
+    // ------------------------------------------------------------------
+    // 周期选择器（V1.1 目标 C：点击周期导航中间区域直接跳转远期周期）
+    // ------------------------------------------------------------------
+
+    /** 取指定周期类型的可选项列表，供 {@code PeriodPickerDialog} 渲染。 */
+    public LiveData<List<PeriodOption>> getPeriodOptions(@NonNull PeriodType type) {
+        switch (type) {
+            case WEEK:
+                return weekOptions;
+            case YEAR:
+                return yearOptions;
+            case MONTH:
+            default:
+                return monthOptions;
+        }
+    }
+
+    /** 周期选择器回调：保留当前周期类型，把锚点跳到选中周期首日。 */
+    public void selectAnchorDate(long anchorDate) {
+        PeriodQuery current = query.getValue();
+        PeriodType type = current == null ? PeriodType.MONTH : current.type;
+        query.setValue(new PeriodQuery(type, anchorDate));
+    }
+
+    /** 回到当前周/月/年：锚点重置为今天，保留周期类型。 */
+    public void backToCurrentPeriod() {
+        PeriodQuery current = query.getValue();
+        PeriodType type = current == null ? PeriodType.MONTH : current.type;
+        query.setValue(new PeriodQuery(type, DateUtil.today()));
     }
 
     // ------------------------------------------------------------------
@@ -203,5 +249,122 @@ public class ChartViewModel extends AndroidViewModel {
             localized.add(i < labels.length ? point.withLabel(labels[i]) : point);
         }
         return localized;
+    }
+
+    // ------------------------------------------------------------------
+    // 周期选项聚合：从「每天笔数」在 Java 侧汇总为周/月/年，不逐周期查库
+    // ------------------------------------------------------------------
+
+    @NonNull
+    private List<PeriodOption> buildWeekOptions(@Nullable List<DayCount> dayCounts) {
+        Context context = getApplication();
+        long today = DateUtil.today();
+        Map<Long, Integer> countByStart = new HashMap<>();
+        long minDay = today;
+        long maxDay = today;
+        if (dayCounts != null) {
+            for (DayCount dayCount : dayCounts) {
+                long weekStart = DateUtil.startOfWeek(dayCount.day);
+                Integer previous = countByStart.get(weekStart);
+                countByStart.put(weekStart,
+                        (previous == null ? 0 : previous) + dayCount.transactionCount);
+                if (dayCount.day < minDay) {
+                    minDay = dayCount.day;
+                }
+                if (dayCount.day > maxDay) {
+                    maxDay = dayCount.day;
+                }
+            }
+        }
+        long firstWeek = DateUtil.startOfWeek(minDay);
+        long lastWeek = DateUtil.startOfWeek(maxDay);
+        List<PeriodOption> options = new ArrayList<>();
+        // 最近周期在前：从当前周向最早周倒序生成，addDays 走 Calendar 规避夏令时。
+        for (long week = lastWeek; week >= firstWeek; week = DateUtil.addDays(week, -7)) {
+            DateRange range = DateUtil.ofWeek(week);
+            Integer count = countByStart.get(range.start);
+            options.add(buildOption(PeriodType.WEEK, range, count == null ? 0 : count, context));
+        }
+        return options;
+    }
+
+    @NonNull
+    private List<PeriodOption> buildMonthOptions(@Nullable List<DayCount> dayCounts) {
+        Context context = getApplication();
+        long today = DateUtil.today();
+        Map<Integer, Integer> countByIndex = new HashMap<>();
+        int minIndex = monthIndexOf(today);
+        int maxIndex = monthIndexOf(today);
+        if (dayCounts != null) {
+            for (DayCount dayCount : dayCounts) {
+                int index = monthIndexOf(dayCount.day);
+                Integer previous = countByIndex.get(index);
+                countByIndex.put(index,
+                        (previous == null ? 0 : previous) + dayCount.transactionCount);
+                if (index < minIndex) {
+                    minIndex = index;
+                }
+                if (index > maxIndex) {
+                    maxIndex = index;
+                }
+            }
+        }
+        List<PeriodOption> options = new ArrayList<>();
+        for (int index = maxIndex; index >= minIndex; index--) {
+            int year = Math.floorDiv(index, 12);
+            int month = Math.floorMod(index, 12) + 1;
+            DateRange range = DateUtil.ofMonth(year, month);
+            Integer count = countByIndex.get(index);
+            options.add(buildOption(PeriodType.MONTH, range, count == null ? 0 : count, context));
+        }
+        return options;
+    }
+
+    @NonNull
+    private List<PeriodOption> buildYearOptions(@Nullable List<DayCount> dayCounts) {
+        Context context = getApplication();
+        int currentYear = DateUtil.yearOf(DateUtil.today());
+        Map<Integer, Integer> countByYear = new HashMap<>();
+        int minYear = currentYear;
+        int maxYear = currentYear;
+        if (dayCounts != null) {
+            for (DayCount dayCount : dayCounts) {
+                int year = DateUtil.yearOf(dayCount.day);
+                Integer previous = countByYear.get(year);
+                countByYear.put(year,
+                        (previous == null ? 0 : previous) + dayCount.transactionCount);
+                if (year < minYear) {
+                    minYear = year;
+                }
+                if (year > maxYear) {
+                    maxYear = year;
+                }
+            }
+        }
+        List<PeriodOption> options = new ArrayList<>();
+        for (int year = maxYear; year >= minYear; year--) {
+            DateRange range = DateUtil.ofYear(year);
+            Integer count = countByYear.get(year);
+            options.add(buildOption(PeriodType.YEAR, range, count == null ? 0 : count, context));
+        }
+        return options;
+    }
+
+    @NonNull
+    private PeriodOption buildOption(@NonNull PeriodType type, @NonNull DateRange range,
+                                     int count, @NonNull Context context) {
+        PeriodOption option = new PeriodOption();
+        option.type = type;
+        option.start = range.start;
+        option.end = range.end;
+        option.transactionCount = count;
+        option.title = DateLabels.periodTitle(context, range);
+        option.subtitle = DateLabels.periodSubtitle(context, range);
+        return option;
+    }
+
+    /** 年月的线性序号，便于按月比较与遍历：year * 12 + (month - 1)。 */
+    private static int monthIndexOf(long dayMillis) {
+        return DateUtil.yearOf(dayMillis) * 12 + (DateUtil.monthOf(dayMillis) - 1);
     }
 }

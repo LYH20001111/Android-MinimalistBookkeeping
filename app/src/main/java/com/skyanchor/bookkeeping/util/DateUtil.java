@@ -64,6 +64,19 @@ public final class DateUtil {
         return (calendar.get(Calendar.DAY_OF_WEEK) + 5) % 7;
     }
 
+    /**
+     * ISO-8601 周序号：周一为一周第一天，含当年首个周四的周为第 1 周。
+     *
+     * <p>仅用于 UI 显示（「Week N」）；周期的唯一标识仍是 {@link #startOfWeek} 得到的
+     * 周一 00:00 millis，跨年时周序号可能重复，因此不能拿它当主键。
+     */
+    public static int weekOfYear(long millis) {
+        Calendar calendar = calendar(millis);
+        calendar.setFirstDayOfWeek(Calendar.MONDAY);
+        calendar.setMinimalDaysInFirstWeek(4);
+        return calendar.get(Calendar.WEEK_OF_YEAR);
+    }
+
     public static int yearOf(long millis) {
         return calendar(millis).get(Calendar.YEAR);
     }

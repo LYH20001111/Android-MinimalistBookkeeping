@@ -8,6 +8,8 @@ import androidx.room.Update;
 
 import com.skyanchor.bookkeeping.data.entity.TransactionEntity;
 import com.skyanchor.bookkeeping.data.entity.TransactionItem;
+import com.skyanchor.bookkeeping.data.model.DailySummary;
+import com.skyanchor.bookkeeping.data.model.DayCount;
 
 import java.util.List;
 
@@ -69,4 +71,29 @@ public interface TransactionDao {
 
     @Query("SELECT COUNT(*) FROM transactions")
     int count();
+
+    // ------------------------------------------------------------------
+    // V1.1 新增：日历摘要与周期选择器聚合查询
+    // ------------------------------------------------------------------
+
+    /**
+     * 观察 [startDay, endDay] 区间内每天的收支摘要，用于日历选择器显示每日流水。
+     * 只返回有账单的日期，无流水日期不出现在结果中（V1.1 基线第 6.2 节）。
+     */
+    @Query("SELECT date AS day, "
+            + "COALESCE(SUM(CASE WHEN type = 1 THEN amount ELSE 0 END), 0) AS expense, "
+            + "COALESCE(SUM(CASE WHEN type = 2 THEN amount ELSE 0 END), 0) AS income, "
+            + "COUNT(*) AS transactionCount "
+            + "FROM transactions "
+            + "WHERE date BETWEEN :startDay AND :endDay "
+            + "GROUP BY date ORDER BY date ASC")
+    LiveData<List<DailySummary>> observeDailySummaries(long startDay, long endDay);
+
+    /**
+     * 观察每天账单笔数（全量），由 Java 侧聚合为周/月/年周期选项。
+     * 单次查询，避免为每个周期分别查库（V1.1 基线第 35 章性能要求）。
+     */
+    @Query("SELECT date AS day, COUNT(*) AS transactionCount "
+            + "FROM transactions GROUP BY date ORDER BY date ASC")
+    LiveData<List<DayCount>> observeDayCounts();
 }

@@ -71,21 +71,33 @@ public final class DateLabels {
                 DateUtil.dayOfMonthOf(dayMillis));
     }
 
-    /** 周期标题：周显示「5月13日 - 5月19日」，月显示「2024年5月」，年显示「2024年」。 */
+    /** 周期标题：周显示「Week 5」，月显示「2024年5月」，年显示「2024年」。 */
     @NonNull
     public static String periodTitle(@NonNull Context context, @NonNull DateRange range) {
         Resources resources = context.getResources();
         switch (range.type) {
             case WEEK:
-                return resources.getString(R.string.date_format_week_range,
-                        DateUtil.monthOf(range.start), DateUtil.dayOfMonthOf(range.start),
-                        DateUtil.monthOf(range.end), DateUtil.dayOfMonthOf(range.end));
+                return resources.getString(R.string.date_format_week_label,
+                        DateUtil.weekOfYear(range.start));
             case YEAR:
                 return resources.getString(R.string.date_format_year, range.year);
             case MONTH:
             default:
                 return resources.getString(R.string.date_format_year_month, range.year, range.month);
         }
+    }
+
+    /**
+     * 周期副标题：把周期区间压缩成紧凑的日期范围「MM.dd-MM.dd」。
+     *
+     * <p>周显示实际起止（可能跨月），月显示当月首末日，年固定为 01.01-12.31。
+     * 与 {@link #periodTitle} 搭配使用，标题定位周期、副标题给出精确边界。
+     */
+    @NonNull
+    public static String periodSubtitle(@NonNull Context context, @NonNull DateRange range) {
+        return context.getResources().getString(R.string.date_format_range_dot,
+                DateUtil.monthOf(range.start), DateUtil.dayOfMonthOf(range.start),
+                DateUtil.monthOf(range.end), DateUtil.dayOfMonthOf(range.end));
     }
 
     /** 月份导航标题，用于预算设置页：「2024年5月」。 */

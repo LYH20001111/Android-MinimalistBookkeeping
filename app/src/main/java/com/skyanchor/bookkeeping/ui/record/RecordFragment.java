@@ -9,11 +9,9 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.core.content.ContextCompat;
 import androidx.fragment.app.Fragment;
-import androidx.fragment.app.FragmentManager;
 import androidx.lifecycle.ViewModelProvider;
 import androidx.recyclerview.widget.LinearLayoutManager;
 
-import com.google.android.material.datepicker.MaterialDatePicker;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.snackbar.Snackbar;
 import com.skyanchor.bookkeeping.R;
@@ -29,9 +27,10 @@ import com.skyanchor.bookkeeping.util.DateUtil;
  * <p>页面本身不持有任何统计逻辑，全部渲染数据来自 {@link RecordViewModel} 派生的
  * {@link RecordUiState}，因此新增/编辑/删除后概览与列表必然同源刷新。
  */
-public class RecordFragment extends Fragment {
+public class RecordFragment extends Fragment
+        implements CalendarSummaryDialog.OnDateSelectedListener {
 
-    private static final String TAG_DATE_PICKER = "record_date_picker";
+    private static final String TAG_CALENDAR_DIALOG = "record_calendar_dialog";
 
     private FragmentRecordBinding binding;
     private RecordViewModel viewModel;
@@ -68,12 +67,11 @@ public class RecordFragment extends Fragment {
         binding.transactionList.setLayoutManager(new LinearLayoutManager(requireContext()));
         binding.transactionList.setAdapter(adapter);
 
-        binding.dateButton.setOnClickListener(v -> showDatePicker());
+        binding.dateButton.setOnClickListener(v -> showCalendarSummaryDialog());
         binding.fabAdd.setOnClickListener(v -> startAdd());
         binding.emptyState.emptyAction.setOnClickListener(v -> startAdd());
 
         viewModel.getUiState().observe(getViewLifecycleOwner(), this::render);
-        reattachDatePicker();
     }
 
     @Override
@@ -113,31 +111,18 @@ public class RecordFragment extends Fragment {
     // 业务日期
     // ------------------------------------------------------------------
 
-    private void showDatePicker() {
+    /** 打开带每日收支摘要的日历弹窗，替代原生 MaterialDatePicker（V1.1 目标 A）。 */
+    private void showCalendarSummaryDialog() {
         Long businessDate = viewModel.getBusinessDate().getValue();
         long current = businessDate == null ? DateUtil.today() : businessDate;
-        MaterialDatePicker<Long> picker = MaterialDatePicker.Builder.datePicker()
-                .setTitleText(R.string.record_pick_business_date)
-                .setSelection(DateUtil.toUtcDayMillis(current))
-                .build();
-        picker.addOnPositiveButtonClickListener(this::onDatePicked);
-        picker.show(getChildFragmentManager(), TAG_DATE_PICKER);
+        CalendarSummaryDialog.newInstance(current)
+                .show(getChildFragmentManager(), TAG_CALENDAR_DIALOG);
     }
 
-    private void onDatePicked(@Nullable Long selection) {
-        if (selection != null) {
-            viewModel.setBusinessDate(DateUtil.fromUtcDayMillis(selection));
-        }
-    }
-
-    /** 旋转后系统会重建选择器并丢掉监听器，这里重新挂上。 */
-    @SuppressWarnings("unchecked")
-    private void reattachDatePicker() {
-        FragmentManager fragmentManager = getChildFragmentManager();
-        Fragment picker = fragmentManager.findFragmentByTag(TAG_DATE_PICKER);
-        if (picker instanceof MaterialDatePicker) {
-            ((MaterialDatePicker<Long>) picker).addOnPositiveButtonClickListener(this::onDatePicked);
-        }
+    /** 日历弹窗确认回调：把业务日期切到选中的当天。 */
+    @Override
+    public void onDateSelected(long dayMillis) {
+        viewModel.setBusinessDate(dayMillis);
     }
 
     // ------------------------------------------------------------------

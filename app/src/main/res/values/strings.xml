@@ -24,6 +24,9 @@
     <string name="date_format_month_day">%1$d月%2$d日</string>
     <string name="date_format_full">%1$d年%2$d月%3$d日</string>
     <string name="date_format_week_range">%1$d月%2$d日 - %3$d月%4$d日</string>
+    <!-- V1.1 新增：周期选择器与导航副标题格式 -->
+    <string name="date_format_week_label">Week %1$d</string>
+    <string name="date_format_range_dot">%1$02d.%2$02d-%3$02d.%4$02d</string>
     <string name="day_label_today">今天</string>
     <string name="day_label_yesterday">昨天</string>
 
@@ -55,8 +58,8 @@
     <!-- ============ 记录页 ============ -->
     <string name="record_title">记录</string>
     <string name="record_pick_business_date">选择业务日期</string>
-    <string name="record_today_expense">今日支出</string>
-    <string name="record_today_income">今日收入</string>
+    <string name="record_today_expense">当日支出</string>
+    <string name="record_today_income">当日收入</string>
     <string name="record_today_balance">结余</string>
     <string name="record_bill_list_title">账单</string>
     <string name="record_day_count_format">%1$d 笔</string>
@@ -91,6 +94,8 @@
     <string name="chart_expense">支出</string>
     <string name="chart_balance">结余</string>
     <string name="chart_count_format">共 %1$d 笔</string>
+    <!-- V1.1 新增：周期导航副标题格式（日期范围 + 笔数） -->
+    <string name="chart_period_count_with_range">%1$s · 共 %2$d 笔</string>
     <string name="chart_compare_label">支出较上一周期</string>
     <string name="chart_change_up_format">↑ %1$s</string>
     <string name="chart_change_down_format">↓ %1$s</string>
@@ -101,8 +106,19 @@
     <string name="chart_total_expense">总支出</string>
     <string name="chart_empty_title">本周期还没有记录</string>
     <string name="chart_empty_subtitle">记一笔后即可查看趋势与分类占比</string>
+    <!-- V1.1 新增：空周期返回当前周期按钮 -->
+    <string name="chart_back_to_current">回到当前周期</string>
     <string name="chart_previous_period">上一周期</string>
     <string name="chart_next_period">下一周期</string>
+
+    <!-- ============ V1.1 新增：周期选择器 ============ -->
+    <string name="period_picker_title_week">选择周</string>
+    <string name="period_picker_title_month">选择月</string>
+    <string name="period_picker_title_year">选择年</string>
+    <string name="period_option_count_format">%1$d笔</string>
+
+    <!-- ============ V1.1 新增：日历摘要选择器 ============ -->
+    <string name="calendar_dialog_title">选择日期</string>
 
     <!-- ============ 预算 ============ -->
     <string name="budget_card_title">本月预算</string>
@@ -195,6 +211,8 @@
     <string name="cd_add_transaction">新增账单</string>
     <string name="cd_previous_period">上一周期</string>
     <string name="cd_next_period">下一周期</string>
+    <!-- V1.1 新增：周期导航中间可点击区域 -->
+    <string name="cd_period_center">点击选择周期</string>
     <string name="cd_pick_date">选择日期</string>
     <string name="cd_category_icon">分类图标</string>
     <string name="cd_empty_state">空状态插图</string>

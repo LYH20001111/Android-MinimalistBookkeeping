@@ -15,6 +15,8 @@ import com.skyanchor.bookkeeping.data.entity.CategoryEntity;
 import com.skyanchor.bookkeeping.data.entity.TransactionEntity;
 import com.skyanchor.bookkeeping.data.entity.TransactionItem;
 import com.skyanchor.bookkeeping.data.entity.UserSettingsEntity;
+import com.skyanchor.bookkeeping.data.model.DailySummary;
+import com.skyanchor.bookkeeping.data.model.DayCount;
 import com.skyanchor.bookkeeping.data.model.DeleteCategoryResult;
 import com.skyanchor.bookkeeping.util.Callback;
 import com.skyanchor.bookkeeping.util.ThemeStore;
@@ -78,6 +80,22 @@ public class BookkeepingRepository {
 
     public LiveData<Integer> observeTransactionCount() {
         return database.transactionDao().observeCount();
+    }
+
+    /**
+     * 观察 [startDay, endDay] 区间内每天的收支摘要，供日历选择器显示每日流水。
+     * V1.1 新增：聚合查询，不加载全量账单明细（V1.1 基线第 22 章）。
+     */
+    public LiveData<List<DailySummary>> observeDailySummaries(long startDay, long endDay) {
+        return database.transactionDao().observeDailySummaries(startDay, endDay);
+    }
+
+    /**
+     * 观察每天账单笔数（全量），由 ViewModel 在 Java 侧聚合为周/月/年周期选项。
+     * V1.1 新增：单次查询，避免为每个周期分别查库（V1.1 基线第 35 章）。
+     */
+    public LiveData<List<DayCount>> observeDayCounts() {
+        return database.transactionDao().observeDayCounts();
     }
 
     public LiveData<Integer> observeCategoryCount() {
