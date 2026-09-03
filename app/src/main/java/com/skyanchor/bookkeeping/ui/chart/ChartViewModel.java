@@ -18,6 +18,7 @@ import com.skyanchor.bookkeeping.data.entity.CategoryEntity;
 import com.skyanchor.bookkeeping.data.entity.TransactionItem;
 import com.skyanchor.bookkeeping.data.model.AccountBalance;
 import com.skyanchor.bookkeeping.data.model.BudgetState;
+import com.skyanchor.bookkeeping.data.model.CategoryBudgetState;
 import com.skyanchor.bookkeeping.data.model.CategoryStat;
 import com.skyanchor.bookkeeping.data.model.ChartUiState;
 import com.skyanchor.bookkeeping.data.model.DateRange;
@@ -27,11 +28,13 @@ import com.skyanchor.bookkeeping.data.model.PeriodSummary;
 import com.skyanchor.bookkeeping.data.model.PeriodType;
 import com.skyanchor.bookkeeping.data.model.TrendPoint;
 import com.skyanchor.bookkeeping.data.repository.BookkeepingRepository;
+import com.skyanchor.bookkeeping.domain.budget.CalculateBudgetUseCase;
 import com.skyanchor.bookkeeping.util.DateLabels;
 import com.skyanchor.bookkeeping.util.DateUtil;
 import com.skyanchor.bookkeeping.util.StatisticsCalculator;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -85,6 +88,10 @@ public class ChartViewModel extends AndroidViewModel {
         List<TransactionItem> items;
         @Nullable
         BudgetEntity budget;
+        @Nullable
+        List<BudgetEntity> categoryBudgets;
+        @Nullable
+        List<CategoryEntity> expenseCategories;
     }
 
     private final BookkeepingRepository repository;
@@ -209,6 +216,18 @@ public class ChartViewModel extends AndroidViewModel {
                 sources.budget = budget;
                 result.setValue(toState(periodQuery.type, range, sources));
             });
+            // 分类预算完成度（V2 Phase 6）：与总预算同源合并，任一变化都重算同一快照
+            result.addSource(
+                    repository.observeCategoryBudgets(range.year, range.month),
+                    categoryBudgets -> {
+                        sources.categoryBudgets = categoryBudgets;
+                        result.setValue(toState(periodQuery.type, range, sources));
+                    });
+            result.addSource(repository.observeCategories(CategoryEntity.TYPE_EXPENSE),
+                    expenseCategories -> {
+                        sources.expenseCategories = expenseCategories;
+                        result.setValue(toState(periodQuery.type, range, sources));
+                    });
         }
         return result;
     }
@@ -236,11 +255,17 @@ public class ChartViewModel extends AndroidViewModel {
                         summary.expense)
                 : BudgetState.NOT_SET;
 
+        // 分类预算完成度：仅保留已设置预算的分类，按严重度排序（V2 Phase 6）
+        List<CategoryBudgetState> categoryBudgetStates = type == PeriodType.MONTH
+                ? CalculateBudgetUseCase.assembleForOverview(sources.expenseCategories,
+                        sources.categoryBudgets, categoryStats)
+                : Collections.<CategoryBudgetState>emptyList();
+
         return new ChartUiState(range, DateLabels.periodTitle(context, range), summary,
                 previousSummary,
                 StatisticsCalculator.changeAbsX10(summary.expense, previousSummary.expense),
                 StatisticsCalculator.changeDirection(summary.expense, previousSummary.expense),
-                trend, categoryStats, budgetState);
+                trend, categoryStats, budgetState, categoryBudgetStates);
     }
 
     /**

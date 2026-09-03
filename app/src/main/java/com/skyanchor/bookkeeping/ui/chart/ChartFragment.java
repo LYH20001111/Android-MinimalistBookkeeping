@@ -18,11 +18,13 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import com.skyanchor.bookkeeping.R;
 import com.skyanchor.bookkeeping.data.model.AccountBalance;
 import com.skyanchor.bookkeeping.data.model.BudgetState;
+import com.skyanchor.bookkeeping.data.model.CategoryBudgetState;
 import com.skyanchor.bookkeeping.data.model.ChartUiState;
 import com.skyanchor.bookkeeping.data.model.DateRange;
 import com.skyanchor.bookkeeping.data.model.PeriodType;
 import com.skyanchor.bookkeeping.databinding.FragmentChartBinding;
 import com.skyanchor.bookkeeping.databinding.ItemAccountBalanceBinding;
+import com.skyanchor.bookkeeping.databinding.ItemCategoryBudgetBinding;
 import com.skyanchor.bookkeeping.ui.adapter.CategoryStatAdapter;
 import com.skyanchor.bookkeeping.ui.budget.BudgetSettingActivity;
 import com.skyanchor.bookkeeping.ui.record.TransactionEditActivity;
@@ -199,7 +201,11 @@ public class ChartFragment extends Fragment {
 
     private void renderBudget(@NonNull ChartUiState state) {
         boolean monthView = state.range.type == PeriodType.MONTH;
-        binding.budgetCard.setVisibility(monthView ? View.VISIBLE : View.GONE);
+        // 卡片显示条件：月视图且（设置了总预算 或 存在任一分类预算），否则整卡隐藏避免空块
+        boolean hasCategoryBudgets = !state.categoryBudgetStates.isEmpty();
+        binding.budgetCard.setVisibility(
+                monthView && (state.budgetState.hasBudget || hasCategoryBudgets)
+                        ? View.VISIBLE : View.GONE);
         if (!monthView) {
             return;
         }
@@ -208,35 +214,65 @@ public class ChartFragment extends Fragment {
         binding.budgetSetGroup.setVisibility(budget.hasBudget ? View.VISIBLE : View.GONE);
         binding.budgetUnsetGroup.setVisibility(budget.hasBudget ? View.GONE : View.VISIBLE);
         binding.budgetStatusChip.setVisibility(budget.hasBudget ? View.VISIBLE : View.GONE);
-        if (!budget.hasBudget) {
+        if (budget.hasBudget) {
+            int statusColor = colorOf(statusColorOf(budget.status));
+            binding.budgetStatusChip.setText(statusTextOf(budget.status));
+            binding.budgetStatusChip.setTextColor(statusColor);
+            Drawable chipBackground = binding.budgetStatusChip.getBackground();
+            if (chipBackground != null) {
+                // mutate 后不再与其他控件共享常量状态，浅色底不会污染别处的 bg_pill
+                DrawableCompat.setTint(chipBackground.mutate(),
+                        colorOf(statusBackgroundOf(budget.status)));
+            }
+
+            binding.budgetAmountValue.setText(AmountUtil.format(budget.budgetAmount));
+            binding.budgetUsedValue.setText(AmountUtil.format(budget.used));
+            binding.budgetRemainingValue.setText(AmountUtil.format(budget.remaining));
+            binding.budgetUsageValue.setText(budget.percentText());
+
+            binding.budgetProgress.setIndicatorColor(statusColor);
+            // 进度条封顶 100%，超支部分由下方文字说明，否则刻度会被截断得毫无意义。
+            binding.budgetProgress.setProgressCompat(
+                    Math.min(budget.percentX10, getResources().getInteger(R.integer.percent_scale)),
+                    false);
+
+            boolean over = budget.status == BudgetState.STATUS_OVER;
+            binding.budgetOverValue.setVisibility(over ? View.VISIBLE : View.GONE);
+            if (over) {
+                binding.budgetOverValue.setText(
+                        getString(R.string.budget_over_format, AmountUtil.format(budget.overAmount)));
+            }
+        }
+
+        renderCategoryBudgets(state.categoryBudgetStates);
+    }
+
+    /**
+     * 分类预算完成度行（V2 Phase 6）：仅已设置预算的分类，按严重度排序。
+     * 使用率与进度条复用与总预算完全同一套状态色，超支的分类自然置顶且显示 danger 色。
+     */
+    private void renderCategoryBudgets(@NonNull List<CategoryBudgetState> rows) {
+        binding.budgetCategoryGroup.setVisibility(rows.isEmpty() ? View.GONE : View.VISIBLE);
+        binding.budgetCategoryList.removeAllViews();
+        if (rows.isEmpty()) {
             return;
         }
-
-        int statusColor = colorOf(statusColorOf(budget.status));
-        binding.budgetStatusChip.setText(statusTextOf(budget.status));
-        binding.budgetStatusChip.setTextColor(statusColor);
-        Drawable chipBackground = binding.budgetStatusChip.getBackground();
-        if (chipBackground != null) {
-            // mutate 后不再与其他控件共享常量状态，浅色底不会污染别处的 bg_pill
-            DrawableCompat.setTint(chipBackground.mutate(), colorOf(statusBackgroundOf(budget.status)));
-        }
-
-        binding.budgetAmountValue.setText(AmountUtil.format(budget.budgetAmount));
-        binding.budgetUsedValue.setText(AmountUtil.format(budget.used));
-        binding.budgetRemainingValue.setText(AmountUtil.format(budget.remaining));
-        binding.budgetUsageValue.setText(budget.percentText());
-
-        binding.budgetProgress.setIndicatorColor(statusColor);
-        // 进度条封顶 100%，超支部分由下方文字说明，否则刻度会被截断得毫无意义。
-        binding.budgetProgress.setProgressCompat(
-                Math.min(budget.percentX10, getResources().getInteger(R.integer.percent_scale)),
-                false);
-
-        boolean over = budget.status == BudgetState.STATUS_OVER;
-        binding.budgetOverValue.setVisibility(over ? View.VISIBLE : View.GONE);
-        if (over) {
-            binding.budgetOverValue.setText(
-                    getString(R.string.budget_over_format, AmountUtil.format(budget.overAmount)));
+        LayoutInflater inflater = LayoutInflater.from(requireContext());
+        for (CategoryBudgetState row : rows) {
+            ItemCategoryBudgetBinding item = ItemCategoryBudgetBinding.inflate(
+                    inflater, binding.budgetCategoryList, false);
+            item.categoryIcon.setText(row.icon);
+            item.categoryName.setText(row.name);
+            int statusColor = colorOf(statusColorOf(row.state.status));
+            item.categoryUsage.setText(row.state.percentText());
+            item.categoryUsage.setTextColor(statusColor);
+            item.categoryProgress.setIndicatorColor(statusColor);
+            item.categoryProgress.setProgressCompat(
+                    Math.min(row.state.percentX10,
+                            getResources().getInteger(R.integer.percent_scale)), false);
+            item.categoryCaption.setText(getString(R.string.budget_category_caption_format,
+                    AmountUtil.format(row.budgetAmount), AmountUtil.format(row.used)));
+            binding.budgetCategoryList.addView(item.getRoot());
         }
     }
 

@@ -118,6 +118,61 @@
 
                     </LinearLayout>
 
+                    <View
+                        style="@style/AppDivider"
+                        android:layout_marginTop="@dimen/spacing_md"
+                        android:layout_marginBottom="@dimen/spacing_md" />
+
+                    <!-- V2 Phase 9：账户与周期账单纳入存量统计 -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="@string/data_account_count"
+                            android:textAppearance="@style/TextAppearance.App.Body" />
+
+                        <TextView
+                            android:id="@+id/dataAccountValue"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:maxLines="1"
+                            android:textAppearance="@style/TextAppearance.App.Secondary" />
+
+                    </LinearLayout>
+
+                    <View
+                        style="@style/AppDivider"
+                        android:layout_marginTop="@dimen/spacing_md"
+                        android:layout_marginBottom="@dimen/spacing_md" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="@string/data_recurring_count"
+                            android:textAppearance="@style/TextAppearance.App.Body" />
+
+                        <TextView
+                            android:id="@+id/dataRecurringValue"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:maxLines="1"
+                            android:textAppearance="@style/TextAppearance.App.Secondary" />
+
+                    </LinearLayout>
+
                 </LinearLayout>
 
             </com.google.android.material.card.MaterialCardView>

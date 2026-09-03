@@ -30,9 +30,18 @@ public class AccountAdapter extends ListAdapter<AccountBalance, AccountAdapter.V
 
     /** 行内动作回调，由 Activity 落到 ViewModel / 仓库层执行。 */
     public interface Listener {
+
+        /** 单击账户行，进入账户流水详情。 */
+        void onOpen(@NonNull AccountBalance account);
+
         void onEdit(@NonNull AccountBalance account);
 
         void onDelete(@NonNull AccountBalance account);
+
+        /** 上移 / 下移账户排序（P2 打磨，复用分类排序范式）。 */
+        void onMoveUp(@NonNull AccountBalance account);
+
+        void onMoveDown(@NonNull AccountBalance account);
     }
 
     private static final DiffUtil.ItemCallback<AccountBalance> DIFF_CALLBACK =
@@ -90,6 +99,21 @@ public class AccountAdapter extends ListAdapter<AccountBalance, AccountAdapter.V
             binding.rowBalance.setTextColor(ContextCompat.getColor(itemView.getContext(),
                     account.balance < 0L ? R.color.danger : R.color.text_primary));
 
+            itemView.setOnClickListener(v -> {
+                if (listener != null) {
+                    listener.onOpen(account);
+                }
+            });
+            binding.rowUp.setOnClickListener(v -> {
+                if (listener != null) {
+                    listener.onMoveUp(account);
+                }
+            });
+            binding.rowDown.setOnClickListener(v -> {
+                if (listener != null) {
+                    listener.onMoveDown(account);
+                }
+            });
             binding.rowEdit.setOnClickListener(v -> {
                 if (listener != null) {
                     listener.onEdit(account);

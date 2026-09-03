@@ -157,6 +157,23 @@
     <string name="budget_removed">已清除该月预算</string>
     <string name="budget_error_amount">请输入有效的预算金额</string>
 
+    <!-- ============ V2 分类预算（Phase 6） ============ -->
+    <string name="budget_category_section_title">分类预算</string>
+    <string name="budget_category_unset">未设置</string>
+    <!-- 已设置预算的分类行说明：预算 ¥50.00 · 已用 ¥12.00 -->
+    <string name="budget_category_caption_format">预算 %1$s · 已用 %2$s</string>
+    <!-- 未设置预算的分类行说明（预算设置页）：未设置预算 · 已用 ¥12.00 -->
+    <string name="budget_category_caption_unset_format">未设置预算 · 已用 %1$s</string>
+    <string name="budget_setting_category_hint">点击分类可单独设置该月分类预算。分类预算只做提醒，不会限制记账。</string>
+    <string name="category_budget_edit_title">设置「%1$s」的月预算</string>
+    <string name="category_budget_edit_hint">本月预算金额（清空后保存即删除）</string>
+    <string name="category_budget_error_amount">请输入有效的预算金额</string>
+    <string name="category_budget_saved">分类预算已保存</string>
+    <string name="category_budget_removed">已清除该分类预算</string>
+    <!-- 图表页预算卡片中的分类预算小节标题 -->
+    <string name="budget_chart_category_title">分类预算完成度</string>
+    <string name="chart_budget_empty_categories">这个月还没有设置分类预算</string>
+
     <!-- ============ 我的 ============ -->
     <string name="mine_title">我的</string>
     <string name="mine_category">分类管理</string>
@@ -164,7 +181,7 @@
     <string name="mine_account">账户管理</string>
     <string name="mine_account_subtitle">现金、微信、银行卡与余额</string>
     <string name="mine_budget">预算设置</string>
-    <string name="mine_budget_subtitle">按月份设置一个总预算</string>
+    <string name="mine_budget_subtitle">按月份设置总预算与分类预算</string>
     <string name="mine_appearance">外观设置</string>
     <string name="mine_appearance_subtitle">浅色 / 跟随系统</string>
     <string name="mine_data">数据管理</string>
@@ -173,6 +190,10 @@
     <string name="mine_export_subtitle">将全部账单导出为 CSV 文件</string>
     <string name="mine_import">数据导入</string>
     <string name="mine_import_subtitle">从 CSV 文件预览并导入账单</string>
+    <string name="mine_backup">本地备份</string>
+    <string name="mine_backup_subtitle">把全部数据备份为 JSON 文件</string>
+    <string name="mine_restore">本地恢复</string>
+    <string name="mine_restore_subtitle">从备份文件覆盖恢复数据</string>
     <string name="mine_about">关于 App</string>
     <string name="mine_about_subtitle">版本号与产品说明</string>
 
@@ -217,6 +238,10 @@
     <string name="account_delete_blocked_title">无法删除</string>
     <string name="account_delete_blocked_message">账户「%1$s」已被 %2$d 笔账单使用，可改为归档以保留资金流水。</string>
     <string name="account_deleted">已删除账户</string>
+    <!-- V2 Phase 9：账户流水详情 -->
+    <string name="account_detail_title">账户流水</string>
+    <string name="account_detail_balance_label">当前余额</string>
+    <string name="account_detail_empty">该账户还没有流水，去记一笔或转账试试</string>
     <!-- 账户类型标签 -->
     <string name="account_type_cash">现金</string>
     <string name="account_type_wechat">微信</string>
@@ -293,6 +318,90 @@
     <string name="import_reason_account_missing">账户不存在，请先在账户管理中创建</string>
     <string name="import_reason_transfer_invalid">转账需要两个不同的账户</string>
 
+    <!-- ============ V2 本地备份 / 恢复（Phase 7） ============ -->
+    <string name="backup_title">本地备份</string>
+    <string name="backup_desc">把全部本地数据（账单、账户、分类、预算、周期账单与设置）备份为一个 JSON 文件，可用于换机或防误删。保存位置由你选择，App 不联网、不申请存储权限。</string>
+    <string name="backup_count_format">当前共 %1$d 笔账单可备份</string>
+    <string name="backup_action">备份到文件</string>
+    <string name="backup_running">正在备份…</string>
+    <string name="backup_success_title">备份完成</string>
+    <string name="backup_success_message">已备份 %1$d 笔账单，以及全部账户、分类、预算、周期账单与设置。</string>
+    <string name="backup_failed">备份失败，请重试或换个保存位置</string>
+    <!-- 备份默认文件名前缀，后面拼接 -v版本-时间戳 与 .json -->
+    <string name="backup_file_prefix">minimalist-bookkeeping-backup</string>
+
+    <string name="restore_title">本地恢复</string>
+    <string name="restore_desc">从备份 JSON 文件恢复数据。恢复会先清空当前全部本地数据，再整体写入备份内容，不做合并；请确认备份文件来自本 App。</string>
+    <string name="restore_action">选择备份文件并恢复</string>
+    <string name="restore_running">正在恢复…</string>
+    <string name="restore_confirm_title">恢复将覆盖当前数据</string>
+    <string name="restore_confirm_message">将先清空当前本地全部数据（账单、账户、分类、预算、周期账单与设置），再写入所选备份文件的内容。此操作不可撤销，建议先执行一次本地备份。</string>
+    <string name="restore_confirm_backup_first">先备份当前数据</string>
+    <string name="restore_confirm_proceed">仍要恢复</string>
+    <string name="restore_backup_done_title">当前数据已备份</string>
+    <string name="restore_backup_done_message">备份完成。是否继续用所选文件恢复？</string>
+    <string name="restore_success_title">恢复完成</string>
+    <string name="restore_success_message">已恢复 %1$d 笔账单、%2$d 个账户、%3$d 个分类、%4$d 条预算、%5$d 条周期账单。</string>
+    <string name="restore_reason_io">读取备份文件失败，请重新选择文件</string>
+    <string name="restore_reason_malformed">无法解析备份文件：不是本 App 导出的有效 JSON</string>
+    <string name="restore_reason_version">备份格式版本不受支持：请使用与本 App 版本匹配的备份文件</string>
+    <string name="restore_reason_invalid">备份数据不完整或引用失效，恢复已取消，当前数据未受影响</string>
+
+    <!-- ============ V2 周期账单（Phase 8） ============ -->
+    <string name="recurring_title">周期账单</string>
+    <string name="recurring_add">新增周期账单</string>
+    <string name="recurring_edit_title">编辑周期账单</string>
+    <string name="recurring_desc_title">待记账</string>
+    <string name="recurring_due_count_format">有 %1$d 笔周期账单待确认记账</string>
+    <string name="recurring_due_rule_format">%1$s · %2$s · %3$d 笔</string>
+    <string name="recurring_due_confirm">一键记账</string>
+    <string name="recurring_due_confirmed_toast">已记账 %1$d 笔</string>
+    <string name="recurring_name_hint">名称（如：房租）</string>
+    <string name="recurring_name_error">请输入名称</string>
+    <string name="recurring_amount_hint">单期金额</string>
+    <string name="recurring_amount_error">请输入大于 0 的金额</string>
+    <string name="recurring_type_title">类型</string>
+    <string name="recurring_type_expense">支出</string>
+    <string name="recurring_type_income">收入</string>
+    <string name="recurring_category_hint">分类</string>
+    <string name="recurring_category_error">请选择分类</string>
+    <string name="recurring_account_hint">账户</string>
+    <string name="recurring_account_error">请选择账户</string>
+    <string name="recurring_frequency_title">频率</string>
+    <string name="recurring_frequency_daily">每天</string>
+    <string name="recurring_frequency_weekly">每周</string>
+    <string name="recurring_frequency_monthly">每月</string>
+    <string name="recurring_frequency_yearly">每年</string>
+    <string name="recurring_interval_hint">间隔（每 N 个周期）</string>
+    <string name="recurring_interval_error">间隔至少为 1</string>
+    <string name="recurring_start_date_hint">开始日期</string>
+    <string name="recurring_end_date_hint">结束日期</string>
+    <string name="recurring_no_end_date">无结束日期</string>
+    <string name="recurring_end_before_start_error">结束日期不能早于开始日期</string>
+    <string name="recurring_note_hint">备注（可选，随生成的账单写入）</string>
+    <string name="recurring_enabled_switch">启用</string>
+    <string name="recurring_disabled_badge">已停用</string>
+    <string name="recurring_saved">已保存周期账单</string>
+    <string name="recurring_deleted">已删除周期账单</string>
+    <string name="recurring_delete_title">删除周期账单「%1$s」？</string>
+    <string name="recurring_delete_message">删除后不再生成；已生成的账单不受影响。</string>
+    <string name="recurring_empty">还没有周期账单，点击下方按钮新增</string>
+    <!-- 列表行的频率摘要；间隔为 1 时直接用「每天 / 每周 / 每月 / 每年」 -->
+    <string name="recurring_freq_daily_format">每 %1$d 天</string>
+    <string name="recurring_freq_weekly_format">每 %1$d 周</string>
+    <string name="recurring_freq_monthly_format">每 %1$d 个月</string>
+    <string name="recurring_freq_yearly_format">每 %1$d 年</string>
+    <!-- 列表行与到期提示中的日期，格式 yyyy年M月d日 -->
+    <string name="recurring_date_format">yyyy年M月d日</string>
+
+    <string name="mine_recurring">周期账单</string>
+    <string name="mine_recurring_subtitle">房租、工资等固定收支到期提醒</string>
+
+    <string name="main_recurring_due_title">周期账单待记账</string>
+    <string name="main_recurring_due_message">有 %1$d 笔周期账单已到期，是否立即记账？也可稍后在「我的 → 周期账单」中处理。</string>
+    <string name="main_recurring_due_confirm">一键记账</string>
+    <string name="main_recurring_due_later">暂不</string>
+
     <!-- ============ 外观设置 ============ -->
     <string name="appearance_title">外观设置</string>
     <string name="appearance_theme_light">浅色</string>
@@ -305,6 +414,8 @@
     <string name="data_transaction_count">账单</string>
     <string name="data_category_count">分类</string>
     <string name="data_budget_count">预算</string>
+    <string name="data_account_count">账户</string>
+    <string name="data_recurring_count">周期账单</string>
     <string name="data_count_format">%1$d 条</string>
     <string name="data_local_only">所有数据只保存在本机，V1 不含账号与云同步，断网也可完整使用。</string>
     <string name="data_clear_title">清空所有本地数据</string>

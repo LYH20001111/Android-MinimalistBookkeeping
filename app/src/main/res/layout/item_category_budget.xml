@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 分类预算行（V2 Phase 6）：emoji + 分类名 + 使用率 + 进度条 + 预算/已用说明。
+     图表页「预算完成度」与预算设置页「分类预算」列表共用，状态色由代码按 BudgetState 注入。 -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingStart="@dimen/page_margin"
+    android:paddingTop="@dimen/spacing_sm"
+    android:paddingEnd="@dimen/page_margin"
+    android:paddingBottom="@dimen/spacing_sm">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/categoryIcon"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:importantForAccessibility="no"
+            android:textSize="@dimen/font_emoji_small" />
+
+        <TextView
+            android:id="@+id/categoryName"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="@dimen/spacing_sm"
+            android:layout_weight="1"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textAppearance="@style/TextAppearance.App.Body" />
+
+        <!-- 使用率百分比（已设置预算，状态色）或「未设置」（次要色），由代码注入文案与颜色 -->
+        <TextView
+            android:id="@+id/categoryUsage"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="@dimen/spacing_sm"
+            android:gravity="end"
+            android:maxLines="1"
+            android:minWidth="@dimen/stat_percent_min_width"
+            android:textAppearance="@style/TextAppearance.App.Secondary"
+            android:textStyle="bold" />
+
+    </LinearLayout>
+
+    <com.google.android.material.progressindicator.LinearProgressIndicator
+        android:id="@+id/categoryProgress"
+        style="@style/Widget.App.Progress"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/spacing_sm"
+        android:max="@integer/percent_scale" />
+
+    <TextView
+        android:id="@+id/categoryCaption"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/spacing_xxs"
+        android:maxLines="1"
+        android:textAppearance="@style/TextAppearance.App.Caption" />
+
+</LinearLayout>

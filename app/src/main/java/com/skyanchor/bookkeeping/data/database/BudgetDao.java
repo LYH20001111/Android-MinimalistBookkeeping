@@ -61,6 +61,13 @@ public interface BudgetDao {
     @Query("DELETE FROM budget WHERE year = :year AND month = :month AND category_id = :categoryId")
     void delete(int year, int month, int categoryId);
 
+    /**
+     * 删除某分类在所有月份的预算。budget 表无外键，分类被物理删除时由仓库层
+     * 在同一事务内连带清理，避免残留指向已删除分类的陈旧预算（V2 Phase 6）。
+     */
+    @Query("DELETE FROM budget WHERE category_id = :categoryId")
+    void deleteByCategoryId(long categoryId);
+
     @Query("DELETE FROM budget")
     void deleteAll();
 

@@ -13,6 +13,7 @@ import com.skyanchor.bookkeeping.data.database.DefaultData;
 import com.skyanchor.bookkeeping.data.entity.AccountEntity;
 import com.skyanchor.bookkeeping.data.entity.BudgetEntity;
 import com.skyanchor.bookkeeping.data.entity.CategoryEntity;
+import com.skyanchor.bookkeeping.data.entity.RecurringTransactionEntity;
 import com.skyanchor.bookkeeping.data.entity.TransactionEntity;
 import com.skyanchor.bookkeeping.data.entity.TransactionExport;
 import com.skyanchor.bookkeeping.data.entity.TransactionItem;
@@ -23,8 +24,11 @@ import com.skyanchor.bookkeeping.data.model.DayCount;
 import com.skyanchor.bookkeeping.data.model.DeleteAccountResult;
 import com.skyanchor.bookkeeping.data.model.DeleteCategoryResult;
 import com.skyanchor.bookkeeping.data.model.SearchFilter;
+import com.skyanchor.bookkeeping.domain.account.AccountBalanceValidator;
 import com.skyanchor.bookkeeping.domain.account.CalculateAccountBalanceUseCase;
+import com.skyanchor.bookkeeping.domain.recurring.GenerateRecurringTransactionsUseCase;
 import com.skyanchor.bookkeeping.util.Callback;
+import com.skyanchor.bookkeeping.util.DateUtil;
 import com.skyanchor.bookkeeping.util.ThemeStore;
 
 import java.util.Collection;
@@ -51,11 +55,16 @@ public class BookkeepingRepository {
     /** 账户余额重算用例：写入交易 / 修改账户初始余额时在同一事务内对齐缓存。 */
     private final CalculateAccountBalanceUseCase balanceUseCase;
 
+    /** 余额缓存一致性校验：启动时兜底纠正缓存与重算的偏差（V2 Phase 9）。 */
+    private final AccountBalanceValidator balanceValidator;
+
     public BookkeepingRepository(@NonNull Context context, @NonNull AppDatabase database) {
         this.appContext = context.getApplicationContext();
         this.database = database;
         this.balanceUseCase = new CalculateAccountBalanceUseCase(
                 database.accountDao(), database.transactionDao());
+        this.balanceValidator = new AccountBalanceValidator(
+                database.accountDao(), balanceUseCase);
     }
 
     /** 供组合根 / 一致性校验获取余额重算用例。 */
@@ -101,6 +110,11 @@ public class BookkeepingRepository {
 
     public LiveData<BudgetEntity> observeBudget(int year, int month) {
         return database.budgetDao().observe(year, month);
+    }
+
+    /** 观察某月全部分类预算（category_id &gt;= 1），不含总预算（V2 Phase 6）。 */
+    public LiveData<List<BudgetEntity>> observeCategoryBudgets(int year, int month) {
+        return database.budgetDao().observeCategoryBudgets(year, month);
     }
 
     public LiveData<Long> observeSum(int type, long startDay, long endDay) {
@@ -174,6 +188,16 @@ public class BookkeepingRepository {
     /** 未归档账户余额（联表重算），用于总资产等只统计活跃账户的场景。 */
     public LiveData<List<AccountBalance>> observeActiveAccountBalances() {
         return database.accountDao().observeActiveAccountBalances();
+    }
+
+    /** 观察单个账户，供账户流水详情页（V2 Phase 9）。 */
+    public LiveData<AccountEntity> observeAccount(long id) {
+        return database.accountDao().observeById(id);
+    }
+
+    /** 观察某账户的全部流水（含转出 / 转入），供账户流水详情页（V2 Phase 9）。 */
+    public LiveData<List<TransactionItem>> observeAccountTransactions(long accountId) {
+        return database.transactionDao().observeForAccount(accountId);
     }
 
     public LiveData<Integer> observeAccountCount() {
@@ -324,6 +348,83 @@ public class BookkeepingRepository {
         return database.transactionDao().getAllEntities();
     }
 
+    // ------------------------------------------------------------------
+    // 本地备份 / 恢复（V2 新增，开发计划 Phase 7）
+    //
+    // 与 CSV 导入导出同范式：备份 / 恢复是一次性批处理，同步读全量 / 单事务整体写，
+    // domain 用例经 {@link #runOnIo} 复用同一条 IO 线程调用下面的同步方法。
+    // ------------------------------------------------------------------
+
+    /** 全量预算（含总预算哨兵与分类预算），供备份序列化。仅在 IO 线程调用。 */
+    @NonNull
+    public List<BudgetEntity> readAllBudgets() {
+        return database.budgetDao().getAll();
+    }
+
+    /** 全量周期账单，供备份序列化。仅在 IO 线程调用。 */
+    @NonNull
+    public List<RecurringTransactionEntity> readAllRecurring() {
+        return database.recurringTransactionDao().getAll();
+    }
+
+    /** 本地设置单例；从未写过设置时为 null。仅在 IO 线程调用。 */
+    @Nullable
+    public UserSettingsEntity readSettings() {
+        return database.userSettingsDao().get();
+    }
+
+    /**
+     * 覆盖恢复：在单个 DB 事务内清空各表 → 按备份数据重插（保留原 id）→
+     * 重算全部账户的余额缓存列。统计与列表经 LiveData 自动刷新。
+     *
+     * <p>插入顺序满足外键约束（账户 / 分类先于交易）；任一步失败（如备份数据跨表
+     * 引用失效触发外键校验）整体回滚并抛出运行时异常，当前数据不受影响。
+     * 余额缓存列是派生数据，恢复后一律从交易重算，不信任备份里的缓存值。
+     * 仅在 IO 线程调用（{@link #runOnIo} 内）。
+     */
+    public void replaceAllData(@NonNull List<AccountEntity> accounts,
+                               @NonNull List<CategoryEntity> categories,
+                               @NonNull List<TransactionEntity> transactions,
+                               @NonNull List<BudgetEntity> budgets,
+                               @NonNull List<RecurringTransactionEntity> recurring,
+                               @Nullable UserSettingsEntity settings) {
+        database.runInTransaction(() -> {
+            // 先删交易再删账户 / 分类以满足外键约束，与 clearAllData 同序
+            database.transactionDao().deleteAll();
+            database.recurringTransactionDao().deleteAll();
+            database.budgetDao().deleteAll();
+            database.accountDao().deleteAll();
+            database.categoryDao().deleteAll();
+            database.userSettingsDao().deleteAll();
+
+            for (AccountEntity account : accounts) {
+                database.accountDao().insert(account);
+            }
+            for (CategoryEntity category : categories) {
+                database.categoryDao().insert(category);
+            }
+            for (TransactionEntity transaction : transactions) {
+                database.transactionDao().insert(transaction);
+            }
+            for (BudgetEntity budget : budgets) {
+                database.budgetDao().upsert(budget);
+            }
+            for (RecurringTransactionEntity item : recurring) {
+                database.recurringTransactionDao().insert(item);
+            }
+            if (settings != null) {
+                database.userSettingsDao().upsert(settings);
+            }
+
+            // 余额缓存从交易重算，保证缓存与「唯一真值来源」一致
+            long now = System.currentTimeMillis();
+            for (AccountEntity account : accounts) {
+                database.accountDao().updateBalance(account.id,
+                        balanceUseCase.calculate(account.id), now);
+            }
+        });
+    }
+
     /**
      * 批量导入：在单个 DB 事务内插入全部有效行，并重算所有受影响账户的余额缓存。
      *
@@ -414,6 +515,199 @@ public class BookkeepingRepository {
     }
 
     // ------------------------------------------------------------------
+    // 周期账单（V2 新增，开发计划 Phase 8）
+    // ------------------------------------------------------------------
+
+    /** 全部周期账单规则（启用在前、到期日升序），供管理页。 */
+    public LiveData<List<RecurringTransactionEntity>> observeRecurring() {
+        return database.recurringTransactionDao().observeAll();
+    }
+
+    /** 到期未确认的规则（{@code next_run_date <= today 且 is_enabled}）。 */
+    public LiveData<List<RecurringTransactionEntity>> observeDueRecurring(long today) {
+        return database.recurringTransactionDao().observeDue(today);
+    }
+
+    /** 到期未确认的规则数，供首页「有 N 笔周期账单待记账」提示。 */
+    public LiveData<Integer> observeDueRecurringCount(long today) {
+        return database.recurringTransactionDao().observeDueCount(today);
+    }
+
+    /** 读取单条规则用于编辑，不存在时回调 null。 */
+    public void loadRecurring(long id, @Nullable Callback<RecurringTransactionEntity> callback) {
+        io.execute(() -> post(callback, database.recurringTransactionDao().getById(id)));
+    }
+
+    /**
+     * 保存周期账单规则。id 为 0 时插入，{@code nextRunDate} 初始化为开始日期；
+     * 更新时仅当调度字段（开始日期 / 频率 / 间隔）变化才重置 {@code nextRunDate}，
+     * 否则原样保留——它是「已生成到哪一期」的幂等标记，乱动会导致重复生成。
+     */
+    public void saveRecurring(@NonNull RecurringTransactionEntity entity,
+                              @Nullable Callback<Long> callback) {
+        io.execute(() -> {
+            long now = System.currentTimeMillis();
+            long id = database.runInTransaction(() -> {
+                if (entity.id == 0L) {
+                    entity.createdAt = now;
+                    entity.updatedAt = now;
+                    entity.nextRunDate = entity.startDate;
+                    return database.recurringTransactionDao().insert(entity);
+                }
+                RecurringTransactionEntity existing =
+                        database.recurringTransactionDao().getById(entity.id);
+                entity.createdAt = existing != null ? existing.createdAt : now;
+                boolean scheduleChanged = existing == null
+                        || existing.startDate != entity.startDate
+                        || existing.frequency != entity.frequency
+                        || existing.interval != entity.interval;
+                if (scheduleChanged) {
+                    entity.nextRunDate = entity.startDate;
+                } else if (existing != null) {
+                    entity.nextRunDate = existing.nextRunDate;
+                }
+                database.recurringTransactionDao().update(entity);
+                return entity.id;
+            });
+            post(callback, id);
+        });
+    }
+
+    /** 删除规则。已按它生成的历史账单不受影响。 */
+    public void deleteRecurring(long id, @Nullable Callback<Boolean> callback) {
+        io.execute(() -> {
+            database.recurringTransactionDao().deleteById(id);
+            post(callback, Boolean.TRUE);
+        });
+    }
+
+    /** 停用 / 重新启用规则；停用后不再进入到期列表。 */
+    public void setRecurringEnabled(long id, boolean enabled,
+                                    @Nullable Callback<Boolean> callback) {
+        io.execute(() -> {
+            RecurringTransactionEntity existing = database.recurringTransactionDao().getById(id);
+            if (existing != null) {
+                existing.isEnabled = enabled;
+                existing.updatedAt = System.currentTimeMillis();
+                database.recurringTransactionDao().update(existing);
+            }
+            post(callback, Boolean.TRUE);
+        });
+    }
+
+    /**
+     * 一键确认到期规则（同步版本，仅在 IO 线程调用）。
+     *
+     * <p>在单个 DB 事务内：对每条到期规则枚举全部到期 occurrence（含补生成），
+     * 逐期插入交易（date = 期日、time = 确认时刻），幂等推进 {@code nextRunDate}；
+     * 已越过结束日期的规则随之停用；最后重算受影响账户的余额缓存。
+     * 返回实际生成的交易笔数。
+     */
+    public int confirmDueRecurringSync(long today) {
+        return database.runInTransaction(() -> {
+            List<RecurringTransactionEntity> due =
+                    database.recurringTransactionDao().getDue(today);
+            long now = System.currentTimeMillis();
+            Set<Long> affected = new LinkedHashSet<>();
+            int created = 0;
+            for (RecurringTransactionEntity rule : due) {
+                created += generateForRule(rule, today, now, affected);
+            }
+            recalcAccounts(affected, now);
+            return created;
+        });
+    }
+
+    /** 一键确认到期规则，主线程回调生成的交易笔数。 */
+    public void confirmDueRecurring(long today, @Nullable Callback<Integer> callback) {
+        io.execute(() -> post(callback, confirmDueRecurringSync(today)));
+    }
+
+    /** 为单条规则生成全部到期交易并推进 / 停用规则（调用方需处于 DB 事务内）。 */
+    private int generateForRule(@NonNull RecurringTransactionEntity rule, long today, long now,
+                                @NonNull Set<Long> affectedAccounts) {
+        List<Long> dueDates = GenerateRecurringTransactionsUseCase.collectDueDates(
+                rule.nextRunDate, today, rule.endDate, rule.frequency, rule.interval);
+        for (long date : dueDates) {
+            TransactionEntity transaction = new TransactionEntity();
+            transaction.type = rule.type;
+            transaction.amount = rule.amount;
+            transaction.categoryId = rule.categoryId;
+            transaction.accountId = rule.accountId;
+            transaction.transferAccountId = null;
+            transaction.date = date;
+            transaction.time = DateUtil.formatHourMinuteOf(now);
+            transaction.note = rule.note;
+            transaction.createdAt = now;
+            transaction.updatedAt = now;
+            database.transactionDao().insert(transaction);
+            collectAccount(affectedAccounts, transaction.accountId);
+        }
+        if (!dueDates.isEmpty()) {
+            long last = dueDates.get(dueDates.size() - 1);
+            rule.nextRunDate = GenerateRecurringTransactionsUseCase.nextAfter(
+                    last, rule.frequency, rule.interval);
+        }
+        if (GenerateRecurringTransactionsUseCase.isBeyondEndDate(rule.nextRunDate, rule.endDate)) {
+            // 规则已到结束日期：停用以免永远停留在「待确认」
+            rule.isEnabled = false;
+        }
+        rule.updatedAt = now;
+        database.recurringTransactionDao().update(rule);
+        return dueDates.size();
+    }
+
+    /**
+     * 上下移动账户排序（V2 Phase 9 P2，复用 {@link #moveCategory} 的范式）。
+     * 先把 sortOrder 规整为 1..n，再按位置交换，历史重复序号也能得到确定结果。
+     *
+     * @param direction -1 上移，1 下移
+     */
+    public void moveAccount(long id, int direction, @Nullable Callback<Boolean> callback) {
+        io.execute(() -> {
+            AccountEntity target = database.accountDao().getById(id);
+            if (target == null) {
+                post(callback, Boolean.FALSE);
+                return;
+            }
+            List<AccountEntity> all = database.accountDao().getAll();
+            int index = indexOfAccount(all, id);
+            int swapIndex = index + direction;
+            if (index < 0 || swapIndex < 0 || swapIndex >= all.size()) {
+                post(callback, Boolean.FALSE);
+                return;
+            }
+            Collections.swap(all, index, swapIndex);
+            renumberAccounts(all);
+            database.accountDao().updateAll(all);
+            post(callback, Boolean.TRUE);
+        });
+    }
+
+    private static int indexOfAccount(List<AccountEntity> list, long id) {
+        for (int i = 0; i < list.size(); i++) {
+            if (list.get(i).id == id) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private static void renumberAccounts(List<AccountEntity> list) {
+        for (int i = 0; i < list.size(); i++) {
+            list.get(i).sortOrder = i + 1;
+        }
+    }
+
+    /**
+     * 余额缓存一致性校验（V2 Phase 9）：全部账户「缓存 vs 重算」，
+     * 不一致时以重算纠正。主线程回调被纠正的账户数（0 = 全部一致）。
+     */
+    public void validateAccountBalances(@Nullable Callback<Integer> callback) {
+        io.execute(() -> post(callback, balanceValidator.validateAndFixAll()));
+    }
+
+    // ------------------------------------------------------------------
     // 写：分类
     // ------------------------------------------------------------------
 
@@ -434,6 +728,9 @@ public class BookkeepingRepository {
     /**
      * 删除分类。V1 基线第 6 章：已被账单使用的分类禁止直接删除，避免统计数据断裂。
      * 守卫放在仓库层，不依赖界面层自觉。
+     *
+     * <p>V2：分类被删除时在同一事务内连带清理其所有月份的分类预算
+     * （budget 表无外键，避免残留指向已删除分类的陈旧预算）。
      */
     public void deleteCategory(long id, @Nullable Callback<DeleteCategoryResult> callback) {
         io.execute(() -> {
@@ -442,7 +739,10 @@ public class BookkeepingRepository {
                 post(callback, DeleteCategoryResult.blocked(used));
                 return;
             }
-            database.categoryDao().deleteById(id);
+            database.runInTransaction(() -> {
+                database.categoryDao().deleteById(id);
+                database.budgetDao().deleteByCategoryId(id);
+            });
             post(callback, DeleteCategoryResult.ok());
         });
     }
@@ -494,17 +794,30 @@ public class BookkeepingRepository {
     // ------------------------------------------------------------------
 
     /**
-     * 保存某个月的总预算。
+     * 保存某个月的总预算（V1 兼容入口，等价于 {@code categoryId = 0} 哨兵）。
      *
      * @param amountCents 预算金额（分）；小于等于 0 表示删除该月预算
      */
     public void saveBudget(int year, int month, long amountCents,
                            @Nullable Callback<Boolean> callback) {
+        saveBudget(year, month, BudgetEntity.CATEGORY_TOTAL, amountCents, callback);
+    }
+
+    /**
+     * 保存某个月的总预算或分类预算（V2 Phase 6）。
+     *
+     * <p>依赖 (year, month, category_id) 唯一索引保证每月每分类至多一条；
+     * {@code categoryId = 0} 是总预算哨兵，{@code >= 1} 为分类预算。
+     *
+     * @param amountCents 预算金额（分）；小于等于 0 表示删除该条预算
+     */
+    public void saveBudget(int year, int month, int categoryId, long amountCents,
+                           @Nullable Callback<Boolean> callback) {
         io.execute(() -> {
-            BudgetEntity existing = database.budgetDao().get(year, month);
+            BudgetEntity existing = database.budgetDao().get(year, month, categoryId);
             if (amountCents <= 0L) {
                 if (existing != null) {
-                    database.budgetDao().delete(year, month);
+                    database.budgetDao().delete(year, month, categoryId);
                 }
                 post(callback, Boolean.TRUE);
                 return;
@@ -513,6 +826,7 @@ public class BookkeepingRepository {
             BudgetEntity entity = new BudgetEntity();
             entity.year = year;
             entity.month = month;
+            entity.categoryId = categoryId;
             entity.amount = amountCents;
             entity.updatedAt = now;
             if (existing != null) {

@@ -237,6 +237,45 @@
 
             </com.google.android.material.card.MaterialCardView>
 
+            <!-- V2 Phase 6：分类预算列表。每行一个支出分类：预算额/已用/进度/状态色，点击行编辑该月分类预算 -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/categoryBudgetCard"
+                style="@style/Widget.App.Card"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/spacing_lg"
+                android:visibility="gone">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/budget_category_section_title"
+                        android:textAppearance="@style/TextAppearance.App.SectionTitle" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/spacing_xs"
+                        android:text="@string/budget_setting_category_hint"
+                        android:textAppearance="@style/TextAppearance.App.Caption" />
+
+                    <!-- 各分类预算行由代码程序化 inflate，点击行弹出编辑弹窗 -->
+                    <LinearLayout
+                        android:id="@+id/categoryBudgetList"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/spacing_xs"
+                        android:orientation="vertical" />
+
+                </LinearLayout>
+
+            </com.google.android.material.card.MaterialCardView>
+
         </LinearLayout>
 
     </ScrollView>

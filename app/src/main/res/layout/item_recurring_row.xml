@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 周期账单规则行：类型 emoji + 名称 + 单期金额 + 频率摘要 + 编辑 / 删除（V2 Phase 8） -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="?attr/selectableItemBackground"
+    android:gravity="center_vertical"
+    android:minHeight="@dimen/list_item_min_height"
+    android:orientation="horizontal"
+    android:paddingStart="@dimen/page_margin"
+    android:paddingTop="@dimen/spacing_xs"
+    android:paddingEnd="@dimen/spacing_xs"
+    android:paddingBottom="@dimen/spacing_xs">
+
+    <FrameLayout
+        android:layout_width="@dimen/list_category_icon_size"
+        android:layout_height="@dimen/list_category_icon_size"
+        android:background="@drawable/bg_category_circle">
+
+        <TextView
+            android:id="@+id/rowIcon"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:importantForAccessibility="no"
+            android:textSize="@dimen/font_emoji" />
+
+    </FrameLayout>
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="@dimen/spacing_md"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <!-- 第一行：规则名（左）+ 单期金额（右，支出主色 / 收入 success，代码里着色） -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/rowName"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textAppearance="@style/TextAppearance.App.Body" />
+
+            <TextView
+                android:id="@+id/rowAmount"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="@dimen/spacing_sm"
+                android:maxLines="1"
+                android:textAppearance="@style/TextAppearance.App.Body" />
+
+        </LinearLayout>
+
+        <!-- 第二行：频率摘要 + 下次记账日 + 已停用徽标 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/spacing_xxs"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/rowFrequency"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textAppearance="@style/TextAppearance.App.Caption" />
+
+            <TextView
+                android:id="@+id/rowDisabled"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="@dimen/spacing_sm"
+                android:maxLines="1"
+                android:text="@string/recurring_disabled_badge"
+                android:textAppearance="@style/TextAppearance.App.Caption"
+                android:textColor="@color/text_tertiary"
+                android:visibility="gone" />
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+    <ImageView
+        android:id="@+id/rowEdit"
+        style="@style/Widget.App.RowAction"
+        android:contentDescription="@string/recurring_edit_title"
+        android:src="@drawable/ic_edit" />
+
+    <ImageView
+        android:id="@+id/rowDelete"
+        style="@style/Widget.App.RowAction.Danger"
+        android:contentDescription="@string/action_delete"
+        android:src="@drawable/ic_delete" />
+
+</LinearLayout>

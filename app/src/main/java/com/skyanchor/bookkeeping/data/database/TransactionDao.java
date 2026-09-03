@@ -81,6 +81,15 @@ public interface TransactionDao {
     @Query("SELECT " + ITEM_COLUMNS + ITEM_FROM + "WHERE t.id = :id")
     TransactionItem getById(long id);
 
+    /**
+     * 观察某账户的全部流水（V2 Phase 9）：转出与转入任一端命中即算（转账只出一行），
+     * 排序与记录页一致，结果可直接交给 {@code StatisticsCalculator.groupByDay}。
+     */
+    @Query("SELECT " + ITEM_COLUMNS + ITEM_FROM
+            + "WHERE t.account_id = :accountId OR t.transfer_account_id = :accountId "
+            + "ORDER BY t.date DESC, t.time DESC, t.id DESC")
+    LiveData<List<TransactionItem>> observeForAccount(long accountId);
+
     /** 取完整实体，用于更新时保留 created_at 等界面不展示的字段。 */
     @Query("SELECT * FROM transactions WHERE id = :id")
     TransactionEntity getEntityById(long id);

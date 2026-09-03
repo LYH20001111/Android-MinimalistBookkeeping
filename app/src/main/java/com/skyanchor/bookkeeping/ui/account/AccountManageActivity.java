@@ -34,7 +34,7 @@ import java.util.List;
  * <p>复用 {@code CategoryManageActivity} 的列表 / 新增 / 编辑 / 删除守卫交互范式：
  * 列表数据源是仓库的联表重算投影，余额随账单变化自动刷新且可正可负；
  * 新增 / 编辑共用一个弹窗，确定按钮手动关闭以便就地把校验错误留在弹窗内；
- * 归档 / 取消归档是编辑弹窗里的开关（可逆），行内只保留编辑与删除两个高频动作。
+ * 点击行进入账户流水详情（V2 Phase 9），行内还有上移 / 下移排序与编辑 / 删除动作。
  *
  * <p>删除守卫由仓库层强制执行：已被账单（含转出 / 转入）引用的账户不允许物理删除，
  * 只能改为归档，避免历史资金流水断裂。
@@ -59,6 +59,11 @@ public class AccountManageActivity extends AppCompatActivity {
 
         adapter = new AccountAdapter(new AccountAdapter.Listener() {
             @Override
+            public void onOpen(@NonNull AccountBalance account) {
+                AccountDetailActivity.start(AccountManageActivity.this, account.id);
+            }
+
+            @Override
             public void onEdit(@NonNull AccountBalance account) {
                 showEditDialog(account);
             }
@@ -66,6 +71,16 @@ public class AccountManageActivity extends AppCompatActivity {
             @Override
             public void onDelete(@NonNull AccountBalance account) {
                 confirmDelete(account);
+            }
+
+            @Override
+            public void onMoveUp(@NonNull AccountBalance account) {
+                viewModel.move(account.id, -1, null);
+            }
+
+            @Override
+            public void onMoveDown(@NonNull AccountBalance account) {
+                viewModel.move(account.id, 1, null);
             }
         });
         binding.accountList.setLayoutManager(new LinearLayoutManager(this));

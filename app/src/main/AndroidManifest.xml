@@ -41,12 +41,20 @@
             android:exported="false"
             android:parentActivityName=".MainActivity" />
         <activity
+            android:name=".ui.account.AccountDetailActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity" />
+        <activity
             android:name=".ui.search.SearchActivity"
             android:exported="false"
             android:parentActivityName=".MainActivity"
             android:windowSoftInputMode="adjustResize" />
         <activity
             android:name=".ui.budget.BudgetSettingActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity" />
+        <activity
+            android:name=".ui.recurring.RecurringManageActivity"
             android:exported="false"
             android:parentActivityName=".MainActivity" />
         <activity
@@ -63,6 +71,14 @@
             android:parentActivityName=".MainActivity" />
         <activity
             android:name=".ui.importexport.DataImportActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity" />
+        <activity
+            android:name=".ui.importexport.BackupActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity" />
+        <activity
+            android:name=".ui.importexport.RestoreActivity"
             android:exported="false"
             android:parentActivityName=".MainActivity" />
         <activity

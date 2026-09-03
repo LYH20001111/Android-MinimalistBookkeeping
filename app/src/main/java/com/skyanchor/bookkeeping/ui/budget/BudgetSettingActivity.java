@@ -6,39 +6,57 @@ import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 import android.text.Editable;
 import android.text.TextWatcher;
+import android.util.TypedValue;
+import android.view.LayoutInflater;
 import android.view.View;
 import android.widget.Toast;
 
 import androidx.annotation.ColorRes;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
 import androidx.core.graphics.drawable.DrawableCompat;
 import androidx.lifecycle.LiveData;
+import androidx.lifecycle.MediatorLiveData;
 import androidx.lifecycle.MutableLiveData;
+import androidx.lifecycle.Observer;
 import androidx.lifecycle.Transformations;
 
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.skyanchor.bookkeeping.BookkeepingApp;
 import com.skyanchor.bookkeeping.R;
 import com.skyanchor.bookkeeping.data.entity.BudgetEntity;
 import com.skyanchor.bookkeeping.data.entity.CategoryEntity;
+import com.skyanchor.bookkeeping.data.entity.TransactionItem;
 import com.skyanchor.bookkeeping.data.model.BudgetState;
+import com.skyanchor.bookkeeping.data.model.CategoryBudgetState;
+import com.skyanchor.bookkeeping.data.model.CategoryStat;
 import com.skyanchor.bookkeeping.data.model.DateRange;
 import com.skyanchor.bookkeeping.data.repository.BookkeepingRepository;
 import com.skyanchor.bookkeeping.databinding.ActivityBudgetSettingBinding;
+import com.skyanchor.bookkeeping.databinding.DialogCategoryBudgetEditBinding;
+import com.skyanchor.bookkeeping.databinding.ItemCategoryBudgetBinding;
+import com.skyanchor.bookkeeping.domain.budget.CalculateBudgetUseCase;
 import com.skyanchor.bookkeeping.util.AmountUtil;
 import com.skyanchor.bookkeeping.util.DateLabels;
 import com.skyanchor.bookkeeping.util.DateUtil;
 import com.skyanchor.bookkeeping.util.InsetsUtil;
+import com.skyanchor.bookkeeping.util.StatisticsCalculator;
+
+import java.util.Collections;
+import java.util.List;
 
 /**
- * 预算设置（V1 基线第 8 章）。
+ * 预算设置（V1 基线第 8 章；V2 Phase 6 扩展为「总预算 + 分类预算」）。
  *
- * <p>每个月只存一个总预算，不分分类预算；预算只按支出计算，不把收入算作预算消耗。
- * 执行情况与图表页预算卡片共用 {@link BudgetState}，因此两处的阈值与状态色必然一致。
+ * <p>每个月保存一个总预算（category_id = 0 哨兵）与任意多个分类预算
+ * （category_id &gt;= 1，依赖 (year, month, category_id) 唯一索引）。预算只按支出计算，
+ * 不把收入算作预算消耗；分类预算与总预算共用 {@link BudgetState} 的阈值与状态色，
+ * 且分类预算不反向限制记账，仅提醒 / 分析。
  *
- * <p>清空金额后保存等价于删除该月预算。
+ * <p>清空金额后保存等价于删除对应预算（总预算与分类预算同规则）。
  */
 public class BudgetSettingActivity extends AppCompatActivity {
 
@@ -157,6 +175,11 @@ public class BudgetSettingActivity extends AppCompatActivity {
             return repository.observeSum(CategoryEntity.TYPE_EXPENSE, range.start, range.end);
         });
         used.observe(this, this::onUsedChanged);
+
+        // 分类预算行：交易 / 支出分类 / 分类预算三路同源合并，任一变化重算同一份列表（V2 Phase 6）
+        LiveData<List<CategoryBudgetState>> categoryRows =
+                Transformations.switchMap(selectedMonth, this::observeCategoryBudgetRows);
+        categoryRows.observe(this, this::renderCategoryRows);
 
         selectedMonth.observe(this, this::onMonthChanged);
         selectedMonth.setValue(resolveMonth(savedInstanceState));
@@ -298,6 +321,156 @@ public class BudgetSettingActivity extends AppCompatActivity {
     }
 
     // ------------------------------------------------------------------
+    // 分类预算（V2 Phase 6）
+    // ------------------------------------------------------------------
+
+    /** 分类预算行的三个数据源当前值，全部到达后才产出列表，避免残缺快照。 */
+    private static final class CategoryRowSources {
+        @Nullable
+        List<TransactionItem> items;
+        @Nullable
+        List<CategoryEntity> categories;
+        @Nullable
+        List<BudgetEntity> budgets;
+    }
+
+    /**
+     * 把当月的交易、支出分类与分类预算合并成分类预算行 LiveData。
+     *
+     * <p>交易用于按分类汇总本月支出（复用 {@link StatisticsCalculator#categoryBreakdown}），
+     * 三路数据与总预算、图表页共用同一 Room 数据源，账单 / 预算变化后自动刷新。
+     */
+    @NonNull
+    private LiveData<List<CategoryBudgetState>> observeCategoryBudgetRows(@NonNull Month month) {
+        final DateRange range = DateUtil.ofMonth(month.year, month.month);
+        final MediatorLiveData<List<CategoryBudgetState>> result = new MediatorLiveData<>();
+        final CategoryRowSources sources = new CategoryRowSources();
+
+        Observer<List<TransactionItem>> itemsObserver = items -> {
+            sources.items = items;
+            result.setValue(buildCategoryRows(range, sources));
+        };
+        Observer<List<CategoryEntity>> categoriesObserver = categories -> {
+            sources.categories = categories;
+            result.setValue(buildCategoryRows(range, sources));
+        };
+        Observer<List<BudgetEntity>> budgetsObserver = budgets -> {
+            sources.budgets = budgets;
+            result.setValue(buildCategoryRows(range, sources));
+        };
+
+        result.addSource(repository.observeTransactionsBetween(range.start, range.end), itemsObserver);
+        result.addSource(repository.observeCategories(CategoryEntity.TYPE_EXPENSE), categoriesObserver);
+        result.addSource(repository.observeCategoryBudgets(month.year, month.month), budgetsObserver);
+        return result;
+    }
+
+    /** 三路数据到齐后组装分类预算行（含未设置预算的分类，供展示已消费与引导设置）。 */
+    @NonNull
+    private static List<CategoryBudgetState> buildCategoryRows(@NonNull DateRange range,
+                                                               @NonNull CategoryRowSources sources) {
+        if (sources.items == null || sources.categories == null || sources.budgets == null) {
+            return Collections.emptyList();
+        }
+        List<CategoryStat> stats = StatisticsCalculator.categoryBreakdown(sources.items,
+                CategoryEntity.TYPE_EXPENSE, range.start, range.end);
+        return CalculateBudgetUseCase.assembleForManage(sources.categories, sources.budgets, stats);
+    }
+
+    /**
+     * 渲染分类预算行：每分类一行（预算额 / 已用 / 进度 / 状态色），点击行弹出编辑弹窗。
+     * 行为可点击（ripple 背景只在设置页注入，图表页复用同一布局但只读）。
+     */
+    private void renderCategoryRows(@Nullable List<CategoryBudgetState> rows) {
+        List<CategoryBudgetState> safe = rows == null ? Collections.<CategoryBudgetState>emptyList() : rows;
+        binding.categoryBudgetCard.setVisibility(safe.isEmpty() ? View.GONE : View.VISIBLE);
+        binding.categoryBudgetList.removeAllViews();
+        if (safe.isEmpty()) {
+            return;
+        }
+
+        TypedValue background = new TypedValue();
+        getTheme().resolveAttribute(android.R.attr.selectableItemBackground, background, true);
+        int maxProgress = getResources().getInteger(R.integer.percent_scale);
+        LayoutInflater inflater = LayoutInflater.from(this);
+        for (CategoryBudgetState row : safe) {
+            ItemCategoryBudgetBinding item = ItemCategoryBudgetBinding.inflate(
+                    inflater, binding.categoryBudgetList, false);
+            item.categoryIcon.setText(row.icon);
+            item.categoryName.setText(row.name);
+
+            int statusColor = colorOf(statusColorOf(row.state.status));
+            if (row.hasBudget()) {
+                item.categoryUsage.setText(row.state.percentText());
+                item.categoryUsage.setTextColor(statusColor);
+                item.categoryCaption.setText(getString(R.string.budget_category_caption_format,
+                        AmountUtil.format(row.budgetAmount), AmountUtil.format(row.used)));
+            } else {
+                item.categoryUsage.setText(R.string.budget_category_unset);
+                item.categoryUsage.setTextColor(colorOf(R.color.text_tertiary));
+                item.categoryCaption.setText(getString(R.string.budget_category_caption_unset_format,
+                        AmountUtil.format(row.used)));
+            }
+            item.categoryProgress.setIndicatorColor(statusColor);
+            item.categoryProgress.setProgressCompat(
+                    Math.min(row.state.percentX10, maxProgress), false);
+
+            item.getRoot().setBackgroundResource(background.resourceId);
+            item.getRoot().setOnClickListener(v -> showCategoryBudgetDialog(row));
+            binding.categoryBudgetList.addView(item.getRoot());
+        }
+    }
+
+    /**
+     * 分类预算编辑弹窗：预填当前预算，清空后保存即删除（与总预算同规则）。
+     * 确定按钮手动关闭，非法输入时就地显示错误、留在弹窗内。
+     */
+    private void showCategoryBudgetDialog(@NonNull CategoryBudgetState row) {
+        Month month = selectedMonth.getValue();
+        if (month == null) {
+            return;
+        }
+        DialogCategoryBudgetEditBinding dialogBinding =
+                DialogCategoryBudgetEditBinding.inflate(getLayoutInflater());
+        if (row.hasBudget()) {
+            dialogBinding.amountInput.setText(AmountUtil.toInputText(row.budgetAmount));
+        }
+        dialogBinding.amountInput.addTextChangedListener(
+                new ClearErrorWatcher(dialogBinding.amountLayout));
+
+        AlertDialog dialog = new MaterialAlertDialogBuilder(this)
+                .setTitle(getString(R.string.category_budget_edit_title, row.name))
+                .setView(dialogBinding.getRoot())
+                .setNegativeButton(R.string.action_cancel, null)
+                .setPositiveButton(R.string.action_save, null)
+                .create();
+        dialog.show();
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            Editable editable = dialogBinding.amountInput.getText();
+            String text = editable == null ? "" : editable.toString().trim();
+            // 空串按 0 处理，语义是「删除该分类预算」，不是输入错误
+            long cents = text.isEmpty() ? 0L : AmountUtil.parseToCents(text);
+            if (cents == AmountUtil.INVALID) {
+                dialogBinding.amountLayout.setError(getString(R.string.category_budget_error_amount));
+                return;
+            }
+            repository.saveBudget(month.year, month.month, (int) row.categoryId, cents, saved -> {
+                if (isFinishing() || isDestroyed()) {
+                    return;
+                }
+                if (saved == null || !saved) {
+                    return;
+                }
+                Toast.makeText(this, cents > 0L
+                                ? R.string.category_budget_saved
+                                : R.string.category_budget_removed,
+                        Toast.LENGTH_SHORT).show();
+            });
+            dialog.dismiss();
+        });
+    }
+
+    // ------------------------------------------------------------------
     // 状态映射（与 ChartFragment 保持同一套语义色）
     // ------------------------------------------------------------------
 
@@ -338,5 +511,28 @@ public class BudgetSettingActivity extends AppCompatActivity {
 
     private int colorOf(@ColorRes int colorRes) {
         return ContextCompat.getColor(this, colorRes);
+    }
+
+    /** 输入变化即清除弹窗输入框的错误提示，与账户编辑弹窗的手感一致。 */
+    private static final class ClearErrorWatcher implements TextWatcher {
+
+        private final com.google.android.material.textfield.TextInputLayout layout;
+
+        ClearErrorWatcher(com.google.android.material.textfield.TextInputLayout layout) {
+            this.layout = layout;
+        }
+
+        @Override
+        public void beforeTextChanged(CharSequence s, int start, int count, int after) {
+        }
+
+        @Override
+        public void onTextChanged(CharSequence s, int start, int before, int count) {
+        }
+
+        @Override
+        public void afterTextChanged(Editable s) {
+            layout.setError(null);
+        }
     }
 }

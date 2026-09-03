@@ -56,6 +56,10 @@ public interface AccountDao {
     @Query("SELECT * FROM account WHERE id = :id")
     AccountEntity getById(long id);
 
+    /** 观察单个账户，供账户流水详情页随编辑 / 归档实时刷新。 */
+    @Query("SELECT * FROM account WHERE id = :id")
+    LiveData<AccountEntity> observeById(long id);
+
     @Query("SELECT * FROM account ORDER BY sort_order ASC, id ASC")
     List<AccountEntity> getAll();
 

@@ -11,9 +11,13 @@ room = "2.8.4"
 lifecycle = "2.8.7"
 recyclerview = "1.3.2"
 fragment = "1.8.5"
+# 仅测试作用域：android.jar 里的 org.json 在本地 JVM 单测中是 stub，
+# 用同名实现库让 BackupSerializer 的序列化 / 解析可以真正跑在 JVM 单测里
+json = "20240303"
 
 [libraries]
 junit = { group = "junit", name = "junit", version.ref = "junit" }
+json = { group = "org.json", name = "json", version.ref = "json" }
 ext-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
 espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espressoCore" }
 appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }

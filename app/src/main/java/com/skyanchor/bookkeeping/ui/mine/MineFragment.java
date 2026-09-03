@@ -18,8 +18,11 @@ import com.skyanchor.bookkeeping.databinding.ItemMenuRowBinding;
 import com.skyanchor.bookkeeping.ui.account.AccountManageActivity;
 import com.skyanchor.bookkeeping.ui.budget.BudgetSettingActivity;
 import com.skyanchor.bookkeeping.ui.category.CategoryManageActivity;
+import com.skyanchor.bookkeeping.ui.importexport.BackupActivity;
 import com.skyanchor.bookkeeping.ui.importexport.DataExportActivity;
 import com.skyanchor.bookkeeping.ui.importexport.DataImportActivity;
+import com.skyanchor.bookkeeping.ui.importexport.RestoreActivity;
+import com.skyanchor.bookkeeping.ui.recurring.RecurringManageActivity;
 import com.skyanchor.bookkeeping.ui.settings.AboutActivity;
 import com.skyanchor.bookkeeping.ui.settings.AppearanceActivity;
 import com.skyanchor.bookkeeping.ui.settings.DataManageActivity;
@@ -27,8 +30,9 @@ import com.skyanchor.bookkeeping.ui.settings.DataManageActivity;
 /**
  * 「我的」页（V1 基线第 9 章，V2 扩展入口）。
  *
- * <p>全部为本地设置入口：分类管理 / 账户管理 / 预算设置 / 外观设置 / 数据管理 /
- * 数据导出 / 数据导入 / 关于 App。不含账号体系与云同步，因此这里没有任何登录、注册或同步入口。
+ * <p>全部为本地设置入口：分类管理 / 账户管理 / 预算设置 / 周期账单 / 外观设置 / 数据管理 /
+ * 数据导出 / 数据导入 / 本地备份 / 本地恢复 / 关于 App。不含账号体系与云同步，
+ * 因此这里没有任何登录、注册或同步入口。
  */
 public class MineFragment extends Fragment {
 
@@ -63,6 +67,10 @@ public class MineFragment extends Fragment {
                 R.string.mine_budget, R.string.mine_budget_subtitle,
                 v -> startActivity(BudgetSettingActivity.newIntent(requireContext())));
 
+        bindRow(binding.menuRecurring, R.drawable.ic_recurring,
+                R.string.mine_recurring, R.string.mine_recurring_subtitle,
+                v -> startActivity(new Intent(requireContext(), RecurringManageActivity.class)));
+
         bindRow(binding.menuAppearance, R.drawable.ic_palette,
                 R.string.mine_appearance, R.string.mine_appearance_subtitle,
                 v -> startActivity(new Intent(requireContext(), AppearanceActivity.class)));
@@ -78,6 +86,14 @@ public class MineFragment extends Fragment {
         bindRow(binding.menuImport, R.drawable.ic_import,
                 R.string.mine_import, R.string.mine_import_subtitle,
                 v -> startActivity(new Intent(requireContext(), DataImportActivity.class)));
+
+        bindRow(binding.menuBackup, R.drawable.ic_backup,
+                R.string.mine_backup, R.string.mine_backup_subtitle,
+                v -> startActivity(new Intent(requireContext(), BackupActivity.class)));
+
+        bindRow(binding.menuRestore, R.drawable.ic_restore,
+                R.string.mine_restore, R.string.mine_restore_subtitle,
+                v -> startActivity(new Intent(requireContext(), RestoreActivity.class)));
 
         bindRow(binding.menuAbout, R.drawable.ic_info,
                 R.string.mine_about, R.string.mine_about_subtitle,

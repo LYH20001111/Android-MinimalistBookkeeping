@@ -41,13 +41,18 @@ public class DataManageActivity extends AppCompatActivity {
         binding.toolbar.setNavigationOnClickListener(v -> finish());
         binding.clearDataButton.setOnClickListener(v -> confirmClear());
 
-        // 三个计数都走 LiveData，清空后无需手动刷新即可回落到默认值
+        // 计数都走 LiveData，清空后无需手动刷新即可回落到默认值
         repository.observeTransactionCount().observe(this,
                 count -> renderCount(binding.dataTransactionValue, count));
         repository.observeCategoryCount().observe(this,
                 count -> renderCount(binding.dataCategoryValue, count));
         repository.observeBudgetCount().observe(this,
                 count -> renderCount(binding.dataBudgetValue, count));
+        // V2 Phase 9：账户与周期账单纳入存量统计
+        repository.observeAccountCount().observe(this,
+                count -> renderCount(binding.dataAccountValue, count));
+        repository.observeRecurringCount().observe(this,
+                count -> renderCount(binding.dataRecurringValue, count));
     }
 
     private void renderCount(@NonNull TextView view, @Nullable Integer count) {

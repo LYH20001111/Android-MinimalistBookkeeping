@@ -52,4 +52,9 @@ public class AccountViewModel extends AndroidViewModel {
     public void delete(long id, @Nullable Callback<DeleteAccountResult> callback) {
         repository.deleteAccount(id, callback);
     }
+
+    /** 上移 / 下移账户排序（P2 打磨，direction -1 上移 / 1 下移）。 */
+    public void move(long id, int direction, @Nullable Callback<Boolean> callback) {
+        repository.moveAccount(id, direction, callback);
+    }
 }

@@ -18,8 +18,9 @@ android {
         applicationId = "com.skyanchor.bookkeeping"
         minSdk = 24
         targetSdk = 36
-        versionCode = 2
-        versionName = "1.1.1"
+        // V2：版本 2→3 / 1.1.1→2.0.0（开发计划 Phase 10）
+        versionCode = 3
+        versionName = "2.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -83,6 +84,8 @@ dependencies {
     implementation(libs.room.runtime)
     annotationProcessor(libs.room.compiler)
     testImplementation(libs.junit)
+    // 供 BackupSerializer 的 JVM 单测使用真实 org.json 实现（仅测试作用域，不进 APK）
+    testImplementation(libs.json)
     androidTestImplementation(libs.ext.junit)
     androidTestImplementation(libs.espresso.core)
     androidTestImplementation(libs.room.testing)

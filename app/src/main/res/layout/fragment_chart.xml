@@ -487,6 +487,35 @@
 
                         </LinearLayout>
 
+                        <!-- V2 Phase 6：分类预算完成度（总预算之下的各分类使用率），仅已设置预算的分类出现 -->
+                        <LinearLayout
+                            android:id="@+id/budgetCategoryGroup"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="vertical"
+                            android:visibility="gone">
+
+                            <View
+                                style="@style/AppDivider"
+                                android:layout_marginTop="@dimen/spacing_md" />
+
+                            <TextView
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="@dimen/spacing_md"
+                                android:text="@string/budget_chart_category_title"
+                                android:textAppearance="@style/TextAppearance.App.Caption" />
+
+                            <!-- 各分类预算行由代码按 CategoryBudgetState 程序化 inflate，数量少不需 adapter -->
+                            <LinearLayout
+                                android:id="@+id/budgetCategoryList"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="@dimen/spacing_xs"
+                                android:orientation="vertical" />
+
+                        </LinearLayout>
+
                     </LinearLayout>
 
                 </com.google.android.material.card.MaterialCardView>

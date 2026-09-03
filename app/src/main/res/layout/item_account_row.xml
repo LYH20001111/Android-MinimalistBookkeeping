@@ -91,6 +91,18 @@
     </LinearLayout>
 
     <ImageView
+        android:id="@+id/rowUp"
+        style="@style/Widget.App.RowAction"
+        android:contentDescription="@string/category_move_up"
+        android:src="@drawable/ic_arrow_up" />
+
+    <ImageView
+        android:id="@+id/rowDown"
+        style="@style/Widget.App.RowAction"
+        android:contentDescription="@string/category_move_down"
+        android:src="@drawable/ic_arrow_down" />
+
+    <ImageView
         android:id="@+id/rowEdit"
         style="@style/Widget.App.RowAction"
         android:contentDescription="@string/account_edit_title"

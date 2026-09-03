@@ -65,6 +65,14 @@
                     android:layout_marginStart="@dimen/menu_divider_indent" />
 
                 <include
+                    android:id="@+id/menuRecurring"
+                    layout="@layout/item_menu_row" />
+
+                <View
+                    style="@style/AppDivider"
+                    android:layout_marginStart="@dimen/menu_divider_indent" />
+
+                <include
                     android:id="@+id/menuAppearance"
                     layout="@layout/item_menu_row" />
 
@@ -90,6 +98,22 @@
 
                 <include
                     android:id="@+id/menuImport"
+                    layout="@layout/item_menu_row" />
+
+                <View
+                    style="@style/AppDivider"
+                    android:layout_marginStart="@dimen/menu_divider_indent" />
+
+                <include
+                    android:id="@+id/menuBackup"
+                    layout="@layout/item_menu_row" />
+
+                <View
+                    style="@style/AppDivider"
+                    android:layout_marginStart="@dimen/menu_divider_indent" />
+
+                <include
+                    android:id="@+id/menuRestore"
                     layout="@layout/item_menu_row" />
 
                 <View

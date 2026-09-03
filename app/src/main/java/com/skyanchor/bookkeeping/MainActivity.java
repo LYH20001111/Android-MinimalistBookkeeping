@@ -1,17 +1,22 @@
 package com.skyanchor.bookkeeping;
 
 import android.os.Bundle;
+import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.fragment.app.Fragment;
 import androidx.fragment.app.FragmentManager;
 import androidx.fragment.app.FragmentTransaction;
+import androidx.lifecycle.ViewModelProvider;
 
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.skyanchor.bookkeeping.databinding.ActivityMainBinding;
 import com.skyanchor.bookkeeping.ui.chart.ChartFragment;
 import com.skyanchor.bookkeeping.ui.mine.MineFragment;
+import com.skyanchor.bookkeeping.ui.recurring.RecurringViewModel;
 import com.skyanchor.bookkeeping.ui.record.RecordFragment;
 import com.skyanchor.bookkeeping.util.InsetsUtil;
 
@@ -21,6 +26,9 @@ import com.skyanchor.bookkeeping.util.InsetsUtil;
  * <p>Fragment 用 {@code add / hide / show} 而不是 {@code replace}，这样切 Tab 时
  * 各页面的滚动位置、已选周期、已选业务日期都不会丢失（V1 基线第 15 章）。
  * 未访问过的 Tab 延迟创建，冷启动只付记录页的代价。
+ *
+ * <p>V2 Phase 8：启动（首帧）时检测到期的周期账单，弹窗提示「有 N 笔待记账」，
+ * 由用户一键确认生成，不做任何后台静默写入。
  */
 public class MainActivity extends AppCompatActivity {
 
@@ -32,9 +40,15 @@ public class MainActivity extends AppCompatActivity {
     private static final String[] TAB_TAGS = {TAG_RECORD, TAG_CHART, TAG_MINE};
 
     private static final String STATE_SELECTED_TAB = "state_selected_tab";
+    private static final String STATE_DUE_PROMPT_SHOWN = "state_due_prompt_shown";
 
     private ActivityMainBinding binding;
     private String selectedTag = TAG_RECORD;
+
+    private RecurringViewModel recurringViewModel;
+
+    /** 本次界面生命周期内是否已提示过到期周期账单，避免每次回前台都打扰。 */
+    private boolean duePromptShown;
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
@@ -54,17 +68,51 @@ public class MainActivity extends AppCompatActivity {
         String restored = savedInstanceState == null
                 ? null : savedInstanceState.getString(STATE_SELECTED_TAB);
         selectedTag = restored == null ? TAG_RECORD : restored;
+        duePromptShown = savedInstanceState != null
+                && savedInstanceState.getBoolean(STATE_DUE_PROMPT_SHOWN);
 
         // 先恢复 Fragment 可见性，再同步导航选中态；setSelectedItemId 会回调监听器，
         // 但 selectTab 对同一 tag 是幂等的，不会产生多余事务。
         selectTab(selectedTag);
         binding.bottomNav.setSelectedItemId(itemIdOf(selectedTag));
+
+        observeRecurringDue();
+    }
+
+    /** 首帧观察到期期数：非 0 且本次未提示过时弹确认对话框，确认后一键记账。 */
+    private void observeRecurringDue() {
+        recurringViewModel = new ViewModelProvider(this).get(RecurringViewModel.class);
+        recurringViewModel.getDueCount().observe(this, this::onDueCount);
+    }
+
+    private void onDueCount(@Nullable Integer count) {
+        if (duePromptShown || count == null || count <= 0
+                || isFinishing() || isDestroyed()) {
+            return;
+        }
+        duePromptShown = true;
+        AlertDialog dialog = new MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.main_recurring_due_title)
+                .setMessage(getString(R.string.main_recurring_due_message, count))
+                .setNegativeButton(R.string.main_recurring_due_later, null)
+                .setPositiveButton(R.string.main_recurring_due_confirm, (d, which) ->
+                        recurringViewModel.confirmDue(created -> {
+                            if (isFinishing() || isDestroyed()) {
+                                return;
+                            }
+                            Toast.makeText(this,
+                                    getString(R.string.recurring_due_confirmed_toast, created),
+                                    Toast.LENGTH_SHORT).show();
+                        }))
+                .show();
+        dialog.setCanceledOnTouchOutside(false);
     }
 
     @Override
     protected void onSaveInstanceState(@NonNull Bundle outState) {
         super.onSaveInstanceState(outState);
         outState.putString(STATE_SELECTED_TAB, selectedTag);
+        outState.putBoolean(STATE_DUE_PROMPT_SHOWN, duePromptShown);
     }
 
     /** 显示目标 Tab，隐藏其余已创建的 Tab。 */

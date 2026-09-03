@@ -47,10 +47,25 @@ public final class ChartUiState {
     /** 月预算状态，仅月视图有效，其余周期为 {@link BudgetState#NOT_SET}。 */
     public final BudgetState budgetState;
 
+    /**
+     * 分类预算完成度行（V2 Phase 6）：仅含已设置预算的分类，按状态严重度 + 使用率降序。
+     * 仅月视图有效，其余周期为空列表。
+     */
+    public final List<CategoryBudgetState> categoryBudgetStates;
+
     public ChartUiState(DateRange range, String label, PeriodSummary summary,
                         PeriodSummary previousSummary, int changeAbsX10, int changeDirection,
                         List<TrendPoint> trend, List<CategoryStat> categoryStats,
                         BudgetState budgetState) {
+        this(range, label, summary, previousSummary, changeAbsX10, changeDirection, trend,
+                categoryStats, budgetState, null);
+    }
+
+    public ChartUiState(DateRange range, String label, PeriodSummary summary,
+                        PeriodSummary previousSummary, int changeAbsX10, int changeDirection,
+                        List<TrendPoint> trend, List<CategoryStat> categoryStats,
+                        BudgetState budgetState,
+                        List<CategoryBudgetState> categoryBudgetStates) {
         this.range = range;
         this.label = label;
         this.summary = summary;
@@ -61,6 +76,8 @@ public final class ChartUiState {
         this.categoryStats =
                 categoryStats == null ? Collections.<CategoryStat>emptyList() : categoryStats;
         this.budgetState = budgetState == null ? BudgetState.NOT_SET : budgetState;
+        this.categoryBudgetStates = categoryBudgetStates == null
+                ? Collections.<CategoryBudgetState>emptyList() : categoryBudgetStates;
     }
 
     /** 本周期没有任何账单时展示引导，不允许图表出现「空白块」。 */
