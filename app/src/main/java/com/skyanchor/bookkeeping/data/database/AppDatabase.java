@@ -26,6 +26,8 @@ import java.util.List;
  * <p>V1 保留 4 张核心表：transactions、category、budget、user_settings。
  * V2 升级到 version 3，新增 account、recurring_transaction 两张表，并对 transactions、budget
  * 做 schema 变更，全部集中在单个 {@link #MIGRATION_2_3}（避免多次升版）。
+ * V2.1 升级到 version 4，为 recurring_transaction 增加 {@code anchor_day_of_month}
+ * （月 / 年周期的原始锚点日，消除月末日期漂移），见 {@link #MIGRATION_3_4}。
  *
  * <p>禁止使用 destructiveMigration，否则用户已有账单数据将丢失。
  */
@@ -38,7 +40,7 @@ import java.util.List;
                 AccountEntity.class,
                 RecurringTransactionEntity.class
         },
-        version = 3,
+        version = 4,
         exportSchema = true)
 public abstract class AppDatabase extends RoomDatabase {
 
@@ -200,6 +202,25 @@ public abstract class AppDatabase extends RoomDatabase {
         }
     };
 
+    /**
+     * V2.1 升级 3 → 4：recurring_transaction 增加原始锚点日列。
+     *
+     * <p>{@code anchor_day_of_month} 用于月 / 年周期「每次从原始锚点重推」：
+     * 存量规则的锚点回填取「开始日期的 day-of-month」（用户最初选择的日期），
+     * 而不是可能已被月末夹取过的 next_run_date——后者会把既有漂移固化成新锚点。
+     * 毫秒值经 {@code strftime('%d', 毫秒/1000, 'unixepoch', 'localtime')} 取本地日。
+     */
+    static final Migration MIGRATION_3_4 = new Migration(3, 4) {
+        @Override
+        public void migrate(@NonNull SupportSQLiteDatabase db) {
+            db.execSQL("ALTER TABLE recurring_transaction "
+                    + "ADD COLUMN anchor_day_of_month INTEGER NOT NULL DEFAULT 0");
+            db.execSQL("UPDATE recurring_transaction "
+                    + "SET anchor_day_of_month = CAST(strftime('%d', start_date / 1000, "
+                    + "'unixepoch', 'localtime') AS INTEGER)");
+        }
+    };
+
     public static AppDatabase getInstance(@NonNull Context context) {
         AppDatabase local = instance;
         if (local == null) {
@@ -208,7 +229,7 @@ public abstract class AppDatabase extends RoomDatabase {
                 if (local == null) {
                     local = Room.databaseBuilder(
                                     context.getApplicationContext(), AppDatabase.class, DB_NAME)
-                            .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                             .addCallback(SEED_CALLBACK)
                             .build();
                     instance = local;

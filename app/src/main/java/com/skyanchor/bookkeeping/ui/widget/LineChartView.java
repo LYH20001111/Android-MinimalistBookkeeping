@@ -21,6 +21,7 @@ import androidx.core.content.ContextCompat;
 import com.skyanchor.bookkeeping.R;
 import com.skyanchor.bookkeeping.data.model.TrendPoint;
 import com.skyanchor.bookkeeping.util.AmountUtil;
+import com.skyanchor.bookkeeping.util.ChartAxisLabels;
 import com.skyanchor.bookkeeping.util.CategoryColors;
 
 import java.util.ArrayList;
@@ -33,12 +34,17 @@ import java.util.List;
  * <p>绘制内容：4 条横向网格线 + Y 轴金额刻度（{@link AmountUtil#abbreviate}）+ X 轴标签
  * + 主色折线与 12%→0% 渐变填充 + 数据点 + 最高点数值气泡；触摸时改为显示竖直辅助线与对应点数值。
  *
+ * <p>V2.1 Phase 2（基线第 7–8 章）：数据点与 X 轴标签解耦——数据点永远完整，标签由
+ * {@link ChartAxisLabels} 按绘图区宽度自适应降采样，首末标签分别按绘图区左右缘对齐，
+ * 绘图区另设左右安全边距，保证首末数据点与标签都不贴边、不裁切。宽度不足时优先减少
+ * 标签而不是缩小字体；「最后一天」标签强制显示。
+ *
  * <p>金额只参与「取值 → 刻度」的整数运算，float 仅用于像素坐标，不做任何金额加减。
  * 全 0 数据时只画基线与提示文案，绝不崩溃或留白。
  */
 public class LineChartView extends View {
 
-    /** 月视图 X 轴抽样位置：1 / 5 / 10 / 15 / 20 / 25 日，末日另外补上。 */
+    /** 月视图 X 轴首选标签位置：1 / 5 / 10 / 15 / 20 / 25 日，末日另外强制补上。 */
     private static final int[] MONTH_LABEL_OFFSETS = {0, 4, 9, 14, 19, 24};
 
     private final Paint gridPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -65,12 +71,20 @@ public class LineChartView extends View {
     private final float dotRadius;
     private final float labelGap;
     private final float bubbleRadius;
+    /** V2.1：绘图区左右安全边距（首末数据点不贴容器边缘）。 */
+    private final float edgePadding;
+    /** V2.1：相邻 X 轴标签的最小像素间距，不足时降采样而不是缩小字体。 */
+    private final float minLabelGap;
 
     @NonNull
     private List<TrendPoint> points = Collections.emptyList();
 
     @NonNull
     private int[] labelIndices = new int[0];
+
+    /** 标签缓存的键：数据点数量 + 绘图区宽度，任一变化即重算（setData 也会主动失效）。 */
+    private int labelKeyCount = -1;
+    private float labelKeyWidth = -1f;
 
     @NonNull
     private String emptyText = "";
@@ -111,6 +125,8 @@ public class LineChartView extends View {
         dotRadius = resources.getDimension(R.dimen.chart_dot_radius);
         labelGap = resources.getDimension(R.dimen.spacing_xs);
         bubbleRadius = resources.getDimension(R.dimen.radius_sm);
+        edgePadding = resources.getDimension(R.dimen.chart_edge_padding);
+        minLabelGap = resources.getDimension(R.dimen.chart_label_min_gap);
 
         int primary = ContextCompat.getColor(context, R.color.primary);
         int divider = ContextCompat.getColor(context, R.color.divider);
@@ -168,7 +184,8 @@ public class LineChartView extends View {
         this.maxValueIndex = maxIndex;
         this.axisStep = niceStep(max, gridLines - 1);
         this.axisMax = axisStep * (gridLines - 1);
-        this.labelIndices = labelIndices(next.size(), denseLabelLimit);
+        // 标签在 onDraw 拿到绘图区宽度后按 ChartAxisLabels 重算（与点数解耦）
+        this.labelKeyCount = -1;
         this.hoverIndex = -1;
         startAnimation();
     }
@@ -206,6 +223,7 @@ public class LineChartView extends View {
         if (!computeChartRect(width, height)) {
             return;
         }
+        refreshLabelIndices();
 
         drawGrid(canvas);
 
@@ -223,16 +241,65 @@ public class LineChartView extends View {
         }
     }
 
-    /** 留出 Y 轴刻度与 X 轴标签的位置后，得到实际绘图区。 */
+    /**
+     * 留出 Y 轴刻度与 X 轴标签的位置后，得到实际绘图区；并按基线第 8 章在左右两侧
+     * 各加一道安全边距，保证第一 / 最后数据点不贴容器边缘。
+     */
     private boolean computeChartRect(int width, int height) {
         float yAxisWidth = measureYAxisWidth();
         float xLabelHeight = axisPaint.getTextSize() + labelGap;
         float topReserve = bubbleTextPaint.getTextSize() + labelGap * 4f;
-        chartRect.set(getPaddingLeft() + yAxisWidth + labelGap,
+        chartRect.set(getPaddingLeft() + yAxisWidth + labelGap + edgePadding,
                 getPaddingTop() + topReserve,
-                width - getPaddingRight(),
+                width - getPaddingRight() - edgePadding,
                 height - getPaddingBottom() - xLabelHeight);
         return chartRect.width() > 0f && chartRect.height() > 0f;
+    }
+
+    /** 按当前数据与绘图区宽度重算 X 轴标签（键未变时直接复用缓存，动画期间零分配）。 */
+    private void refreshLabelIndices() {
+        int count = points.size();
+        float available = chartRect.width();
+        if (count == 0 || (labelKeyCount == count && labelKeyWidth == available)) {
+            return;
+        }
+        labelKeyCount = count;
+        labelKeyWidth = available;
+        float[] widths = new float[count];
+        for (int i = 0; i < count; i++) {
+            widths[i] = axisPaint.measureText(points.get(i).label);
+        }
+        labelIndices = ChartAxisLabels.select(count, widths, available, minLabelGap,
+                count <= denseLabelLimit ? allIndices(count) : monthPreferred(count));
+    }
+
+    @NonNull
+    private static int[] allIndices(int count) {
+        int[] all = new int[count];
+        for (int i = 0; i < count; i++) {
+            all[i] = i;
+        }
+        return all;
+    }
+
+    /** 月视图首选标签：1/5/10/15/20/25 + 末日；放不下由 ChartAxisLabels 贪心降采样。 */
+    @NonNull
+    private static int[] monthPreferred(int count) {
+        List<Integer> kept = new ArrayList<>(MONTH_LABEL_OFFSETS.length + 1);
+        for (int offset : MONTH_LABEL_OFFSETS) {
+            if (offset < count) {
+                kept.add(offset);
+            }
+        }
+        int last = count - 1;
+        if (!kept.contains(last)) {
+            kept.add(last);
+        }
+        int[] indices = new int[kept.size()];
+        for (int i = 0; i < indices.length; i++) {
+            indices[i] = kept.get(i);
+        }
+        return indices;
     }
 
     private float measureYAxisWidth() {
@@ -301,14 +368,29 @@ public class LineChartView extends View {
         return fillPaint;
     }
 
+    /**
+     * X 轴标签：首标签左对齐于绘图区左缘、末标签右对齐于右缘（与 ChartAxisLabels 的
+     * 几何约定一致），中间标签居中于数据点——两端不裁切、间距由选择算法保证。
+     */
     private void drawXLabels(@NonNull Canvas canvas) {
-        axisPaint.setTextAlign(Paint.Align.CENTER);
         float baseline = chartRect.bottom + labelGap - axisPaint.ascent();
         for (int index : labelIndices) {
-            if (index >= 0 && index < points.size()) {
-                canvas.drawText(points.get(index).label, xAt(index), baseline, axisPaint);
+            if (index < 0 || index >= points.size()) {
+                continue;
+            }
+            String label = points.get(index).label;
+            if (index == 0 && points.size() > 1) {
+                axisPaint.setTextAlign(Paint.Align.LEFT);
+                canvas.drawText(label, chartRect.left, baseline, axisPaint);
+            } else if (index == points.size() - 1 && points.size() > 1) {
+                axisPaint.setTextAlign(Paint.Align.RIGHT);
+                canvas.drawText(label, chartRect.right, baseline, axisPaint);
+            } else {
+                axisPaint.setTextAlign(Paint.Align.CENTER);
+                canvas.drawText(label, xAt(index), baseline, axisPaint);
             }
         }
+        axisPaint.setTextAlign(Paint.Align.CENTER);
     }
 
     private void drawHover(@NonNull Canvas canvas) {
@@ -491,37 +573,5 @@ public class LineChartView extends View {
             step *= 2L;
         }
         return step;
-    }
-
-    /**
-     * X 轴标签抽样。点数不超过 {@code denseLimit} 时逐个绘制（周 7 点、年 12 点），
-     * 超过时只画 1/5/10/15/20/25 日与末日（月视图）。
-     */
-    static int[] labelIndices(int count, int denseLimit) {
-        if (count <= 0) {
-            return new int[0];
-        }
-        if (count <= denseLimit) {
-            int[] all = new int[count];
-            for (int i = 0; i < count; i++) {
-                all[i] = i;
-            }
-            return all;
-        }
-        List<Integer> kept = new ArrayList<>(MONTH_LABEL_OFFSETS.length + 1);
-        for (int offset : MONTH_LABEL_OFFSETS) {
-            if (offset < count && !kept.contains(offset)) {
-                kept.add(offset);
-            }
-        }
-        int last = count - 1;
-        if (!kept.contains(last)) {
-            kept.add(last);
-        }
-        int[] indices = new int[kept.size()];
-        for (int i = 0; i < indices.length; i++) {
-            indices[i] = kept.get(i);
-        }
-        return indices;
     }
 }

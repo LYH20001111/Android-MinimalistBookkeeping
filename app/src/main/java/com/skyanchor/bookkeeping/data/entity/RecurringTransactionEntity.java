@@ -15,8 +15,9 @@ import java.util.Objects;
  * <p>到期规则：{@code next_run_date <= today 且 is_enabled} 的模板生成「待确认」occurrence，
  * 由用户一键确认后写入交易并幂等推进 {@code next_run_date}；不做后台静默创建。
  *
- * <p>频率推进：日按 +interval 天，周按 weekday，月/年按 day-of-month 夹到当月最后一天。
- * 金额单位为分；{@code end_date = 0} 表示无结束日期。
+ * <p>频率推进：日按 +interval 天，周按 weekday；月 / 年自 V2.1 起改为「原始锚点日」重推
+ * （{@code anchor_day_of_month}，如 1 月 31 日 → 2 月 28 日 → 3 月 31 日），不再从上一次
+ * 被夹取的日期继续推导，消除月末日期漂移。金额单位为分；{@code end_date = 0} 表示无结束日期。
  */
 @Entity(
         tableName = "recurring_transaction",
@@ -80,6 +81,13 @@ public class RecurringTransactionEntity {
     @ColumnInfo(name = "next_run_date")
     public long nextRunDate;
 
+    /**
+     * V2.1：月 / 年周期的原始锚点日（1–31）。每次推进都从它重新推导目标月的天数
+     * （如 31 → 2 月取 28/29），不从上一次被夹取的日期继续推导；日 / 周频率不使用。
+     */
+    @ColumnInfo(name = "anchor_day_of_month")
+    public int anchorDayOfMonth;
+
     @ColumnInfo(name = "is_enabled")
     public boolean isEnabled = true;
 
@@ -107,6 +115,7 @@ public class RecurringTransactionEntity {
                 && amount == other.amount
                 && frequency == other.frequency
                 && interval == other.interval
+                && anchorDayOfMonth == other.anchorDayOfMonth
                 && startDate == other.startDate
                 && endDate == other.endDate
                 && nextRunDate == other.nextRunDate
@@ -120,6 +129,6 @@ public class RecurringTransactionEntity {
     @Override
     public int hashCode() {
         return Objects.hash(id, name, type, amount, categoryId, accountId, frequency, interval,
-                startDate, endDate, nextRunDate, isEnabled, note);
+                anchorDayOfMonth, startDate, endDate, nextRunDate, isEnabled, note);
     }
 }

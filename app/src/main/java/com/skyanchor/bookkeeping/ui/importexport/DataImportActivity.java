@@ -57,7 +57,8 @@ public class DataImportActivity extends AppCompatActivity {
         InsetsUtil.syncSystemBarAppearance(this);
 
         viewModel = new ViewModelProvider(this).get(ImportViewModel.class);
-        adapter = new ImportPreviewAdapter();
+        // 疑似重复行切换「保留 / 跳过」后即时刷新确认按钮与统计（V2.1 基线第 17 章）
+        adapter = new ImportPreviewAdapter(this::refreshButtons);
         binding.importPreviewList.setLayoutManager(new LinearLayoutManager(this));
         binding.importPreviewList.setAdapter(adapter);
 
@@ -142,11 +143,13 @@ public class DataImportActivity extends AppCompatActivity {
         binding.pickFileButton.setEnabled(!busy);
 
         if (hasPreview) {
+            // 确认数 = 有效行 + 用户保留的疑似重复行（默认跳过，不静默写入也不静默丢弃）
+            int committable = preview.validCount + preview.keptDuplicateCount();
             boolean importing = busy && committing;
             binding.confirmImportButton.setText(importing
                     ? getString(R.string.import_committing)
-                    : getString(R.string.import_confirm_format, preview.validCount));
-            binding.confirmImportButton.setEnabled(!busy && !committed && preview.hasValid());
+                    : getString(R.string.import_confirm_format, committable));
+            binding.confirmImportButton.setEnabled(!busy && !committed && preview.hasCommittable());
         }
     }
 
@@ -162,7 +165,8 @@ public class DataImportActivity extends AppCompatActivity {
             committed = true;
             refreshButtons();
             ImportPreview preview = viewModel.currentPreview();
-            int duplicate = preview == null ? 0 : preview.duplicateCount;
+            // 跳过数 = 仍被跳过的疑似重复行；被保留的重复行已计入成功导入数
+            int duplicate = preview == null ? 0 : preview.skippedDuplicateCount();
             int error = preview == null ? 0 : preview.errorCount;
             new MaterialAlertDialogBuilder(this)
                     .setTitle(R.string.import_success_title)

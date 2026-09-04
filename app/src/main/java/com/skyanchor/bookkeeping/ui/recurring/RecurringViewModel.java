@@ -118,7 +118,8 @@ public class RecurringViewModel extends AndroidViewModel {
         }
         for (RecurringTransactionEntity rule : rules) {
             List<Long> dates = GenerateRecurringTransactionsUseCase.collectDueDates(
-                    rule.nextRunDate, today, rule.endDate, rule.frequency, rule.interval);
+                    rule.anchorDayOfMonth, rule.nextRunDate, today, rule.endDate,
+                    rule.frequency, rule.interval);
             if (dates.isEmpty()) {
                 continue;
             }

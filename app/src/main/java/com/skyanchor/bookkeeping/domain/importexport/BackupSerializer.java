@@ -10,6 +10,7 @@ import com.skyanchor.bookkeeping.data.entity.RecurringTransactionEntity;
 import com.skyanchor.bookkeeping.data.entity.TransactionEntity;
 import com.skyanchor.bookkeeping.data.entity.UserSettingsEntity;
 import com.skyanchor.bookkeeping.data.model.BackupData;
+import com.skyanchor.bookkeeping.util.DateUtil;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -23,7 +24,7 @@ import java.util.List;
  *
  * <p>用平台内置 {@code org.json} 实现版本化 JSON（不引入第三方运行时依赖）：
  * <pre>{@code
- * {"schemaVersion":3,"accounts":[...],"categories":[...],"transactions":[...],
+ * {"schemaVersion":4,"accounts":[...],"categories":[...],"transactions":[...],
  *  "budgets":[...],"recurring":[...],"settings":{...}}
  * }</pre>
  *
@@ -34,10 +35,15 @@ import java.util.List;
 public final class BackupSerializer {
 
     /**
-     * 备份文件格式版本，当前与 {@code AppDatabase} 的 version 3 对齐。
-     * 恢复时版本不一致直接拒绝，防止新旧 schema 混写。
+     * 备份文件格式版本，当前与 {@code AppDatabase} 的 version 4 对齐（V2.1 增加
+     * 周期账单锚点日 {@code anchorDayOfMonth}）。
+     * 恢复时拒绝高于当前版本的文件（schema 未知，混写有风险）；
+     * V2 的 version 3 备份仍可恢复，缺失的锚点日由序列化侧按开始日期推导补齐。
      */
-    public static final int SCHEMA_VERSION = 3;
+    public static final int SCHEMA_VERSION = 4;
+
+    /** 仍可恢复的最低备份格式版本：3 = V2 基线（无锚点日字段）。 */
+    public static final int MIN_SUPPORTED_VERSION = 3;
 
     private BackupSerializer() {
     }
@@ -197,6 +203,7 @@ public final class BackupSerializer {
         putNullableLong(json, "accountId", item.accountId);
         json.put("frequency", item.frequency);
         json.put("interval", item.interval);
+        json.put("anchorDayOfMonth", item.anchorDayOfMonth);
         json.put("startDate", item.startDate);
         json.put("endDate", item.endDate);
         json.put("nextRunDate", item.nextRunDate);
@@ -350,6 +357,11 @@ public final class BackupSerializer {
             item.frequency = json.optInt("frequency", RecurringTransactionEntity.FREQUENCY_MONTHLY);
             item.interval = json.optInt("interval", 1);
             item.startDate = json.optLong("startDate");
+            // V2（version 3）备份没有锚点日字段：按开始日期的日推导补齐，语义与迁移一致
+            item.anchorDayOfMonth = json.optInt("anchorDayOfMonth", 0);
+            if (item.anchorDayOfMonth <= 0 && item.startDate != 0L) {
+                item.anchorDayOfMonth = DateUtil.dayOfMonthOf(item.startDate);
+            }
             item.endDate = json.optLong("endDate");
             item.nextRunDate = json.optLong("nextRunDate");
             item.isEnabled = json.optBoolean("isEnabled", true);

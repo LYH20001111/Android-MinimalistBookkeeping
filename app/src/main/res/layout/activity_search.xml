@@ -83,35 +83,49 @@
 
         <com.google.android.material.textfield.TextInputLayout
             android:id="@+id/categoryLayout"
-            style="@style/Widget.App.TextInputLayout.Dropdown"
+            style="@style/Widget.App.TextInputLayout"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_marginEnd="@dimen/spacing_sm"
             android:layout_weight="1"
-            android:hint="@string/search_category_title">
+            android:hint="@string/search_category_title"
+            app:endIconDrawable="@drawable/ic_arrow_down"
+            app:endIconMode="custom">
 
-            <com.google.android.material.textfield.MaterialAutoCompleteTextView
+            <com.google.android.material.textfield.TextInputEditText
                 android:id="@+id/categoryInput"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:clickable="true"
+                android:cursorVisible="false"
+                android:focusable="false"
                 android:inputType="none"
-                android:maxLines="1" />
+                android:longClickable="false"
+                android:maxLines="1"
+                android:textCursorDrawable="@null" />
         </com.google.android.material.textfield.TextInputLayout>
 
         <com.google.android.material.textfield.TextInputLayout
             android:id="@+id/accountLayout"
-            style="@style/Widget.App.TextInputLayout.Dropdown"
+            style="@style/Widget.App.TextInputLayout"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:hint="@string/search_account_title">
+            android:hint="@string/search_account_title"
+            app:endIconDrawable="@drawable/ic_arrow_down"
+            app:endIconMode="custom">
 
-            <com.google.android.material.textfield.MaterialAutoCompleteTextView
+            <com.google.android.material.textfield.TextInputEditText
                 android:id="@+id/accountInput"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:clickable="true"
+                android:cursorVisible="false"
+                android:focusable="false"
                 android:inputType="none"
-                android:maxLines="1" />
+                android:longClickable="false"
+                android:maxLines="1"
+                android:textCursorDrawable="@null" />
         </com.google.android.material.textfield.TextInputLayout>
     </LinearLayout>
 

@@ -185,7 +185,7 @@ public class BookkeepingRepository {
         return database.accountDao().observeAccountBalances();
     }
 
-    /** 未归档账户余额（联表重算），用于总资产等只统计活跃账户的场景。 */
+    /** 未归档账户余额（联表重算），用于账户总余额等只统计活跃账户的场景。 */
     public LiveData<List<AccountBalance>> observeActiveAccountBalances() {
         return database.accountDao().observeActiveAccountBalances();
     }
@@ -216,6 +216,39 @@ public class BookkeepingRepository {
     /** 首个未归档账户 id，记账默认落账账户；无账户时回调 null。 */
     public void firstActiveAccountId(@Nullable Callback<Long> callback) {
         io.execute(() -> post(callback, database.accountDao().firstActiveAccountId()));
+    }
+
+    // ------------------------------------------------------------------
+    // V2.1：历史账单账户归属（基线第 11–12 章）
+    // ------------------------------------------------------------------
+
+    /** 未归属历史账单（V1 迁移数据，account_id IS NULL）数量，供账户管理页的归属提示。 */
+    public LiveData<Integer> observeUnassignedCount() {
+        return database.transactionDao().observeUnassignedCount();
+    }
+
+    /**
+     * 把全部未归属历史账单批量归属到指定账户（基线第 12 章：不自动猜测、必须用户确认）。
+     *
+     * <p>单事务内完成：批量 UPDATE → 重算全部账户的余额缓存。归属后这些账单计入
+     * 目标账户余额，总收入 / 总支出统计不变（它们本来就参与全局统计）。
+     * 回调返回归属的账单笔数。
+     */
+    public void assignUnassignedTransactions(long accountId,
+                                             @Nullable Callback<Integer> callback) {
+        io.execute(() -> {
+            int assigned = database.runInTransaction(() -> {
+                long now = System.currentTimeMillis();
+                int count = database.transactionDao().assignUnassigned(accountId, now);
+                Set<Long> allAccountIds = new LinkedHashSet<>();
+                for (AccountEntity account : database.accountDao().getAll()) {
+                    allAccountIds.add(account.id);
+                }
+                recalcAccounts(allAccountIds, now);
+                return count;
+            });
+            post(callback, assigned);
+        });
     }
 
     // ------------------------------------------------------------------
@@ -542,12 +575,16 @@ public class BookkeepingRepository {
      * 保存周期账单规则。id 为 0 时插入，{@code nextRunDate} 初始化为开始日期；
      * 更新时仅当调度字段（开始日期 / 频率 / 间隔）变化才重置 {@code nextRunDate}，
      * 否则原样保留——它是「已生成到哪一期」的幂等标记，乱动会导致重复生成。
+     *
+     * <p>V2.1：锚点日统一取「开始日期的 day-of-month」（用户最初选择的日期），
+     * 新建与改期都重算；月 / 年推进时每次从锚点重推，不再继承被夹取的日期。
      */
     public void saveRecurring(@NonNull RecurringTransactionEntity entity,
                               @Nullable Callback<Long> callback) {
         io.execute(() -> {
             long now = System.currentTimeMillis();
             long id = database.runInTransaction(() -> {
+                entity.anchorDayOfMonth = DateUtil.dayOfMonthOf(entity.startDate);
                 if (entity.id == 0L) {
                     entity.createdAt = now;
                     entity.updatedAt = now;
@@ -627,7 +664,8 @@ public class BookkeepingRepository {
     private int generateForRule(@NonNull RecurringTransactionEntity rule, long today, long now,
                                 @NonNull Set<Long> affectedAccounts) {
         List<Long> dueDates = GenerateRecurringTransactionsUseCase.collectDueDates(
-                rule.nextRunDate, today, rule.endDate, rule.frequency, rule.interval);
+                rule.anchorDayOfMonth, rule.nextRunDate, today, rule.endDate,
+                rule.frequency, rule.interval);
         for (long date : dueDates) {
             TransactionEntity transaction = new TransactionEntity();
             transaction.type = rule.type;
@@ -646,7 +684,7 @@ public class BookkeepingRepository {
         if (!dueDates.isEmpty()) {
             long last = dueDates.get(dueDates.size() - 1);
             rule.nextRunDate = GenerateRecurringTransactionsUseCase.nextAfter(
-                    last, rule.frequency, rule.interval);
+                    rule.anchorDayOfMonth, last, rule.frequency, rule.interval);
         }
         if (GenerateRecurringTransactionsUseCase.isBeyondEndDate(rule.nextRunDate, rule.endDate)) {
             // 规则已到结束日期：停用以免永远停留在「待确认」

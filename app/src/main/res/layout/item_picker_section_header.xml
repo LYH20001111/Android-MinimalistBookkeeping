@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- V2.1 选择器的「最近使用」区块标题行：网格中独占整行（SpanSizeLookup 控制） -->
+<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/pickerSectionTitle"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:paddingStart="@dimen/spacing_md"
+    android:paddingTop="@dimen/spacing_sm"
+    android:paddingEnd="@dimen/spacing_md"
+    android:paddingBottom="@dimen/spacing_xxs"
+    android:textAppearance="@style/TextAppearance.App.Caption"
+    android:textColor="@color/text_tertiary" />

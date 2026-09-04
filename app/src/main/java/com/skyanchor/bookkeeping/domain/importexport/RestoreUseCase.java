@@ -60,7 +60,10 @@ public class RestoreUseCase {
         } catch (JSONException | RuntimeException e) {
             return RestoreResult.failed(RestoreResult.REASON_MALFORMED);
         }
-        if (data.schemaVersion != BackupSerializer.SCHEMA_VERSION) {
+        // 拒绝更新版本的文件（schema 未知）；V2（version 3）备份仍可恢复，
+        // 缺失字段由 BackupSerializer 按兼容规则补齐（基线 31.5：数据结构兼容新字段）
+        if (data.schemaVersion > BackupSerializer.SCHEMA_VERSION
+                || data.schemaVersion < BackupSerializer.MIN_SUPPORTED_VERSION) {
             return RestoreResult.failed(RestoreResult.REASON_VERSION);
         }
         // 备份文件缺设置段时回落到默认设置，保证恢复后 user_settings 表始终有单例行

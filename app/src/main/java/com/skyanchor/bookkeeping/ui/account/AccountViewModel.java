@@ -29,15 +29,29 @@ public class AccountViewModel extends AndroidViewModel {
     private final BookkeepingRepository repository;
     private final LiveData<List<AccountBalance>> accounts;
 
+    /** V2.1：未归属历史账单（V1 迁移数据）数量，供进入账户管理时的归属提示。 */
+    private final LiveData<Integer> unassignedCount;
+
     public AccountViewModel(@NonNull Application application) {
         super(application);
         this.repository = BookkeepingApp.get(application).getRepository();
         this.accounts = repository.observeAccountBalances();
+        this.unassignedCount = repository.observeUnassignedCount();
     }
 
     /** 全部账户（含已归档）余额投影，按 sort_order 升序。 */
     public LiveData<List<AccountBalance>> getAccounts() {
         return accounts;
+    }
+
+    /** 未归属历史账单数量（account_id IS NULL），归零后提示不再出现。 */
+    public LiveData<Integer> getUnassignedCount() {
+        return unassignedCount;
+    }
+
+    /** V2.1：把全部未归属历史账单批量归属到指定账户并重算余额，回调返回归属笔数。 */
+    public void assignUnassigned(long accountId, @Nullable Callback<Integer> callback) {
+        repository.assignUnassignedTransactions(accountId, callback);
     }
 
     public void save(@NonNull AccountEntity entity, @Nullable Callback<Long> callback) {

@@ -558,7 +558,7 @@
 
                 </com.google.android.material.card.MaterialCardView>
 
-                <!-- V2：账户资金卡片（总资产 + 各账户当前余额），与周期无关，单独观察刷新 -->
+                <!-- V2：账户资金卡片（账户总余额 + 各账户当前余额），与周期无关，单独观察刷新 -->
                 <com.google.android.material.card.MaterialCardView
                     android:id="@+id/accountCard"
                     style="@style/Widget.App.Card"

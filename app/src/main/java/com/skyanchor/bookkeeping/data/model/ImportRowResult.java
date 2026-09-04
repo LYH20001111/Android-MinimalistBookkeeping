@@ -72,6 +72,13 @@ public final class ImportRowResult {
     @NonNull
     public final String summary;
 
+    /**
+     * V2.1（基线第 17 章）：用户对疑似重复行的处置，仅 {@link Status#DUPLICATE} 行有意义。
+     * 默认 {@code false}（跳过，不写入）；预览页里用户点选该行可改为 {@code true}（保留写入）。
+     * 可变是有意的：解析结果本身不可变，而「保留 / 跳过」是用户在预览页逐行做出的决定。
+     */
+    public boolean keep;
+
     private ImportRowResult(int lineNumber, @NonNull Status status, @NonNull Reason reason,
                             @Nullable TransactionEntity entity, @NonNull String summary) {
         this.lineNumber = lineNumber;

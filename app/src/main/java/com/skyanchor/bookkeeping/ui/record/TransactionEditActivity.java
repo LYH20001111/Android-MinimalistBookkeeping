@@ -300,8 +300,9 @@ public class TransactionEditActivity extends AppCompatActivity {
     }
 
     /**
-     * 当前选中账户失效（新增未选 / 编辑历史账单 account_id 为 NULL / 原账户已归档）时，
-     * 落到首个未归档账户，保证「账户必填」且下拉始终有可选项。
+     * 当前选中账户失效（新增未选 / 编辑历史账单 account_id 为 NULL）时，
+     * 落到首个账户，保证「账户必填」且下拉始终有可选项。
+     * 原账户已归档的情形由 ViewModel 的候选合并规则保住（V2.1），不会走到这里。
      */
     private void applyDefaultAccountSelection() {
         if (!containsAccount(selectedAccountId)) {
@@ -356,9 +357,14 @@ public class TransactionEditActivity extends AppCompatActivity {
         return "";
     }
 
+    /**
+     * 账户下拉标签。已归档账户（仅编辑旧账单时进入候选，见 ViewModel 的合并规则）
+     * 带「已归档」徽标，明示当前选择而不是悄悄保留（V2.1 基线第 26 章）。
+     */
     @NonNull
     private static String accountLabel(@NonNull AccountEntity account) {
-        return AccountTypes.emoji(account.type) + " " + account.name;
+        String label = AccountTypes.emoji(account.type) + " " + account.name;
+        return account.isArchived ? label + "（已归档）" : label;
     }
 
     // ------------------------------------------------------------------

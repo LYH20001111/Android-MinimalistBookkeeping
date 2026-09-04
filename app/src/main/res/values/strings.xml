@@ -122,9 +122,9 @@
     <string name="chart_back_to_current">回到当前周期</string>
     <string name="chart_previous_period">上一周期</string>
     <string name="chart_next_period">下一周期</string>
-    <!-- V2 新增：账户资金卡片（总资产 + 各账户余额） -->
+    <!-- V2 新增：账户资金卡片（账户总余额 + 各账户余额）；V2.1 按基线 18 章把「总资产」改为「账户总余额」（信用卡负余额下更准确） -->
     <string name="chart_account_title">账户资金</string>
-    <string name="chart_total_assets">总资产</string>
+    <string name="chart_total_assets">账户总余额</string>
     <string name="chart_account_empty">还没有账户，请先到「我的 → 账户管理」新增</string>
 
     <!-- ============ V1.1 新增：周期选择器 ============ -->
@@ -275,6 +275,28 @@
     <string name="search_empty">没有匹配的账单</string>
     <string name="search_empty_hint">换个关键词或放宽筛选条件试试</string>
 
+    <!-- ============ V2.1 搜索选择器（图标网格 / 图标列表） ============ -->
+    <string name="picker_category_title">选择分类</string>
+    <string name="picker_account_title">选择账户</string>
+    <string name="picker_recent_section">最近使用</string>
+    <string name="picker_check_mark">✓</string>
+    <string name="picker_category_empty">还没有分类</string>
+    <string name="picker_category_empty_hint">先去创建分类，再回来按分类筛选</string>
+    <string name="picker_go_category_manage">去分类管理</string>
+    <string name="picker_account_empty">没有可用账户</string>
+
+    <!-- ============ V2.1 未归属历史账单归属 ============ -->
+    <string name="unassigned_notice_title">发现未归属账单</string>
+    <string name="unassigned_notice_message">有 %1$d 笔历史账单还没有账户。它们不会影响任何账户余额，也不会参与账户统计。</string>
+    <string name="unassigned_notice_later">暂不处理</string>
+    <string name="unassigned_notice_go">去设置</string>
+    <string name="unassigned_assign_title">批量归属</string>
+    <string name="unassigned_assign_hint">共 %1$d 笔未归属账单，选择要归属到的账户：</string>
+    <string name="unassigned_assign_confirm_title">确认归属</string>
+    <string name="unassigned_assign_confirm_message">把 %1$d 笔历史账单全部归属到「%2$s」？归属后将计入该账户余额。</string>
+    <string name="unassigned_assign_done">已把 %1$d 笔账单归属到「%2$s」</string>
+    <string name="unassigned_no_account">没有可用账户，请先新增一个账户</string>
+
     <!-- ============ V2 数据导出 / 导入 ============ -->
     <string name="export_title">数据导出</string>
     <string name="export_desc">把全部账单导出为 CSV 文件（UTF-8 带 BOM，可用 Excel 直接打开）。保存位置由你选择，App 不联网、不申请存储权限。</string>
@@ -289,11 +311,11 @@
     <string name="export_file_prefix">极简记账-账单</string>
 
     <string name="import_title">数据导入</string>
-    <string name="import_desc">从 CSV 文件导入账单。导入前先解析并预览，只有合法且不重复的行才会写入，错误与重复行会被跳过并标注原因。</string>
+    <string name="import_desc">从 CSV 文件导入账单。导入前先解析并预览：合法行默认写入，疑似重复行默认跳过（可在预览中逐行选择保留），错误行不会写入并标注原因。</string>
     <string name="import_pick">选择 CSV 文件</string>
     <string name="import_parsing">正在解析文件…</string>
     <string name="import_preview_title">导入预览</string>
-    <string name="import_preview_hint">确认无误后导入，重复与错误行不会写入</string>
+    <string name="import_preview_hint">确认无误后导入；疑似重复行默认跳过，点击该行可改为保留</string>
     <string name="import_preview_placeholder">选择 CSV 文件后，这里会显示逐行导入预览</string>
     <string name="import_summary_format">有效 %1$d · 跳过 %2$d · 错误 %3$d</string>
     <string name="import_confirm_format">确认导入 %1$d 笔</string>
@@ -304,7 +326,8 @@
     <string name="import_invalid_format">无法识别的文件格式：请使用本 App 导出的 CSV，或确保含「类型 / 金额 / 日期」列</string>
     <string name="import_empty">文件里没有可导入的账单</string>
     <string name="import_status_valid">有效</string>
-    <string name="import_status_duplicate">重复跳过</string>
+    <string name="import_status_duplicate">疑似重复·跳过</string>
+    <string name="import_status_duplicate_kept">疑似重复·保留</string>
     <string name="import_status_error">错误</string>
     <!-- 预览行号（对应 CSV 中的行，表头为第 1 行） -->
     <string name="import_line_format">第 %1$d 行</string>

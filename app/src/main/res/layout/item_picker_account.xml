@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- V2.1 账户选择器列表项：Emoji 圆形图标 + 账户名 + 类型（含已归档徽标）+ 选中 ✓。
+     不展示余额，避免选择场景信息过载（V2.1 基线 5.4）。 -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginBottom="@dimen/spacing_xxs"
+    android:background="@drawable/bg_category_selectable"
+    android:gravity="center_vertical"
+    android:minHeight="@dimen/list_item_min_height"
+    android:orientation="horizontal"
+    android:paddingStart="@dimen/spacing_md"
+    android:paddingTop="@dimen/spacing_sm"
+    android:paddingEnd="@dimen/spacing_md"
+    android:paddingBottom="@dimen/spacing_sm">
+
+    <FrameLayout
+        android:layout_width="@dimen/list_category_icon_size"
+        android:layout_height="@dimen/list_category_icon_size"
+        android:background="@drawable/bg_category_circle">
+
+        <TextView
+            android:id="@+id/pickerIcon"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:contentDescription="@string/cd_account_icon"
+            android:gravity="center"
+            android:textSize="@dimen/font_emoji" />
+
+    </FrameLayout>
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="@dimen/spacing_md"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/pickerName"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textAppearance="@style/TextAppearance.App.Body" />
+
+        <TextView
+            android:id="@+id/pickerType"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/spacing_xxs"
+            android:maxLines="1"
+            android:textAppearance="@style/TextAppearance.App.Caption"
+            android:textColor="@color/text_tertiary" />
+
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/pickerCheck"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="@dimen/spacing_sm"
+        android:text="@string/picker_check_mark"
+        android:textColor="@color/primary"
+        android:textSize="@dimen/font_section_title"
+        android:visibility="gone" />
+
+</LinearLayout>

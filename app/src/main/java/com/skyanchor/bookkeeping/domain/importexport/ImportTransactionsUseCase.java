@@ -50,13 +50,16 @@ public class ImportTransactionsUseCase {
         repository.runOnIo(() -> post(callback, buildPreview(uri)));
     }
 
-    /** 用户确认后提交预览中的有效行，主线程回调提交结果（含插入行数）。 */
+    /**
+     * 用户确认后提交预览中的可提交行，主线程回调提交结果（含插入行数）。
+     * V2.1：可提交 = 全部有效行 + 用户在预览页选择「保留」的疑似重复行（默认跳过）。
+     */
     public void commit(@NonNull ImportPreview preview,
                        @Nullable Callback<ImportCommitResult> callback) {
         repository.runOnIo(() -> {
             ImportCommitResult result;
             try {
-                int inserted = repository.insertImportedTransactions(preview.validEntities());
+                int inserted = repository.insertImportedTransactions(preview.commitEntities());
                 result = ImportCommitResult.ok(inserted);
             } catch (RuntimeException e) {
                 result = ImportCommitResult.failed();

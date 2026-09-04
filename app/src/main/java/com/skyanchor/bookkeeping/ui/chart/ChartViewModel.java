@@ -126,7 +126,7 @@ public class ChartViewModel extends AndroidViewModel {
         return uiState;
     }
 
-    /** 未归档账户余额，按 sort_order 升序；总资产 = 这些账户余额之和。 */
+    /** 未归档账户余额，按 sort_order 升序；账户总余额 = 这些账户余额之和。 */
     public LiveData<List<AccountBalance>> getAccountBalances() {
         return accountBalances;
     }

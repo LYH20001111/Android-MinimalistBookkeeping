@@ -46,7 +46,7 @@ public interface AccountDao {
             + "FROM account a ORDER BY a.sort_order ASC, a.id ASC")
     LiveData<List<AccountBalance>> observeAccountBalances();
 
-    /** 未归档账户余额（联表重算），用于总资产等只统计活跃账户的场景。 */
+    /** 未归档账户余额（联表重算），用于账户总余额等只统计活跃账户的场景。 */
     @Query("SELECT a.id AS id, a.name AS name, a.type AS type, a.is_credit AS is_credit, "
             + "a.sort_order AS sort_order, a.is_archived AS is_archived, "
             + "a.initial_balance AS initial_balance, " + BALANCE_EXPR + " AS balance "

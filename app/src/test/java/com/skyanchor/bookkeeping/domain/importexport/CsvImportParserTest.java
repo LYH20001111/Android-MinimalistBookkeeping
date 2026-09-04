@@ -405,6 +405,61 @@ public class CsvImportParserTest {
         assertEquals(1, preview.validEntities().size());
     }
 
+    // ==================================================================
+    // V2.1：疑似重复可保留（基线第 17 章）
+    // ==================================================================
+
+    /** 疑似重复行默认 keep=false（跳过），不会被静默写入。 */
+    @Test
+    public void duplicateRow_defaultsToSkipped() {
+        String csv = csvWithHeader(
+                row("支出", "35.80", "餐饮", "现金", "", "2024-05-15", "12:30", "午餐"));
+        ImportPreview preview = ImportRowClassifier.classify(csv, context(duplicateExisting()));
+
+        assertEquals(1, preview.duplicateCount);
+        assertFalse(preview.rows.get(0).keep);
+        assertTrue(preview.commitEntities().isEmpty());
+        assertEquals(0, preview.keptDuplicateCount());
+        assertFalse(preview.hasCommittable());
+    }
+
+    /** 用户选择保留后：保留行进入提交集，跳过数相应减少，确认数 = 有效 + 保留。 */
+    @Test
+    public void duplicateRow_keptGoesIntoCommitEntities() {
+        String fresh = row("支出", "12.00", "餐饮", "现金", "", "2024-05-16", "09:00", "新账单");
+        String dup = row("支出", "35.80", "餐饮", "现金", "", "2024-05-15", "12:30", "午餐");
+        ImportPreview preview = ImportRowClassifier.classify(csvWithHeader(fresh, dup),
+                context(duplicateExisting()));
+
+        assertEquals(1, preview.validCount);
+        assertEquals(1, preview.duplicateCount);
+        // 用户把疑似重复行改为「保留」
+        preview.rows.get(1).keep = true;
+
+        assertEquals(1, preview.keptDuplicateCount());
+        assertEquals(0, preview.skippedDuplicateCount());
+        assertTrue(preview.hasCommittable());
+        assertEquals(2, preview.commitEntities().size());
+        // 保留行的实体与解析结果一致
+        assertEquals(3580L, preview.commitEntities().get(1).amount);
+        // 有效行集合不受影响（向后兼容）
+        assertEquals(1, preview.validEntities().size());
+    }
+
+    /** 保留再切回跳过：提交集回到只剩有效行。 */
+    @Test
+    public void duplicateRow_toggleBackToSkipped() {
+        String dup = row("支出", "35.80", "餐饮", "现金", "", "2024-05-15", "12:30", "午餐");
+        ImportPreview preview = ImportRowClassifier.classify(csvWithHeader(dup),
+                context(duplicateExisting()));
+
+        preview.rows.get(0).keep = true;
+        assertEquals(1, preview.commitEntities().size());
+        preview.rows.get(0).keep = false;
+        assertTrue(preview.commitEntities().isEmpty());
+        assertEquals(1, preview.skippedDuplicateCount());
+    }
+
     @Test
     public void classify_blankRowIsSkipped() {
         String csv = csvWithHeader(
@@ -479,6 +534,20 @@ public class CsvImportParserTest {
     }
 
     /** 分类：餐饮(支出,10) / 工资(收入,11)；账户：现金(20) / 微信(30)；existing 为库中既有交易。 */
+    /** 与测试内「午餐 35.80」样例行完全相同的一笔既有账单，用于构造疑似重复。 */
+    private static TransactionEntity duplicateExisting() {
+        TransactionEntity existing = new TransactionEntity();
+        existing.type = CategoryEntity.TYPE_EXPENSE;
+        existing.amount = 3580L;
+        existing.categoryId = 10L;
+        existing.accountId = 20L;
+        existing.transferAccountId = null;
+        existing.date = MAY_15;
+        existing.time = "12:30";
+        existing.note = "午餐";
+        return existing;
+    }
+
     private static ImportContext context(TransactionEntity... existing) {
         List<CategoryEntity> categories = new ArrayList<>();
         categories.add(category(10L, "餐饮", CategoryEntity.TYPE_EXPENSE));

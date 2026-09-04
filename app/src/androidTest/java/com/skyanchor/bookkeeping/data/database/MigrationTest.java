@@ -12,6 +12,7 @@ import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteConstraintException;
 
+import androidx.annotation.NonNull;
 import androidx.room.Room;
 import androidx.test.core.app.ApplicationProvider;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
@@ -19,7 +20,9 @@ import androidx.test.ext.junit.runners.AndroidJUnit4;
 import com.skyanchor.bookkeeping.data.entity.AccountEntity;
 import com.skyanchor.bookkeeping.data.entity.BudgetEntity;
 import com.skyanchor.bookkeeping.data.entity.CategoryEntity;
+import com.skyanchor.bookkeeping.data.entity.RecurringTransactionEntity;
 import com.skyanchor.bookkeeping.data.entity.TransactionEntity;
+import com.skyanchor.bookkeeping.util.DateUtil;
 
 import org.junit.After;
 import org.junit.Before;
@@ -29,14 +32,15 @@ import org.junit.runner.RunWith;
 import java.util.List;
 
 /**
- * 迁移测试（V2 开发计划 Phase 10）。
+ * 迁移测试（V2 开发计划 Phase 10，V2.1 Phase 3 扩展 3→4）。
  *
- * <p>v2 schema 当年未导出 JSON，因此这里用框架 SQLite 按当年实体结构手工搭建 v2 库
- * （DDL 与 {@code MIGRATION_1_2} 的产物一致），再交给 Room 打开：Room 会执行
- * {@code MIGRATION_2_3}，并在开库时把迁移结果与导出的 v3 schema（3.json）逐项比对，
- * 列、可空性、默认值、索引、外键任一不符即抛异常——这是最强的一层结构断言。
+ * <p>v2 / v3 schema 当年未全部导出 JSON，因此这里用框架 SQLite 按对应版本实体结构手工搭建
+ * 旧库（DDL 与对应 Migration 的产物一致），再交给 Room 打开：Room 会逐级执行
+ * {@code MIGRATION_2_3}、{@code MIGRATION_3_4}，并在开库时把迁移结果与导出的最新 schema
+ * （4.json）逐项比对，列、可空性、默认值、索引、外键任一不符即抛异常——这是最强的一层结构断言。
  *
  * <p>数据场景覆盖计划要求的五种：空库、含账单、含分类、含预算、大量账单；
+ * 另有 V2.1 专项：存量周期账单的锚点日从 start_date 的日回填。
  * 断言默认账户播种、budget 哨兵 0、历史账单 account_id 为 NULL 且数据零丢失。
  * 需要真机 / 模拟器（connectedDebugAndroidTest）。
  */
@@ -105,11 +109,111 @@ public class MigrationTest {
         return db;
     }
 
-    private AppDatabase openV3() {
+    private AppDatabase openLatest() {
         return Room.databaseBuilder(context, AppDatabase.class, DB_NAME)
-                .addMigrations(AppDatabase.MIGRATION_2_3)
+                .addMigrations(AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4)
                 .allowMainThreadQueries()
                 .build();
+    }
+
+    // ------------------------------------------------------------------
+    // 手工搭建 v3 库（V2 的 schema，MIGRATION_2_3 的产物）
+    // ------------------------------------------------------------------
+
+    private SQLiteDatabase createV3Database() {
+        SQLiteDatabase db = context.openOrCreateDatabase(DB_NAME, Context.MODE_PRIVATE, null);
+        db.execSQL("CREATE TABLE IF NOT EXISTS category ("
+                + "id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, "
+                + "name TEXT NOT NULL, "
+                + "icon TEXT NOT NULL, "
+                + "type INTEGER NOT NULL, "
+                + "sort_order INTEGER NOT NULL, "
+                + "is_default INTEGER NOT NULL)");
+        db.execSQL("CREATE TABLE IF NOT EXISTS budget ("
+                + "id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, "
+                + "year INTEGER NOT NULL, "
+                + "month INTEGER NOT NULL, "
+                + "category_id INTEGER NOT NULL DEFAULT 0, "
+                + "amount INTEGER NOT NULL, "
+                + "created_at INTEGER NOT NULL, "
+                + "updated_at INTEGER NOT NULL)");
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_budget_year_month_category_id "
+                + "ON budget(year, month, category_id)");
+        db.execSQL("CREATE TABLE IF NOT EXISTS transactions ("
+                + "id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, "
+                + "type INTEGER NOT NULL, "
+                + "amount INTEGER NOT NULL, "
+                + "category_id INTEGER, "
+                + "account_id INTEGER, "
+                + "transfer_account_id INTEGER, "
+                + "date INTEGER NOT NULL, "
+                + "time TEXT NOT NULL, "
+                + "note TEXT, "
+                + "created_at INTEGER NOT NULL, "
+                + "updated_at INTEGER NOT NULL, "
+                + "FOREIGN KEY(category_id) REFERENCES category(id) ON DELETE RESTRICT, "
+                + "FOREIGN KEY(account_id) REFERENCES account(id) ON DELETE RESTRICT, "
+                + "FOREIGN KEY(transfer_account_id) REFERENCES account(id) ON DELETE RESTRICT)");
+        for (String index : new String[]{
+                "CREATE INDEX IF NOT EXISTS index_transactions_category_id "
+                        + "ON transactions(category_id)",
+                "CREATE INDEX IF NOT EXISTS index_transactions_date ON transactions(date)",
+                "CREATE INDEX IF NOT EXISTS index_transactions_account_id "
+                        + "ON transactions(account_id)",
+                "CREATE INDEX IF NOT EXISTS index_transactions_transfer_account_id "
+                        + "ON transactions(transfer_account_id)"}) {
+            db.execSQL(index);
+        }
+        db.execSQL("CREATE TABLE IF NOT EXISTS user_settings ("
+                + "id INTEGER NOT NULL, "
+                + "theme TEXT NOT NULL, "
+                + "first_launch INTEGER NOT NULL, "
+                + "created_at INTEGER NOT NULL, "
+                + "updated_at INTEGER NOT NULL, "
+                + "PRIMARY KEY(id))");
+        db.execSQL("CREATE TABLE IF NOT EXISTS account ("
+                + "id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, "
+                + "name TEXT NOT NULL, "
+                + "type INTEGER NOT NULL, "
+                + "initial_balance INTEGER NOT NULL, "
+                + "balance INTEGER NOT NULL, "
+                + "is_credit INTEGER NOT NULL, "
+                + "sort_order INTEGER NOT NULL, "
+                + "is_archived INTEGER NOT NULL, "
+                + "created_at INTEGER NOT NULL, "
+                + "updated_at INTEGER NOT NULL)");
+        db.execSQL("CREATE TABLE IF NOT EXISTS recurring_transaction ("
+                + "id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, "
+                + "name TEXT NOT NULL, "
+                + "type INTEGER NOT NULL, "
+                + "amount INTEGER NOT NULL, "
+                + "category_id INTEGER, "
+                + "account_id INTEGER, "
+                + "frequency INTEGER NOT NULL, "
+                + "repeat_interval INTEGER NOT NULL, "
+                + "start_date INTEGER NOT NULL, "
+                + "end_date INTEGER NOT NULL, "
+                + "next_run_date INTEGER NOT NULL, "
+                + "is_enabled INTEGER NOT NULL, "
+                + "note TEXT, "
+                + "created_at INTEGER NOT NULL, "
+                + "updated_at INTEGER NOT NULL)");
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_recurring_transaction_next_run_date "
+                + "ON recurring_transaction(next_run_date)");
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_recurring_transaction_is_enabled "
+                + "ON recurring_transaction(is_enabled)");
+        db.setVersion(3);
+        return db;
+    }
+
+    private static RecurringTransactionEntity byName(
+            @NonNull List<RecurringTransactionEntity> list, @NonNull String name) {
+        for (RecurringTransactionEntity item : list) {
+            if (name.equals(item.name)) {
+                return item;
+            }
+        }
+        throw new AssertionError("missing recurring rule: " + name);
     }
 
     private static ContentValues row(Object... pairs) {
@@ -139,7 +243,7 @@ public class MigrationTest {
     @Test
     public void migrate_emptyV2_seedsDefaultAccountsAndKeepsEmptyTables() {
         createV2Database().close();
-        AppDatabase db = openV3();
+        AppDatabase db = openLatest();
 
         // 迁移过程播种 6 个默认账户，初始余额与缓存均为 0
         List<AccountEntity> accounts = db.accountDao().getAll();
@@ -174,7 +278,7 @@ public class MigrationTest {
                 "created_at", 2L, "updated_at", 2L));
         v2.close();
 
-        AppDatabase db = openV3();
+        AppDatabase db = openLatest();
         List<TransactionEntity> transactions = db.transactionDao().getAllEntities();
         assertEquals(2, transactions.size());
 
@@ -216,7 +320,7 @@ public class MigrationTest {
                 "sort_order", 11, "is_default", 0));
         v2.close();
 
-        AppDatabase db = openV3();
+        AppDatabase db = openLatest();
         List<CategoryEntity> categories = db.categoryDao().getAll();
         assertEquals(11, categories.size());
         CategoryEntity custom = categories.get(categories.size() - 1);
@@ -237,7 +341,7 @@ public class MigrationTest {
                 "created_at", 1L, "updated_at", 1L));
         v2.close();
 
-        AppDatabase db = openV3();
+        AppDatabase db = openLatest();
 
         // 存量预算全部是总预算：迁移后 category_id 统一为哨兵 0，金额不变
         BudgetEntity budget = db.budgetDao().get(2026, 9);
@@ -290,7 +394,7 @@ public class MigrationTest {
         }
         v2.close();
 
-        AppDatabase db = openV3();
+        AppDatabase db = openLatest();
         assertEquals(count, db.transactionDao().count());
 
         // 金额合计逐分核对：迁移不允许丢任何一行、改任何一个数
@@ -303,13 +407,51 @@ public class MigrationTest {
     }
 
     // ------------------------------------------------------------------
+    // V2.1 专项：3→4 锚点日回填
+    // ------------------------------------------------------------------
+
+    @Test
+    public void migrate_v3WithRecurring_backfillsAnchorFromStartDate() {
+        SQLiteDatabase v3 = createV3Database();
+        // 月规则：开始日 1 月 31 日；旧推进逻辑已把 next_run_date 漂移到 3 月 28 日
+        insert(v3, "recurring_transaction", row("name", "房租", "type", 1, "amount", 300000L,
+                "frequency", 3, "repeat_interval", 1,
+                "start_date", DateUtil.dayMillisOf(2026, 1, 31),
+                "end_date", 0L,
+                "next_run_date", DateUtil.dayMillisOf(2026, 3, 28),
+                "is_enabled", 1, "note", null, "created_at", 1L, "updated_at", 1L));
+        // 年规则：开始日 2024-02-29（闰年日），next_run 已被夹到 2025-02-28
+        insert(v3, "recurring_transaction", row("name", "会员", "type", 1, "amount", 20000L,
+                "frequency", 4, "repeat_interval", 1,
+                "start_date", DateUtil.dayMillisOf(2024, 2, 29),
+                "end_date", 0L,
+                "next_run_date", DateUtil.dayMillisOf(2025, 2, 28),
+                "is_enabled", 1, "note", null, "created_at", 2L, "updated_at", 2L));
+        v3.close();
+
+        AppDatabase db = openLatest();
+        List<RecurringTransactionEntity> recurring = db.recurringTransactionDao().getAll();
+        assertEquals(2, recurring.size());
+        // getAll 无稳定排序：按名称取行断言。锚点应取 start_date 的日（31 / 29）——
+        // 用户最初选择的日期；不能取 next_run_date 的日（28），否则既有漂移会被固化成新锚点
+        RecurringTransactionEntity monthly = byName(recurring, "房租");
+        RecurringTransactionEntity yearly = byName(recurring, "会员");
+        assertEquals(31, monthly.anchorDayOfMonth);
+        assertEquals(29, yearly.anchorDayOfMonth);
+        // 其余字段零丢失
+        assertEquals(300000L, monthly.amount);
+        assertTrue(monthly.isEnabled);
+        db.close();
+    }
+
+    // ------------------------------------------------------------------
     // 结构断言：外键与索引
     // ------------------------------------------------------------------
 
     @Test
     public void migrate_resultingSchemaHasExpectedForeignKeysAndIndexes() {
         createV2Database().close();
-        AppDatabase db = openV3();
+        AppDatabase db = openLatest();
 
         Cursor fk = db.getOpenHelper().getWritableDatabase().query(
                 "PRAGMA foreign_key_list(transactions)");

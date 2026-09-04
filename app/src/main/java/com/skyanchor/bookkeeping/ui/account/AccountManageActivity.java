@@ -1,5 +1,6 @@
 package com.skyanchor.bookkeeping.ui.account;
 
+import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.text.Editable;
 import android.text.TextWatcher;
@@ -20,11 +21,14 @@ import com.skyanchor.bookkeeping.data.model.AccountBalance;
 import com.skyanchor.bookkeeping.data.model.DeleteAccountResult;
 import com.skyanchor.bookkeeping.databinding.ActivityAccountManageBinding;
 import com.skyanchor.bookkeeping.databinding.DialogAccountEditBinding;
+import com.skyanchor.bookkeeping.databinding.DialogUnassignedAssignBinding;
 import com.skyanchor.bookkeeping.ui.adapter.AccountAdapter;
+import com.skyanchor.bookkeeping.ui.adapter.PickerAccountAdapter;
 import com.skyanchor.bookkeeping.util.AccountTypes;
 import com.skyanchor.bookkeeping.util.AmountUtil;
 import com.skyanchor.bookkeeping.util.InsetsUtil;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
@@ -38,12 +42,24 @@ import java.util.List;
  *
  * <p>删除守卫由仓库层强制执行：已被账单（含转出 / 转入）引用的账户不允许物理删除，
  * 只能改为归档，避免历史资金流水断裂。
+ *
+ * <p>V2.1（基线第 11–12 章）：进入本页时检测未归属历史账单（V1 迁移数据，
+ * {@code account_id IS NULL}），数量大于 0 时提示并引导到批量归属——
+ * 用户选择一个账户、二次确认后一次归属全部，余额随之重算；不自动猜测。
+ * 「暂不处理」用本地偏好记忆，之后不再自动弹出。
  */
 public class AccountManageActivity extends AppCompatActivity {
+
+    private static final String PREFS = "account_settings";
+    private static final String KEY_UNASSIGNED_DISMISSED = "unassigned_notice_dismissed";
+    private static final String STATE_UNASSIGNED_NOTICE_SHOWN = "state_unassigned_notice_shown";
 
     private ActivityAccountManageBinding binding;
     private AccountViewModel viewModel;
     private AccountAdapter adapter;
+
+    /** 本会话是否已弹过归属提示（旋转重建后不重复打扰）。 */
+    private boolean unassignedNoticeShown;
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
@@ -88,12 +104,129 @@ public class AccountManageActivity extends AppCompatActivity {
 
         binding.addAccountButton.setOnClickListener(v -> showEditDialog(null));
         viewModel.getAccounts().observe(this, this::onAccountsChanged);
+        viewModel.getUnassignedCount().observe(this, this::maybeShowUnassignedNotice);
+
+        unassignedNoticeShown = savedInstanceState != null
+                && savedInstanceState.getBoolean(STATE_UNASSIGNED_NOTICE_SHOWN);
+    }
+
+    @Override
+    protected void onSaveInstanceState(@NonNull Bundle outState) {
+        super.onSaveInstanceState(outState);
+        outState.putBoolean(STATE_UNASSIGNED_NOTICE_SHOWN, unassignedNoticeShown);
     }
 
     private void onAccountsChanged(@Nullable List<AccountBalance> accounts) {
         List<AccountBalance> list = accounts == null ? Collections.emptyList() : accounts;
         adapter.submitList(list);
         binding.accountEmpty.setVisibility(list.isEmpty() ? View.VISIBLE : View.GONE);
+    }
+
+    // ------------------------------------------------------------------
+    // V2.1：未归属历史账单检测与批量归属
+    // ------------------------------------------------------------------
+
+    /** 检测未归属账单：数量 > 0 且用户未永久关闭提示、本会话未弹过时，弹一次引导。 */
+    private void maybeShowUnassignedNotice(@Nullable Integer count) {
+        if (count == null || count <= 0 || unassignedNoticeShown || isUnassignedDismissed()) {
+            return;
+        }
+        unassignedNoticeShown = true;
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.unassigned_notice_title)
+                .setMessage(getString(R.string.unassigned_notice_message, count))
+                .setNegativeButton(R.string.unassigned_notice_later,
+                        (dialog, which) -> setUnassignedDismissed(true))
+                .setPositiveButton(R.string.unassigned_notice_go,
+                        (dialog, which) -> showUnassignedAssignDialog(count))
+                .show();
+    }
+
+    /** 批量归属弹窗：列出未归档账户（图标 + 名称 + 类型），点选后二次确认。 */
+    private void showUnassignedAssignDialog(int unassignedCount) {
+        List<AccountEntity> candidates = activeAccountEntities();
+        if (candidates.isEmpty()) {
+            Toast.makeText(this, R.string.unassigned_no_account, Toast.LENGTH_SHORT).show();
+            return;
+        }
+        DialogUnassignedAssignBinding dialogBinding =
+                DialogUnassignedAssignBinding.inflate(getLayoutInflater());
+        dialogBinding.assignHint.setText(getString(R.string.unassigned_assign_hint,
+                unassignedCount));
+
+        AlertDialog dialog = new MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.unassigned_assign_title)
+                .setView(dialogBinding.getRoot())
+                .setNegativeButton(R.string.action_cancel, null)
+                .create();
+        PickerAccountAdapter pickerAdapter = new PickerAccountAdapter(-1L, account -> {
+            dialog.dismiss();
+            confirmUnassignedAssign(unassignedCount, account);
+        });
+        dialogBinding.assignList.setLayoutManager(new LinearLayoutManager(this));
+        dialogBinding.assignList.setAdapter(pickerAdapter);
+        List<PickerAccountAdapter.Row> rows = new ArrayList<>();
+        for (AccountEntity account : candidates) {
+            rows.add(PickerAccountAdapter.Row.of(account));
+        }
+        pickerAdapter.submitList(rows);
+        dialog.show();
+    }
+
+    /** 归属前的二次确认（基线 12.2：每次批量修改必须可确认），确认后执行并反馈笔数。 */
+    private void confirmUnassignedAssign(int unassignedCount, @NonNull AccountEntity target) {
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.unassigned_assign_confirm_title)
+                .setMessage(getString(R.string.unassigned_assign_confirm_message,
+                        unassignedCount, target.name))
+                .setNegativeButton(R.string.action_cancel, null)
+                .setPositiveButton(R.string.action_confirm, (dialog, which) ->
+                        viewModel.assignUnassigned(target.id, assigned -> {
+                            if (isFinishing() || isDestroyed() || assigned == null) {
+                                return;
+                            }
+                            // 归属完成：本次提示使命结束，之后数量归零也不再弹出
+                            setUnassignedDismissed(true);
+                            Toast.makeText(this,
+                                    getString(R.string.unassigned_assign_done,
+                                            assigned, target.name),
+                                    Toast.LENGTH_SHORT).show();
+                        }))
+                .show();
+    }
+
+    /** 未归档账户候选（{@link AccountBalance} 投影 → 选择器用的 {@link AccountEntity}）。 */
+    @NonNull
+    private List<AccountEntity> activeAccountEntities() {
+        List<AccountBalance> current = viewModel.getAccounts().getValue();
+        List<AccountEntity> result = new ArrayList<>();
+        if (current == null) {
+            return result;
+        }
+        for (AccountBalance balance : current) {
+            if (balance.isArchived) {
+                continue;
+            }
+            AccountEntity entity = new AccountEntity();
+            entity.id = balance.id;
+            entity.name = balance.name;
+            entity.type = balance.type;
+            entity.isArchived = false;
+            result.add(entity);
+        }
+        return result;
+    }
+
+    private boolean isUnassignedDismissed() {
+        SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        return prefs.getBoolean(KEY_UNASSIGNED_DISMISSED, false);
+    }
+
+    private void setUnassignedDismissed(boolean dismissed) {
+        getSharedPreferences(PREFS, MODE_PRIVATE)
+                .edit()
+                .putBoolean(KEY_UNASSIGNED_DISMISSED, dismissed)
+                .apply();
     }
 
     // ------------------------------------------------------------------

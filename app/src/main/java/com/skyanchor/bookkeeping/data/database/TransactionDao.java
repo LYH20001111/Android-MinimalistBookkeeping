@@ -172,6 +172,25 @@ public interface TransactionDao {
     int count();
 
     // ------------------------------------------------------------------
+    // V2.1：历史账单账户归属（基线第 11–12 章）
+    // ------------------------------------------------------------------
+
+    /**
+     * 未归属历史账单数量：V1 迁移数据 {@code account_id IS NULL}（早于账户体系，
+     * 不含转账——转账从建立起就强制两个账户）。供账户管理页的归属提示与批量归属使用。
+     */
+    @Query("SELECT COUNT(*) FROM transactions WHERE account_id IS NULL")
+    int countUnassigned();
+
+    @Query("SELECT COUNT(*) FROM transactions WHERE account_id IS NULL")
+    LiveData<Integer> observeUnassignedCount();
+
+    /** 把全部未归属历史账单一次性归属到指定账户，返回归属笔数；调用方需在事务内重算余额。 */
+    @Query("UPDATE transactions SET account_id = :accountId, updated_at = :updatedAt "
+            + "WHERE account_id IS NULL")
+    int assignUnassigned(long accountId, long updatedAt);
+
+    // ------------------------------------------------------------------
     // V1.1 新增：日历摘要与周期选择器聚合查询
     // ------------------------------------------------------------------
 

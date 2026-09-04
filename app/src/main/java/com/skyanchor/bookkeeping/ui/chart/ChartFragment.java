@@ -102,7 +102,7 @@ public class ChartFragment extends Fragment {
         binding.chartEmpty.backToCurrentButton.setOnClickListener(v -> viewModel.backToCurrentPeriod());
 
         viewModel.getUiState().observe(getViewLifecycleOwner(), this::render);
-        // 账户资金与周期无关，独立观察：账单或账户变化后总资产 / 各账户余额自动刷新。
+        // 账户资金与周期无关，独立观察：账单或账户变化后账户总余额 / 各账户余额自动刷新。
         viewModel.getAccountBalances().observe(getViewLifecycleOwner(), this::renderAccounts);
     }
 
@@ -277,7 +277,8 @@ public class ChartFragment extends Fragment {
     }
 
     /**
-     * 账户资金卡片：总资产 = 未归档账户余额之和，下方逐行列出各账户当前余额。
+     * 账户资金卡片：账户总余额 = 未归档账户余额之和（信用卡为负数时即净余额，基线第 18 章），
+     * 下方逐行列出各账户当前余额。
      * 余额可正可负（信用卡欠款为负），负数用 danger 语义色；无账户时整卡隐藏。
      */
     private void renderAccounts(@Nullable List<AccountBalance> accounts) {

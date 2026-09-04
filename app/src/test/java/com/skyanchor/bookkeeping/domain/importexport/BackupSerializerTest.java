@@ -12,6 +12,7 @@ import com.skyanchor.bookkeeping.data.entity.RecurringTransactionEntity;
 import com.skyanchor.bookkeeping.data.entity.TransactionEntity;
 import com.skyanchor.bookkeeping.data.entity.UserSettingsEntity;
 import com.skyanchor.bookkeeping.data.model.BackupData;
+import com.skyanchor.bookkeeping.util.DateUtil;
 
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -88,6 +89,7 @@ public class BackupSerializerTest {
         item.accountId = 5L;
         item.frequency = RecurringTransactionEntity.FREQUENCY_MONTHLY;
         item.interval = 1;
+        item.anchorDayOfMonth = 31;
         item.startDate = 1_700_000_000_000L;
         item.endDate = 0L;
         item.nextRunDate = 1_700_090_000_000L;
@@ -199,6 +201,7 @@ public class BackupSerializerTest {
         assertEquals(Long.valueOf(7L), recurring.categoryId);
         assertEquals(Long.valueOf(5L), recurring.accountId);
         assertEquals(RecurringTransactionEntity.FREQUENCY_MONTHLY, recurring.frequency);
+        assertEquals(31, recurring.anchorDayOfMonth);
         assertEquals(0L, recurring.endDate);
         assertTrue(recurring.isEnabled);
         assertEquals("每月一号", recurring.note);
@@ -259,5 +262,29 @@ public class BackupSerializerTest {
     @Test(expected = JSONException.class)
     public void fromJson_rejectsMalformedJson() throws JSONException {
         BackupSerializer.fromJson("这不是一个 JSON 文件");
+    }
+
+    /**
+     * V2（version 3）旧备份没有锚点日字段：解析时按开始日期的日推导补齐，
+     * 语义与 3→4 迁移一致（基线 31.5：备份 / 恢复数据结构兼容新字段）。
+     */
+    @Test
+    public void fromJson_v3BackupWithoutAnchorDerivesItFromStartDate() throws JSONException {
+        RecurringTransactionEntity item = recurring();
+        item.anchorDayOfMonth = 0;
+        item.startDate = DateUtil.dayMillisOf(2026, 1, 31);
+        BackupData data = new BackupData();
+        data.schemaVersion = BackupSerializer.MIN_SUPPORTED_VERSION;
+        data.accounts = new ArrayList<>();
+        data.categories = new ArrayList<>();
+        data.transactions = new ArrayList<>();
+        data.budgets = new ArrayList<>();
+        data.recurring = new ArrayList<>();
+        data.recurring.add(item);
+        data.settings = null;
+
+        BackupData restored = BackupSerializer.fromJson(BackupSerializer.toJson(data));
+
+        assertEquals(31, restored.recurring.get(0).anchorDayOfMonth);
     }
 }

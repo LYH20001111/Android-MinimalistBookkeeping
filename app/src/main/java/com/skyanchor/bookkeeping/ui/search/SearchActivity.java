@@ -36,8 +36,9 @@ import java.util.List;
 /**
  * 搜索 + 筛选页（V2 新增，开发计划 Phase 4）。
  *
- * <p>关键词命中备注 / 分类名 / 账户名；类型 Chips（不选=全部）、分类 / 账户下拉（首项=全部）、
- * 金额区间共同收窄结果。结果复用 {@link TransactionListAdapter} 按日分组展示，顶部合计
+ * <p>关键词命中备注 / 分类名 / 账户名；类型 Chips（不选=全部）、分类 / 账户图标选择器
+ * （首项=全部，V2.1 Phase 1 改为图标网格 / 图标列表弹窗）、金额区间共同收窄结果。
+ * 结果复用 {@link TransactionListAdapter} 按日分组展示，顶部合计
  * 「共 N 笔 · 支出 · 收入」与列表同源（转账计入笔数、不计收支）。
  *
  * <p>所有筛选状态存在 {@link SearchViewModel} 的 {@link SearchFilter} 里，旋转 / 重建后由
@@ -50,11 +51,13 @@ public class SearchActivity extends AppCompatActivity {
     private TransactionListAdapter adapter;
     private DayLabelProvider dayLabels;
 
-    /** 分类下拉的 id 数组，与 setSimpleItems 的 labels 同序；首项 0 表示「全部分类」。 */
-    private long[] categoryIds = new long[]{SearchFilter.NO_CATEGORY};
+    /** 分类候选（支出 + 收入），供选择器弹窗使用。 */
+    @Nullable
+    private List<CategoryEntity> categoryList = null;
 
-    /** 账户下拉的 id 数组，与 labels 同序；首项 0 表示「全部账户」。 */
-    private long[] accountIds = new long[]{SearchFilter.NO_ACCOUNT};
+    /** 账户候选（含已归档），供选择器弹窗使用。 */
+    @Nullable
+    private List<AccountEntity> accountList = null;
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
@@ -138,16 +141,13 @@ public class SearchActivity extends AppCompatActivity {
         binding.minAmountInput.addTextChangedListener(amountWatcher);
         binding.maxAmountInput.addTextChangedListener(amountWatcher);
 
-        binding.categoryInput.setOnItemClickListener((parent, view, position, id) -> {
-            if (position >= 0 && position < categoryIds.length) {
-                viewModel.setCategoryId(categoryIds[position]);
-            }
-        });
-        binding.accountInput.setOnItemClickListener((parent, view, position, id) -> {
-            if (position >= 0 && position < accountIds.length) {
-                viewModel.setAccountId(accountIds[position]);
-            }
-        });
+        // 分类 / 账户为只读输入框，点击弹出图标选择器（V2.1 Phase 1）；
+        // 尾部图标是 custom 模式（不能用 ExposedDropdownMenu 样式——它强制要求
+        // AutoCompleteTextView 子控件，V2.1 改弹窗后已不用），同样要接住点击避免死区。
+        binding.categoryInput.setOnClickListener(v -> showCategoryPicker());
+        binding.categoryLayout.setEndIconOnClickListener(v -> showCategoryPicker());
+        binding.accountInput.setOnClickListener(v -> showAccountPicker());
+        binding.accountLayout.setEndIconOnClickListener(v -> showAccountPicker());
 
         binding.resetButton.setOnClickListener(v -> resetAll());
     }
@@ -183,47 +183,59 @@ public class SearchActivity extends AppCompatActivity {
     }
 
     private void onCategoriesChanged(@Nullable List<CategoryEntity> categories) {
-        List<CategoryEntity> list =
-                categories == null ? Collections.<CategoryEntity>emptyList() : categories;
-        String[] labels = new String[list.size() + 1];
-        long[] ids = new long[list.size() + 1];
-        labels[0] = getString(R.string.search_all_categories);
-        ids[0] = SearchFilter.NO_CATEGORY;
+        categoryList = categories == null ? Collections.<CategoryEntity>emptyList() : categories;
         long selected = currentFilter().categoryId;
-        String selectedLabel = labels[0];
-        for (int i = 0; i < list.size(); i++) {
-            CategoryEntity category = list.get(i);
-            labels[i + 1] = category.name;
-            ids[i + 1] = category.id;
+        String selectedLabel = getString(R.string.search_all_categories);
+        for (CategoryEntity category : categoryList) {
             if (category.id == selected) {
                 selectedLabel = category.name;
+                break;
             }
         }
-        categoryIds = ids;
-        binding.categoryInput.setSimpleItems(labels);
-        binding.categoryInput.setText(selectedLabel, false);
+        binding.categoryInput.setText(selectedLabel);
     }
 
     private void onAccountsChanged(@Nullable List<AccountEntity> accounts) {
-        List<AccountEntity> list =
-                accounts == null ? Collections.<AccountEntity>emptyList() : accounts;
-        String[] labels = new String[list.size() + 1];
-        long[] ids = new long[list.size() + 1];
-        labels[0] = getString(R.string.search_all_accounts);
-        ids[0] = SearchFilter.NO_ACCOUNT;
+        accountList = accounts == null ? Collections.<AccountEntity>emptyList() : accounts;
         long selected = currentFilter().accountId;
-        String selectedLabel = labels[0];
-        for (int i = 0; i < list.size(); i++) {
-            AccountEntity account = list.get(i);
-            labels[i + 1] = account.name;
-            ids[i + 1] = account.id;
+        String selectedLabel = getString(R.string.search_all_accounts);
+        for (AccountEntity account : accountList) {
             if (account.id == selected) {
                 selectedLabel = account.name;
+                break;
             }
         }
-        accountIds = ids;
-        binding.accountInput.setSimpleItems(labels);
-        binding.accountInput.setText(selectedLabel, false);
+        binding.accountInput.setText(selectedLabel);
+    }
+
+    // ------------------------------------------------------------------
+    // V2.1 图标选择器（分类：图标网格；账户：图标 + 类型列表）
+    // ------------------------------------------------------------------
+
+    private void showCategoryPicker() {
+        List<CategoryEntity> categories =
+                categoryList == null ? Collections.<CategoryEntity>emptyList() : categoryList;
+        CategoryPickerDialog.show(this, categories, currentFilter().categoryId,
+                RecentFilterStore.recentIds(this, RecentFilterStore.SCOPE_CATEGORY),
+                category -> {
+                    viewModel.setCategoryId(category.id);
+                    RecentFilterStore.record(this, RecentFilterStore.SCOPE_CATEGORY,
+                            category.id);
+                    binding.categoryInput.setText(category.name);
+                });
+    }
+
+    private void showAccountPicker() {
+        List<AccountEntity> accounts =
+                accountList == null ? Collections.<AccountEntity>emptyList() : accountList;
+        AccountPickerDialog.show(this, accounts, currentFilter().accountId,
+                RecentFilterStore.recentIds(this, RecentFilterStore.SCOPE_ACCOUNT),
+                account -> {
+                    viewModel.setAccountId(account.id);
+                    RecentFilterStore.record(this, RecentFilterStore.SCOPE_ACCOUNT,
+                            account.id);
+                    binding.accountInput.setText(account.name);
+                });
     }
 
     // ------------------------------------------------------------------

@@ -88,4 +88,45 @@ public final class ImportPreview {
         }
         return entities;
     }
+
+    /**
+     * 提交用实体（V2.1 基线第 17 章）：全部有效行 + 用户选择「保留」的疑似重复行。
+     * 疑似重复默认跳过（{@link ImportRowResult#keep} 默认 false），不能静默写入也不能静默丢弃。
+     */
+    @NonNull
+    public List<TransactionEntity> commitEntities() {
+        List<TransactionEntity> entities = new ArrayList<>(validCount);
+        for (ImportRowResult row : rows) {
+            if (row.entity == null) {
+                continue;
+            }
+            boolean committable = row.status == ImportRowResult.Status.VALID
+                    || (row.status == ImportRowResult.Status.DUPLICATE && row.keep);
+            if (committable) {
+                entities.add(row.entity);
+            }
+        }
+        return entities;
+    }
+
+    /** 用户选择「保留」的疑似重复行数。 */
+    public int keptDuplicateCount() {
+        int kept = 0;
+        for (ImportRowResult row : rows) {
+            if (row.status == ImportRowResult.Status.DUPLICATE && row.keep) {
+                kept++;
+            }
+        }
+        return kept;
+    }
+
+    /** 仍然跳过的疑似重复行数。 */
+    public int skippedDuplicateCount() {
+        return duplicateCount - keptDuplicateCount();
+    }
+
+    /** 是否有可提交内容（有效行或保留的疑似重复行）。 */
+    public boolean hasCommittable() {
+        return validCount > 0 || keptDuplicateCount() > 0;
+    }
 }
