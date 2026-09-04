@@ -98,14 +98,15 @@ public final class CategoryPickerDialog {
                                                          @NonNull List<CategoryEntity> categories,
                                                          @NonNull long[] recentIds) {
         List<PickerCategoryGridAdapter.Row> rows = new ArrayList<>();
-        List<CategoryEntity> recent = resolveRecent(categories, recentIds);
-        if (!recent.isEmpty()) {
-            rows.add(PickerCategoryGridAdapter.Row.header(
-                    context.getString(R.string.picker_recent_section)));
-            for (CategoryEntity category : recent) {
-                rows.add(PickerCategoryGridAdapter.Row.of(category));
-            }
-        }
+        //TODO 先不使用最近使用，体验感不好
+//        List<CategoryEntity> recent = resolveRecent(categories, recentIds);
+//        if (!recent.isEmpty()) {
+//            rows.add(PickerCategoryGridAdapter.Row.header(
+//                    context.getString(R.string.picker_recent_section)));
+//            for (CategoryEntity category : recent) {
+//                rows.add(PickerCategoryGridAdapter.Row.of(category));
+//            }
+//        }
         CategoryEntity all = new CategoryEntity(
                 context.getString(R.string.search_all_categories), PSEUDO_ALL_ICON,
                 CategoryEntity.TYPE_EXPENSE, 0, false);

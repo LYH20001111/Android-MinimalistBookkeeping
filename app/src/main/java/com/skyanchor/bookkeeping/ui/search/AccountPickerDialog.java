@@ -81,14 +81,15 @@ public final class AccountPickerDialog {
                                                     @NonNull List<AccountEntity> accounts,
                                                     @NonNull long[] recentIds) {
         List<PickerAccountAdapter.Row> rows = new ArrayList<>();
-        List<AccountEntity> recent = resolveRecent(accounts, recentIds);
-        if (!recent.isEmpty()) {
-            rows.add(PickerAccountAdapter.Row.header(
-                    context.getString(R.string.picker_recent_section)));
-            for (AccountEntity account : recent) {
-                rows.add(PickerAccountAdapter.Row.of(account));
-            }
-        }
+        //TODO 先不使用最近使用，体验感不好
+//        List<AccountEntity> recent = resolveRecent(accounts, recentIds);
+//        if (!recent.isEmpty()) {
+//            rows.add(PickerAccountAdapter.Row.header(
+//                    context.getString(R.string.picker_recent_section)));
+//            for (AccountEntity account : recent) {
+//                rows.add(PickerAccountAdapter.Row.of(account));
+//            }
+//        }
         AccountEntity all = new AccountEntity();
         all.id = SearchFilter.NO_ACCOUNT;
         all.name = context.getString(R.string.search_all_accounts);
