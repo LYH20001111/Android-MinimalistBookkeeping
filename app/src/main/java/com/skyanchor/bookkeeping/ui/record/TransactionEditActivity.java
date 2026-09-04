@@ -277,9 +277,6 @@ public class TransactionEditActivity extends AppCompatActivity {
         accountList = accounts == null ? new ArrayList<>() : accounts;
         accountsEmpty = accountList.isEmpty();
         if (accountsEmpty) {
-            selectedAccountId = 0L;
-            selectedFromAccountId = 0L;
-            selectedToAccountId = 0L;
             renderFormVisibility();
             return;
         }
