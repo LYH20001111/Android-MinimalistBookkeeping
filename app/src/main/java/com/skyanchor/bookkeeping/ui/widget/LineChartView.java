@@ -94,6 +94,7 @@ public class LineChartView extends View {
     private long axisMax = 300L;
 
     private int maxValueIndex = -1;
+    private int todayIndex = -1;
     private int hoverIndex = -1;
     private float animProgress = 1f;
 
@@ -167,8 +168,13 @@ public class LineChartView extends View {
         emptyPaint.setTextAlign(Paint.Align.CENTER);
     }
 
-    /** 设置趋势数据，会重算 Y 轴刻度并播放一次 250ms 的生长动画。 */
-    public void setData(@Nullable List<TrendPoint> data) {
+    /**
+     * 设置趋势数据，会重算 Y 轴刻度并播放一次 250ms 的生长动画。
+     *
+     * @param defaultIndex 默认显示数值气泡的数据点索引（通常为「今天」），
+     *                     -1 表示不指定、回退到最大值点
+     */
+    public void setData(@Nullable List<TrendPoint> data, int defaultIndex) {
         List<TrendPoint> next = data == null ? Collections.<TrendPoint>emptyList() : data;
         this.points = next;
 
@@ -182,6 +188,7 @@ public class LineChartView extends View {
             }
         }
         this.maxValueIndex = maxIndex;
+        this.todayIndex = defaultIndex >= 0 && defaultIndex < next.size() ? defaultIndex : -1;
         this.axisStep = niceStep(max, gridLines - 1);
         this.axisMax = axisStep * (gridLines - 1);
         // 标签在 onDraw 拿到绘图区宽度后按 ChartAxisLabels 重算（与点数解耦）
@@ -236,8 +243,11 @@ public class LineChartView extends View {
         drawXLabels(canvas);
         if (hoverIndex >= 0 && hoverIndex < points.size()) {
             drawHover(canvas);
+        } else if (todayIndex >= 0) {
+            // 默认点（今天）即使金额为 0 也显示气泡，方便用户确认当日支出
+            drawValueBubble(canvas, todayIndex, true);
         } else if (maxValueIndex >= 0) {
-            drawValueBubble(canvas, maxValueIndex);
+            drawValueBubble(canvas, maxValueIndex, false);
         }
     }
 
@@ -397,12 +407,20 @@ public class LineChartView extends View {
         float x = xAt(hoverIndex);
         canvas.drawLine(x, chartRect.top, x, chartRect.bottom, guidePaint);
         canvas.drawCircle(x, yAt(points.get(hoverIndex).value), dotRadius * 1.6f, dotPaint);
-        drawValueBubble(canvas, hoverIndex);
+        drawValueBubble(canvas, hoverIndex, true);
     }
 
-    /** 在指定点上方画一个主色数值气泡，并夹在绘图区内避免被裁切。 */
-    private void drawValueBubble(@NonNull Canvas canvas, int index) {
-        if (index < 0 || index >= points.size() || points.get(index).value <= 0L) {
+    /**
+     * 在指定点上方画一个主色数值气泡，并夹在绘图区内避免被裁切。
+     *
+     * @param allowZero 为 true 时金额为 0 也绘制气泡（默认点与触摸点），
+     *                  为 false 时金额为 0 跳过（最大值回退点）
+     */
+    private void drawValueBubble(@NonNull Canvas canvas, int index, boolean allowZero) {
+        if (index < 0 || index >= points.size()) {
+            return;
+        }
+        if (points.get(index).value <= 0L && !allowZero) {
             return;
         }
         String text = AmountUtil.abbreviate(points.get(index).value);

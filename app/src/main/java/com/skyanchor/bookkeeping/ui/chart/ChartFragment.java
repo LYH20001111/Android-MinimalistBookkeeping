@@ -140,12 +140,30 @@ public class ChartFragment extends Fragment {
         binding.categoryCard.setVisibility(hasExpense ? View.VISIBLE : View.GONE);
         binding.noExpenseHint.setVisibility(hasExpense ? View.GONE : View.VISIBLE);
         if (hasExpense) {
-            binding.lineChart.setData(state.trend);
+            binding.lineChart.setData(state.trend, todayIndex(state));
             binding.donutChart.setData(state.categoryStats);
             categoryStatAdapter.submitList(state.categoryStats);
         }
 
         renderBudget(state);
+    }
+
+    /**
+     * 计算「今天」在当前周期趋势数据中的索引，用于默认显示今天的数值气泡。
+     * 当前周期不包含今天时返回 -1（回退到显示最大值）。
+     */
+    private static int todayIndex(@NonNull ChartUiState state) {
+        if (!state.range.containsToday()) {
+            return -1;
+        }
+        long today = DateUtil.today();
+        if (state.range.type == PeriodType.YEAR) {
+            // 年视图按月：索引 = 当前月份 - 1
+            return DateUtil.monthOf(today) - 1;
+        }
+        // 日视图（月/周）：索引 = 今天距周期首日的天数
+        int index = DateUtil.dayCountInclusive(state.range.start, today) - 1;
+        return (index >= 0 && index < state.trend.size()) ? index : -1;
     }
 
     private void renderPeriod(@NonNull ChartUiState state) {
