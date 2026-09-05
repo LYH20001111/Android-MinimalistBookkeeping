@@ -13,6 +13,10 @@
     <color name="surface">#FFFFFF</color>
     <color name="surface_subtle">#F1F5F9</color>
 
+    <!-- 记录页画布：浅色保持纯白（区别于 background 的浅灰），深色与 background 一致。
+         不能直接引用 background，否则浅色下日期分组条与页面背景失去层次 -->
+    <color name="record_page_background">#FFFFFF</color>
+
     <color name="text_primary">#0F172A</color>
     <color name="text_secondary">#64748B</color>
     <color name="text_tertiary">#94A3B8</color>

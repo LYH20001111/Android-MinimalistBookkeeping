@@ -11,6 +11,8 @@
     <color name="surface">#1E293B</color>
     <color name="surface_subtle">#243449</color>
 
+    <color name="record_page_background">#0F172A</color>
+
     <color name="text_primary">#F1F5F9</color>
     <color name="text_secondary">#94A3B8</color>
     <color name="text_tertiary">#64748B</color>
