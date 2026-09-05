@@ -450,6 +450,14 @@
     <string name="data_clear_dialog_title">确定清空所有本地数据？</string>
     <string name="data_clear_dialog_message">将删除全部账单、预算与自定义分类，并恢复系统默认分类与默认外观。此操作不可恢复。</string>
     <string name="data_cleared">本地数据已清空</string>
+    <string name="data_clear_verify_title">管理员验证</string>
+    <string name="data_clear_verify_message">此操作不可恢复，请输入管理员账号与密码继续</string>
+    <string name="data_clear_verify_account_hint">管理员账号</string>
+    <string name="data_clear_verify_password_hint">管理员密码</string>
+    <string name="data_clear_verify_confirm">验证</string>
+    <string name="data_clear_verify_error_empty">请输入管理员账号与密码</string>
+    <string name="data_clear_verify_error_credentials">账号或密码错误，还可尝试 %1$d 次</string>
+    <string name="data_clear_verify_locked_format">错误次数过多，已锁定，请等待 %1$d 分 %2$d 秒后重试</string>
 
     <!-- ============ 关于 ============ -->
     <string name="about_title">关于 App</string>
