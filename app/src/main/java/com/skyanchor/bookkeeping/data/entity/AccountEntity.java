@@ -3,6 +3,7 @@ package com.skyanchor.bookkeeping.data.entity;
 import androidx.annotation.NonNull;
 import androidx.room.ColumnInfo;
 import androidx.room.Entity;
+import androidx.room.Index;
 import androidx.room.Ignore;
 import androidx.room.PrimaryKey;
 
@@ -21,7 +22,7 @@ import java.util.Objects;
  *
  * <p>账户被历史账单引用后禁止物理删除，只能归档（{@link #isArchived}）。
  */
-@Entity(tableName = "account")
+@Entity(tableName = "account", indices = {@Index(value = "sync_id")})
 public class AccountEntity {
 
     /** 现金。 */
@@ -72,6 +73,26 @@ public class AccountEntity {
 
     @ColumnInfo(name = "updated_at")
     public long updatedAt;
+
+
+    // ===== V3 同步元数据（基线第 14 章）=====
+
+    /** 跨设备稳定身份（UUID）；本地行入库时即分配，与本地自增 id 职责分离。 */
+    @NonNull
+    @ColumnInfo(name = "sync_id", defaultValue = "")
+    public String syncId = "";
+
+    /** 客户端最后一次从服务器确认的版本；0 = 从未与服务器同步。 */
+    @ColumnInfo(name = "version", defaultValue = "0")
+    public long version;
+
+    /** 服务器最后一次确认该行的时间（epoch millis）；0 = 从未同步。 */
+    @ColumnInfo(name = "server_received_at", defaultValue = "0")
+    public long serverReceivedAt;
+
+    /** Soft Delete 标记（基线第 17 章）：删除 = 置位 + 版本递增，作为可同步事件传播。 */
+    @ColumnInfo(name = "is_deleted", defaultValue = "0")
+    public boolean isDeleted;
 
     public AccountEntity() {
     }

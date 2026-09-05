@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/deviceRoot"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/background"
+    android:orientation="vertical">
+
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/toolbar"
+        style="@style/Widget.App.Toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        app:navigationContentDescription="@string/cd_navigate_up"
+        app:navigationIcon="@drawable/ic_arrow_left"
+        app:title="@string/device_title" />
+
+    <TextView
+        android:id="@+id/emptyText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:padding="@dimen/spacing_xl"
+        android:text="@string/device_empty"
+        android:textAppearance="@style/TextAppearance.App.Secondary"
+        android:visibility="gone" />
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/deviceList"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:clipToPadding="false"
+        android:paddingHorizontal="@dimen/page_margin"
+        android:paddingTop="@dimen/spacing_lg"
+        tools:listitem="@layout/item_device" />
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/logoutAllButton"
+        style="@style/Widget.App.Button.Danger"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="@dimen/page_margin"
+        android:layout_marginBottom="@dimen/spacing_xl"
+        android:text="@string/device_logout_all_button" />
+
+</LinearLayout>

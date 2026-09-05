@@ -1,0 +1,59 @@
+# 公网部署形态（基线第 6.2、30 章）：Caddy 自动 HTTPS 终结 → 内网 api → postgres。
+# postgres 不再向宿主暴露端口，仅 api 经 Caddy 出站。
+# 使用：
+#   cp .env.example .env && vi .env   # 填 DOMAIN、JWT_SECRET、DB_PASSWORD、SMTP
+#   docker compose -f docker-compose.https.yml up -d --build
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: bookkeeping
+      POSTGRES_USER: bookkeeping
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?请在 .env 设置 DB_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bookkeeping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/bookkeeping
+      DB_USER: bookkeeping
+      DB_PASSWORD: ${DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET:?请在 .env 设置 JWT_SECRET}
+      MAIL_ENABLED: ${MAIL_ENABLED:-false}
+      MAIL_DEV_LOG_ONLY: ${MAIL_DEV_LOG_ONLY:-true}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      APP_BASE_URL: https://${DOMAIN:?请在 .env 设置 DOMAIN}
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      DOMAIN: ${DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+      - caddyconfig:/config
+
+volumes:
+  pgdata:
+  caddydata:
+  caddyconfig:

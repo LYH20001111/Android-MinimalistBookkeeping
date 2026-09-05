@@ -460,6 +460,118 @@
     <string name="about_agreement_content">本应用按「现状」提供个人记账能力，统计结果仅基于你在本机录入的数据，不构成任何财务、税务或投资建议。清空本地数据后不可恢复，请自行留意。</string>
     <string name="about_privacy_content">本应用不收集、不上传任何个人信息。全部账单、分类、预算与设置数据仅保存在本机应用私有目录的 SQLite 数据库中，V1 不含账号体系、云同步与网络权限。</string>
 
+    <!-- ============ V3：认证（基线第 33 章） ============ -->
+    <string name="auth_login_title">登录云同步</string>
+    <string name="auth_login_welcome">欢迎回来</string>
+    <string name="auth_login_subtitle">登录后可在开启云同步的多台设备间保持数据一致</string>
+    <string name="auth_login_button">登录</string>
+    <string name="auth_go_register">还没有账号？注册</string>
+    <string name="auth_forgot">忘记密码？</string>
+    <string name="auth_forgot_title">忘记密码</string>
+    <string name="auth_forgot_message">云同步使用家庭自建服务器。请联系服务器所有者（管理员）重置密码；未登录状态下本地记账不受任何影响。</string>
+    <string name="auth_register_title">注册云同步账号</string>
+    <string name="auth_register_welcome">创建账号</string>
+    <string name="auth_register_button">注册</string>
+    <string name="auth_hint_email">邮箱</string>
+    <string name="auth_hint_password">密码（至少 8 位）</string>
+    <string name="auth_hint_confirm_password">确认密码</string>
+    <string name="auth_error_empty">请填写邮箱和密码</string>
+    <string name="auth_error_password_mismatch">两次输入的密码不一致</string>
+    <string name="auth_verify_title">验证邮件已发送</string>
+    <string name="auth_verify_message">请前往邮箱完成验证，验证通过后即可开通云同步能力。</string>
+    <string name="auth_verify_hint">没有收到？可以在本页重新发送验证邮件。</string>
+    <string name="auth_verify_resent">验证邮件已重新发送，请查收</string>
+    <string name="auth_resend_verification">重发验证邮件</string>
+    <string name="auth_back_to_login">返回登录</string>
+
+    <!-- ============ V3：云同步与同步中心（基线第 7、20、34、35 章） ============ -->
+    <string name="mine_sync_title">云端同步</string>
+    <string name="mine_sync_on">已开启 · 自动保持多设备一致</string>
+    <string name="mine_sync_off">已关闭 · 仅使用本地数据</string>
+    <string name="mine_sync_server_unavailable">已开启 · 服务器暂不可用</string>
+    <string name="mine_sync_auth_required">已开启 · 需要重新登录</string>
+    <string name="mine_sync_center">同步中心</string>
+    <string name="mine_sync_center_subtitle">状态 · 待同步 · 立即同步 · 服务器地址</string>
+    <string name="mine_device_manage">设备管理</string>
+    <string name="mine_device_manage_subtitle">查看登录设备 · 单设备退出 · 全部退出</string>
+    <string name="sync_center_title">同步中心</string>
+    <string name="sync_switch_title">云端同步</string>
+    <string name="sync_not_logged_in">尚未登录，点击登录以开启云同步</string>
+    <string name="sync_email_verified">邮箱已验证</string>
+    <string name="sync_email_unverified">邮箱未验证：完成验证后才能云同步</string>
+    <string name="sync_server_state">服务器</string>
+    <string name="sync_server_online_short">在线</string>
+    <string name="sync_server_unavailable_short">暂不可用</string>
+    <string name="sync_last_format">最近同步：%1$s</string>
+    <string name="sync_pending_format">待同步：%1$d 条</string>
+    <string name="sync_conflict_format">最近冲突：%1$d 条（服务器已自动合并）</string>
+    <string name="sync_now">立即同步</string>
+    <string name="sync_started">同步已开始</string>
+    <string name="sync_never">从未同步</string>
+    <string name="sync_just_now">刚刚</string>
+    <string name="sync_minutes_ago">%1$d 分钟前</string>
+    <string name="sync_hours_ago">%1$d 小时前</string>
+    <string name="sync_days_ago">%1$d 天前</string>
+    <string name="sync_status_idle">未在同步</string>
+    <string name="sync_status_syncing">正在同步…</string>
+    <string name="sync_status_waiting_network">等待网络</string>
+    <string name="sync_status_waiting_retry">将在稍后自动重试</string>
+    <string name="sync_status_auth_required">需要重新登录</string>
+    <string name="sync_status_server_unavailable">服务器暂不可用</string>
+    <string name="sync_status_success">同步完成</string>
+    <string name="sync_status_error">同步出错</string>
+    <string name="sync_error_email_unverified">请先完成邮箱验证再开启云同步</string>
+    <string name="sync_error_unreachable">服务器暂时无法连接，将在网络恢复后自动重试</string>
+    <string name="sync_error_url_format">服务器地址需以 http:// 或 https:// 开头</string>
+    <string name="sync_server_title">服务器地址</string>
+    <string name="sync_server_hint">家庭自建服务器地址，例如 http://192.168.1.10:8080 或 https://sync.example.com</string>
+    <string name="sync_server_url_hint">服务器地址</string>
+    <string name="sync_server_save">保存地址</string>
+    <string name="sync_server_saved">服务器地址已保存</string>
+    <string name="sync_logout">退出登录</string>
+    <string name="sync_logout_title">退出登录</string>
+    <string name="sync_logout_message">退出当前设备登录。本地账单数据保留，云端数据不受影响。</string>
+    <string name="sync_logout_confirm">退出登录</string>
+
+    <!-- 首次同步确认（基线第 8 章） -->
+    <string name="bootstrap_confirm_title">首次同步确认</string>
+    <string name="bootstrap_message_local_to_cloud">云端还没有数据。确认后将把本地数据上传初始化云端：
+
+账单：%1$d 笔
+账户：%2$d 个
+分类：%3$d 个
+预算：%4$d 条
+周期账单：%5$d 条</string>
+    <string name="bootstrap_message_merge">首次同步将合并本地与云端数据（冲突时以服务器裁决为准）：
+
+本地
+账单：%1$d 笔 · 账户：%2$d 个 · 分类：%3$d 个
+预算：%4$d 条 · 周期账单：%5$d 条
+
+云端
+账单：%6$d 笔 · 账户：%7$d 个 · 分类：%8$d 个
+预算：%9$d 条 · 周期账单：%10$d 条</string>
+    <string name="bootstrap_confirm">确认并开始同步</string>
+    <string name="bootstrap_cancel">暂不同步</string>
+    <string name="bootstrap_done">首次同步已完成</string>
+
+    <!-- 设备管理（基线第 19 章） -->
+    <string name="device_title">设备管理</string>
+    <string name="device_empty">暂无其他设备登录</string>
+    <string name="device_current">%1$s（本机）</string>
+    <string name="device_badge_current">本机</string>
+    <string name="device_unknown_name">未知设备</string>
+    <string name="device_meta_format">%1$s · %2$s · 最近活跃 %3$s</string>
+    <string name="device_revoke">退出</string>
+    <string name="device_revoke_title">退出该设备</string>
+    <string name="device_revoke_message">确定要让「%1$s」退出登录吗？该设备需要重新登录才能恢复云同步。</string>
+    <string name="device_revoke_confirm">退出</string>
+    <string name="device_revoked">该设备已退出</string>
+    <string name="device_logout_all_title">退出全部设备</string>
+    <string name="device_logout_all_message">将撤销该账号在所有设备上的登录状态（包括本机），云端数据不会删除。确定继续吗？</string>
+    <string name="device_logout_all_confirm">全部退出</string>
+    <string name="device_logout_all_button">退出全部设备</string>
+
     <!-- ============ 无障碍描述 ============ -->
     <string name="cd_navigate_up">返回</string>
     <string name="cd_add_transaction">新增账单</string>

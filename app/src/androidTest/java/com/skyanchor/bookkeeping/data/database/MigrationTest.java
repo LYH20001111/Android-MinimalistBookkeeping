@@ -111,7 +111,8 @@ public class MigrationTest {
 
     private AppDatabase openLatest() {
         return Room.databaseBuilder(context, AppDatabase.class, DB_NAME)
-                .addMigrations(AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4)
+                .addMigrations(AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4,
+                        AppDatabase.MIGRATION_4_5)
                 .allowMainThreadQueries()
                 .build();
     }
@@ -203,6 +204,22 @@ public class MigrationTest {
         db.execSQL("CREATE INDEX IF NOT EXISTS index_recurring_transaction_is_enabled "
                 + "ON recurring_transaction(is_enabled)");
         db.setVersion(3);
+        return db;
+    }
+
+    // ------------------------------------------------------------------
+    // 手工搭建 v4 库（V2.1 的 schema，MIGRATION_3_4 的产物）
+    // ------------------------------------------------------------------
+
+    private SQLiteDatabase createV4Database() {
+        SQLiteDatabase db = createV3Database();
+        // 3→4 的产物：recurring_transaction 增加锚点日列并按 start_date 回填
+        db.execSQL("ALTER TABLE recurring_transaction "
+                + "ADD COLUMN anchor_day_of_month INTEGER NOT NULL DEFAULT 0");
+        db.execSQL("UPDATE recurring_transaction "
+                + "SET anchor_day_of_month = CAST(strftime('%d', start_date / 1000, "
+                + "'unixepoch', 'localtime') AS INTEGER)");
+        db.setVersion(4);
         return db;
     }
 
@@ -445,6 +462,113 @@ public class MigrationTest {
     }
 
     // ------------------------------------------------------------------
+    // V3 专项：4→5 同步元数据回填与同步支撑表
+    // ------------------------------------------------------------------
+
+    @Test
+    public void migrate_v4WithRows_backfillsSyncIdsAndCreatesSyncTables() {
+        SQLiteDatabase v4 = createV4Database();
+        insert(v4, "category", row("name", "餐饮", "icon", "🍜", "type", 1,
+                "sort_order", 1, "is_default", 1));
+        insert(v4, "account", row("name", "现金", "type", 1, "initial_balance", 10000L,
+                "balance", 10000L, "is_credit", 0, "sort_order", 1, "is_archived", 0,
+                "created_at", 1L, "updated_at", 1L));
+        insert(v4, "transactions", row("type", 1, "amount", 3500, "category_id", 1,
+                "account_id", 1, "date", 1_700_000_400_000L, "time", "12:30",
+                "note", "午餐", "created_at", 1L, "updated_at", 1L));
+        insert(v4, "budget", row("year", 2026, "month", 9, "category_id", 0,
+                "amount", 200000, "created_at", 1L, "updated_at", 1L));
+        insert(v4, "recurring_transaction", row("name", "房租", "type", 1, "amount", 300000L,
+                "frequency", 3, "repeat_interval", 1,
+                "start_date", DateUtil.dayMillisOf(2026, 1, 31), "end_date", 0L,
+                "next_run_date", DateUtil.dayMillisOf(2026, 1, 31),
+                "anchor_day_of_month", 31, "is_enabled", 1, "note", null,
+                "created_at", 1L, "updated_at", 1L));
+        v4.close();
+
+        AppDatabase db = openLatest();
+
+        // 1) 业务行零丢失
+        assertEquals(1, db.transactionDao().count());
+        assertEquals(1, db.accountDao().count());
+
+        // 2) 全部行拿到非空 UUID 身份（v4 格式：8-4-4-4-12，共 36 字符）
+        for (TransactionEntity transaction : db.transactionDao().getAllEntities()) {
+            assertTrue("transaction syncId should be backfilled",
+                    transaction.syncId != null && transaction.syncId.length() == 36);
+            assertEquals(0L, transaction.version);
+            assertEquals(0L, transaction.serverReceivedAt);
+        }
+        for (CategoryEntity category : db.categoryDao().getAll()) {
+            assertTrue("category syncId should be backfilled",
+                    category.syncId != null && category.syncId.length() == 36);
+        }
+        for (AccountEntity account : db.accountDao().getAll()) {
+            assertTrue("account syncId should be backfilled",
+                    account.syncId != null && account.syncId.length() == 36);
+        }
+        for (BudgetEntity budget : db.budgetDao().getAll()) {
+            assertTrue("budget syncId should be backfilled",
+                    budget.syncId != null && budget.syncId.length() == 36);
+        }
+        for (RecurringTransactionEntity recurring : db.recurringTransactionDao().getAll()) {
+            assertTrue("recurring syncId should be backfilled",
+                    recurring.syncId != null && recurring.syncId.length() == 36);
+        }
+
+        // 3) 同步支撑表就绪且可用
+        db.syncChangeQueueDao().upsert(queueRow());
+        assertEquals(1, db.syncChangeQueueDao().pendingCount());
+        db.syncChangeQueueDao().clearAll();
+        assertEquals(0, db.syncChangeQueueDao().pendingCount());
+        com.skyanchor.bookkeeping.data.entity.SyncCursorEntity cursor =
+                new com.skyanchor.bookkeeping.data.entity.SyncCursorEntity();
+        cursor.accountEmail = "test@example.com";
+        cursor.lastChangeId = 42;
+        cursor.updatedAt = 1L;
+        db.syncCursorDao().upsert(cursor);
+        assertEquals(42L, db.syncCursorDao().find("test@example.com").lastChangeId);
+        com.skyanchor.bookkeeping.data.entity.SyncStateEntity state =
+                new com.skyanchor.bookkeeping.data.entity.SyncStateEntity();
+        state.syncEnabled = true;
+        db.syncStateDao().upsert(state);
+        assertTrue(db.syncStateDao().get().syncEnabled);
+
+        // 4) 同步元数据列默认值正确（未同步、未删除）
+        Cursor meta = db.getOpenHelper().getWritableDatabase().query(
+                "SELECT version, server_received_at, is_deleted FROM transactions WHERE id = 1");
+        assertEquals(1, meta.getCount());
+        assertTrue(meta.moveToFirst());
+        assertEquals(0, meta.getLong(0));
+        assertEquals(0, meta.getLong(1));
+        assertEquals(0, meta.getLong(2));
+        meta.close();
+        db.close();
+    }
+
+    @Test
+    public void migrate_v4_empty_stillCreatesSyncTables() {
+        createV4Database().close();
+        AppDatabase db = openLatest();
+        assertEquals(0, db.syncChangeQueueDao().pendingCount());
+        // 默认账户只在建库回调播种，迁移路径不播种：空 v4 库迁移后账户仍为空
+        assertEquals(0, db.accountDao().count());
+        db.close();
+    }
+
+    private static com.skyanchor.bookkeeping.data.entity.SyncChangeQueueEntity queueRow() {
+        com.skyanchor.bookkeeping.data.entity.SyncChangeQueueEntity row =
+                new com.skyanchor.bookkeeping.data.entity.SyncChangeQueueEntity();
+        row.entityType = "TRANSACTION";
+        row.syncId = "11111111-1111-1111-1111-111111111111";
+        row.operation = "UPSERT";
+        row.baseVersion = 0;
+        row.createdAt = 1L;
+        row.nextRetryAt = 0;
+        return row;
+    }
+
+    // ------------------------------------------------------------------
     // 结构断言：外键与索引
     // ------------------------------------------------------------------
 
@@ -462,7 +586,12 @@ public class MigrationTest {
                 "index_transactions_category_id", "index_transactions_date",
                 "index_transactions_account_id", "index_transactions_transfer_account_id",
                 "index_recurring_transaction_next_run_date",
-                "index_recurring_transaction_is_enabled"}) {
+                "index_recurring_transaction_is_enabled",
+                "index_transactions_sync_id", "index_category_sync_id",
+                "index_account_sync_id", "index_budget_sync_id",
+                "index_recurring_transaction_sync_id",
+                "index_sync_change_queue_entity_type_sync_id",
+                "index_sync_change_queue_next_retry_at"}) {
             Cursor cursor = db.getOpenHelper().getWritableDatabase().query(
                     "SELECT name FROM sqlite_master WHERE type = 'index' AND name = '"
                             + index + "'");

@@ -18,9 +18,9 @@ android {
         applicationId = "com.skyanchor.bookkeeping"
         minSdk = 24
         targetSdk = 36
-        // V2：版本 2→3 / 1.1.1→2.0.0（开发计划 Phase 10）
-        versionCode = 3
-        versionName = "2.1.0"
+        // V3：版本 3→4 / 2.1.0→3.0.0
+        versionCode = 4
+        versionName = "3.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -81,6 +81,12 @@ dependencies {
     implementation(libs.fragment)
     implementation(libs.lifecycle.viewmodel)
     implementation(libs.lifecycle.livedata)
+    // V3：云同步（本地优先不变，同步层独立于业务层）
+    implementation(libs.retrofit)
+    implementation(libs.retrofit.gson)
+    implementation(libs.okhttp)
+    implementation(libs.gson)
+    implementation(libs.workmanager)
     implementation(libs.room.runtime)
     annotationProcessor(libs.room.compiler)
     testImplementation(libs.junit)

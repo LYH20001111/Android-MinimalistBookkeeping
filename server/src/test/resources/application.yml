@@ -1,0 +1,29 @@
+spring:
+  application:
+    name: bookkeeping-sync-server-test
+  datasource:
+    # PostgreSQL 兼容模式：小写标识符 + 标准身份列，主迁移 SQL 直接可用
+    url: jdbc:h2:mem:testdb;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;CASE_INSENSITIVE_IDENTIFIERS=TRUE;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: none
+    open-in-view: false
+  flyway:
+    enabled: true
+  mail:
+    host:
+
+app:
+  jwt-secret: test-secret-key-0123456789abcdef-0123456789abcdef
+  jwt-ttl-minutes: 30
+  refresh-ttl-days: 30
+  verify-ttl-hours: 24
+  base-url: http://localhost:8080
+  mail-from: no-reply@test.local
+  mail-dev-log-only: true
+
+logging:
+  level:
+    com.skyanchor.bookkeeping.server: WARN

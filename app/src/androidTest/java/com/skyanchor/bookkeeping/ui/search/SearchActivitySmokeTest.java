@@ -119,15 +119,13 @@ public class SearchActivitySmokeTest {
             scenario.onActivity(activity -> {
                 FrameLayout parent = new FrameLayout(activity);
 
-                // 分类：[「最近使用」标题, 餐饮（快捷入口）, 全部分类（伪项）, 餐饮（完整列表）]
-                // 最近使用只是快捷入口，不改变完整分类排序（基线 5.5），故列表仍含该分类
+                // V2.1 收尾（a29f7a7）暂不展示「最近使用」：[全部分类（伪项）, 餐饮]
                 List<PickerCategoryGridAdapter.Row> rows = CategoryPickerDialog.buildRows(
                         activity, Collections.singletonList(foodCategory()),
                         new long[]{FOOD_ID});
-                assertEquals(4, rows.size());
-                assertEquals(PickerCategoryGridAdapter.Row.TYPE_HEADER, rows.get(0).type);
+                assertEquals(2, rows.size());
+                assertEquals(SearchFilter.NO_CATEGORY, rows.get(0).category.id);
                 assertEquals(FOOD_ID, rows.get(1).category.id);
-                assertEquals(SearchFilter.NO_CATEGORY, rows.get(2).category.id);
                 PickerCategoryGridAdapter categoryAdapter = new PickerCategoryGridAdapter(0L,
                         c -> { });
                 categoryAdapter.submitList(rows);
@@ -140,12 +138,11 @@ public class SearchActivitySmokeTest {
                                 categoryAdapter.getItemViewType(1));
                 categoryAdapter.onBindViewHolder(item, 1);
 
-                // 账户：[「最近使用」标题, 微信, 全部账户（伪项）]
+                // 账户：[全部账户（伪项）, 微信]
                 List<PickerAccountAdapter.Row> accountRows = AccountPickerDialog.buildRows(
                         activity, Collections.singletonList(wechatAccount()),
                         new long[]{WECHAT_ID});
-                assertEquals(4, accountRows.size());
-                assertEquals(PickerAccountAdapter.Row.TYPE_HEADER, accountRows.get(0).type);
+                assertEquals(2, accountRows.size());
                 PickerAccountAdapter accountAdapter = new PickerAccountAdapter(0L, a -> { });
                 accountAdapter.submitList(accountRows);
                 PickerAccountAdapter.ViewHolder accountHeader =

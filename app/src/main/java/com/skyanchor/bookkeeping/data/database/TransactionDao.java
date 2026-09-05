@@ -33,15 +33,15 @@ public interface TransactionDao {
             + "LEFT JOIN account a ON t.account_id = a.id "
             + "LEFT JOIN account ta ON t.transfer_account_id = ta.id ";
 
-    /** 观察 [startDay, endDay] 区间内的账单，按业务日期倒序。 */
+    /** V3：业务查询一律排除软删行（基线第 17.2 章）。 */
     @Query("SELECT " + ITEM_COLUMNS + ITEM_FROM
-            + "WHERE t.date BETWEEN :startDay AND :endDay "
+            + "WHERE t.is_deleted = 0 AND t.date BETWEEN :startDay AND :endDay "
             + "ORDER BY t.date DESC, t.time DESC, t.id DESC")
     LiveData<List<TransactionItem>> observeBetween(long startDay, long endDay);
 
     /** 观察业务日期不晚于 endDay 的全部账单，用于记录页的历史账单列表。 */
     @Query("SELECT " + ITEM_COLUMNS + ITEM_FROM
-            + "WHERE t.date <= :endDay "
+            + "WHERE t.is_deleted = 0 AND t.date <= :endDay "
             + "ORDER BY t.date DESC, t.time DESC, t.id DESC")
     LiveData<List<TransactionItem>> observeUpTo(long endDay);
 
@@ -61,7 +61,7 @@ public interface TransactionDao {
      * 结果可直接喂给 {@code StatisticsCalculator.groupByDay} 与 {@code TransactionListAdapter}。
      */
     @Query("SELECT " + ITEM_COLUMNS + ITEM_FROM
-            + "WHERE t.date BETWEEN :startDay AND :endDay "
+            + "WHERE t.is_deleted = 0 AND t.date BETWEEN :startDay AND :endDay "
             + "AND t.amount BETWEEN :minAmount AND :maxAmount "
             + "AND (:categoryId = 0 OR t.category_id = :categoryId) "
             + "AND (:accountId = 0 OR t.account_id = :accountId "
@@ -78,7 +78,8 @@ public interface TransactionDao {
                                            boolean includeTransfer, long categoryId, long accountId,
                                            long minAmount, long maxAmount);
 
-    @Query("SELECT " + ITEM_COLUMNS + ITEM_FROM + "WHERE t.id = :id")
+    @Query("SELECT " + ITEM_COLUMNS + ITEM_FROM
+            + "WHERE t.is_deleted = 0 AND t.id = :id")
     TransactionItem getById(long id);
 
     /**
@@ -86,7 +87,8 @@ public interface TransactionDao {
      * 排序与记录页一致，结果可直接交给 {@code StatisticsCalculator.groupByDay}。
      */
     @Query("SELECT " + ITEM_COLUMNS + ITEM_FROM
-            + "WHERE t.account_id = :accountId OR t.transfer_account_id = :accountId "
+            + "WHERE t.is_deleted = 0 "
+            + "AND (t.account_id = :accountId OR t.transfer_account_id = :accountId) "
             + "ORDER BY t.date DESC, t.time DESC, t.id DESC")
     LiveData<List<TransactionItem>> observeForAccount(long accountId);
 
@@ -113,12 +115,36 @@ public interface TransactionDao {
      * 全量导出，按业务日期 / 时间升序（自然账本顺序，便于人工核对与再次导入）。
      * 一次性同步查询，由 {@code ExportTransactionsUseCase} 在 IO 线程调用。
      */
-    @Query("SELECT " + EXPORT_COLUMNS + ITEM_FROM + "ORDER BY t.date ASC, t.time ASC, t.id ASC")
+    @Query("SELECT " + EXPORT_COLUMNS + ITEM_FROM
+            + "WHERE t.is_deleted = 0 ORDER BY t.date ASC, t.time ASC, t.id ASC")
     List<TransactionExport> exportAll();
 
-    /** 全量实体，供导入时构建「疑似重复」指纹集合（同日期+时间+金额+分类+账户+备注）。 */
-    @Query("SELECT * FROM transactions")
+    /** 有效实体，供导入时构建「疑似重复」指纹集合（同日期+时间+金额+分类+账户+备注）。 */
+    @Query("SELECT * FROM transactions WHERE is_deleted = 0")
     List<TransactionEntity> getAllEntities();
+
+    /** 全量实体（含软删），供首次同步统计与全量推送。仅在 IO 线程调用。 */
+    @Query("SELECT * FROM transactions")
+    List<TransactionEntity> getAllEntitiesIncludingDeleted();
+
+    /** V3：跨设备身份定位（同步 Pull 应用用）。 */
+    @Query("SELECT * FROM transactions WHERE sync_id = :syncId LIMIT 1")
+    TransactionEntity getBySyncId(String syncId);
+
+    /** V3：重名实体合并——把分类引用从重复行改指向保留行。 */
+    @Query("UPDATE transactions SET category_id = :toId, updated_at = :updatedAt "
+            + "WHERE category_id = :fromId")
+    int repointCategory(long fromId, long toId, long updatedAt);
+
+    /** V3：重名账户合并——转出/收入账户引用改指向。 */
+    @Query("UPDATE transactions SET account_id = :toId, updated_at = :updatedAt "
+            + "WHERE account_id = :fromId")
+    int repointAccount(long fromId, long toId, long updatedAt);
+
+    /** V3：重名账户合并——转入账户引用改指向。 */
+    @Query("UPDATE transactions SET transfer_account_id = :toId, updated_at = :updatedAt "
+            + "WHERE transfer_account_id = :fromId")
+    int repointTransferAccount(long fromId, long toId, long updatedAt);
 
     @Insert
     long insert(TransactionEntity entity);
@@ -132,44 +158,47 @@ public interface TransactionDao {
     @Query("DELETE FROM transactions")
     void deleteAll();
 
-    /** 区间内某一类型的金额合计（单位：分）。 */
+    /** 区间内某一类型的金额合计（单位：分）。V3 排除软删行。 */
     @Query("SELECT COALESCE(SUM(amount), 0) FROM transactions "
-            + "WHERE type = :type AND date BETWEEN :startDay AND :endDay")
+            + "WHERE is_deleted = 0 AND type = :type AND date BETWEEN :startDay AND :endDay")
     LiveData<Long> observeSum(int type, long startDay, long endDay);
 
-    /** 某个分类下的账单数量，用于分类删除守卫。 */
-    @Query("SELECT COUNT(*) FROM transactions WHERE category_id = :categoryId")
+    /** 某个分类下有效账单数量，用于分类删除守卫。 */
+    @Query("SELECT COUNT(*) FROM transactions WHERE is_deleted = 0 AND category_id = :categoryId")
     int countByCategory(long categoryId);
 
     // ------------------------------------------------------------------
     // V2 新增：账户余额重算所需的分类聚合（CalculateAccountBalanceUseCase 使用）
     // ------------------------------------------------------------------
 
-    /** 某账户下指定类型（1=支出 / 2=收入）的金额合计（分）。 */
+    /** 某账户下指定类型（1=支出 / 2=收入）的金额合计（分）。V3 排除软删。 */
     @Query("SELECT COALESCE(SUM(amount), 0) FROM transactions "
-            + "WHERE type = :type AND account_id = :accountId")
+            + "WHERE is_deleted = 0 AND type = :type AND account_id = :accountId")
     long sumByTypeAndAccount(int type, long accountId);
 
     /** 转入某账户的转账合计（分）：type=3 且 transfer_account_id 命中。 */
     @Query("SELECT COALESCE(SUM(amount), 0) FROM transactions "
-            + "WHERE type = 3 AND transfer_account_id = :accountId")
+            + "WHERE is_deleted = 0 AND type = 3 AND transfer_account_id = :accountId")
     long sumTransferIn(long accountId);
 
     /** 从某账户转出的转账合计（分）：type=3 且 account_id 命中。 */
     @Query("SELECT COALESCE(SUM(amount), 0) FROM transactions "
-            + "WHERE type = 3 AND account_id = :accountId")
+            + "WHERE is_deleted = 0 AND type = 3 AND account_id = :accountId")
     long sumTransferOut(long accountId);
 
     /** 某账户相关的账单数量（含转出 / 转入），用于账户流水页与删除守卫交叉核对。 */
-    @Query("SELECT COUNT(*) FROM transactions WHERE account_id = :accountId "
-            + "OR transfer_account_id = :accountId")
+    @Query("SELECT COUNT(*) FROM transactions WHERE is_deleted = 0 "
+            + "AND (account_id = :accountId OR transfer_account_id = :accountId)")
     int countByAccount(long accountId);
 
-    @Query("SELECT COUNT(*) FROM transactions")
+    @Query("SELECT COUNT(*) FROM transactions WHERE is_deleted = 0")
     LiveData<Integer> observeCount();
 
-    @Query("SELECT COUNT(*) FROM transactions")
+    @Query("SELECT COUNT(*) FROM transactions WHERE is_deleted = 0")
     int count();
+
+    @Query("SELECT COUNT(*) FROM transactions WHERE is_deleted = 0")
+    int countAll();
 
     // ------------------------------------------------------------------
     // V2.1：历史账单账户归属（基线第 11–12 章）
@@ -179,10 +208,14 @@ public interface TransactionDao {
      * 未归属历史账单数量：V1 迁移数据 {@code account_id IS NULL}（早于账户体系，
      * 不含转账——转账从建立起就强制两个账户）。供账户管理页的归属提示与批量归属使用。
      */
-    @Query("SELECT COUNT(*) FROM transactions WHERE account_id IS NULL")
+    @Query("SELECT COUNT(*) FROM transactions WHERE is_deleted = 0 AND account_id IS NULL")
     int countUnassigned();
 
-    @Query("SELECT COUNT(*) FROM transactions WHERE account_id IS NULL")
+    /** 未归属历史账单实体（含 syncId），批量归属后逐笔入队同步用。 */
+    @Query("SELECT * FROM transactions WHERE is_deleted = 0 AND account_id IS NULL")
+    List<TransactionEntity> getUnassignedEntities();
+
+    @Query("SELECT COUNT(*) FROM transactions WHERE is_deleted = 0 AND account_id IS NULL")
     LiveData<Integer> observeUnassignedCount();
 
     /** 把全部未归属历史账单一次性归属到指定账户，返回归属笔数；调用方需在事务内重算余额。 */
@@ -203,7 +236,7 @@ public interface TransactionDao {
             + "COALESCE(SUM(CASE WHEN type = 2 THEN amount ELSE 0 END), 0) AS income, "
             + "COUNT(*) AS transactionCount "
             + "FROM transactions "
-            + "WHERE date BETWEEN :startDay AND :endDay "
+            + "WHERE is_deleted = 0 AND date BETWEEN :startDay AND :endDay "
             + "GROUP BY date ORDER BY date ASC")
     LiveData<List<DailySummary>> observeDailySummaries(long startDay, long endDay);
 
@@ -215,7 +248,7 @@ public interface TransactionDao {
      * {@code %Y-%W} 拆成两行，但两行的周一相同，Java 侧聚合时自然合并。
      */
     @Query("SELECT MIN(date) AS day, COUNT(*) AS transactionCount "
-            + "FROM transactions "
+            + "FROM transactions WHERE is_deleted = 0 "
             + "GROUP BY strftime('%Y-%W', date / 1000, 'unixepoch', 'localtime') "
             + "ORDER BY day ASC")
     LiveData<List<DayCount>> observeWeekCounts();
@@ -225,7 +258,7 @@ public interface TransactionDao {
      * {@code day} 取该月最早一笔的日期，Java 侧据此还原年月。
      */
     @Query("SELECT MIN(date) AS day, COUNT(*) AS transactionCount "
-            + "FROM transactions "
+            + "FROM transactions WHERE is_deleted = 0 "
             + "GROUP BY strftime('%Y-%m', date / 1000, 'unixepoch', 'localtime') "
             + "ORDER BY day ASC")
     LiveData<List<DayCount>> observeMonthCounts();
@@ -235,7 +268,7 @@ public interface TransactionDao {
      * {@code day} 取该年最早一笔的日期，Java 侧据此还原年份。
      */
     @Query("SELECT MIN(date) AS day, COUNT(*) AS transactionCount "
-            + "FROM transactions "
+            + "FROM transactions WHERE is_deleted = 0 "
             + "GROUP BY strftime('%Y', date / 1000, 'unixepoch', 'localtime') "
             + "ORDER BY day ASC")
     LiveData<List<DayCount>> observeYearCounts();

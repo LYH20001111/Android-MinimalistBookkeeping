@@ -14,6 +14,11 @@ fragment = "1.8.5"
 # 仅测试作用域：android.jar 里的 org.json 在本地 JVM 单测中是 stub，
 # 用同名实现库让 BackupSerializer 的序列化 / 解析可以真正跑在 JVM 单测里
 json = "20240303"
+# V3：云同步网络栈 + 可靠后台调度。选保守稳定版本，确保镜像可达。
+retrofit = "2.11.0"
+okhttp = "4.12.0"
+gson = "2.11.0"
+workmanager = "2.9.1"
 
 [libraries]
 junit = { group = "junit", name = "junit", version.ref = "junit" }
@@ -27,6 +32,11 @@ constraintlayout = { group = "androidx.constraintlayout", name = "constraintlayo
 room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "room" }
 room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
 room-testing = { group = "androidx.room", name = "room-testing", version.ref = "room" }
+retrofit = { group = "com.squareup.retrofit2", name = "retrofit", version.ref = "retrofit" }
+retrofit-gson = { group = "com.squareup.retrofit2", name = "converter-gson", version.ref = "retrofit" }
+okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
+gson = { group = "com.google.code.gson", name = "gson", version.ref = "gson" }
+workmanager = { group = "androidx.work", name = "work-runtime", version.ref = "workmanager" }
 lifecycle-viewmodel = { group = "androidx.lifecycle", name = "lifecycle-viewmodel", version.ref = "lifecycle" }
 lifecycle-livedata = { group = "androidx.lifecycle", name = "lifecycle-livedata", version.ref = "lifecycle" }
 recyclerview = { group = "androidx.recyclerview", name = "recyclerview", version.ref = "recyclerview" }

@@ -1,0 +1,38 @@
+spring:
+  application:
+    name: bookkeeping-sync-server
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/bookkeeping}
+    username: ${DB_USER:bookkeeping}
+    password: ${DB_PASSWORD:bookkeeping}
+    hikari:
+      maximum-pool-size: 10
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
+  mail:
+    host: ${SMTP_HOST:}
+    port: ${SMTP_PORT:587}
+    username: ${SMTP_USER:}
+    password: ${SMTP_PASSWORD:}
+    properties:
+      mail.smtp.auth: true
+      mail.smtp.starttls.enable: true
+
+server:
+  port: ${SERVER_PORT:8080}
+
+app:
+  # 生产部署必须通过环境变量覆盖；至少 32 字节
+  jwt-secret: ${JWT_SECRET:dev-only-secret-please-override-0123456789abcdef}
+  jwt-ttl-minutes: 30
+  refresh-ttl-days: 180
+  verify-ttl-hours: 24
+  # 对外可见的基础地址，用于拼验证链接（家庭部署填反向代理域名）
+  base-url: ${APP_BASE_URL:http://localhost:8080}
+  mail-from: ${MAIL_FROM:极简记账 <no-reply@localhost>}
+  # 无 SMTP 环境下把验证链接打到服务端日志（开发模式）
+  mail-dev-log-only: ${MAIL_DEV_LOG_ONLY:true}

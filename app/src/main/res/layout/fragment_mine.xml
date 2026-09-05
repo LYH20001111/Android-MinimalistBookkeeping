@@ -9,8 +9,9 @@
     android:fillViewport="true">
 
     <!--
-      「我的」页（V1 基线第 9 章）：只有本地设置入口，
-      不出现任何登录、注册、会员或云同步入口。
+      「我的」页（V1 基线第 9 章，V3 增加云同步分组）：
+      云同步为可选能力（基线第 34 章），开关与同步中心位于数据管理区域，
+      视觉上不压过核心账务功能。
     -->
 
     <LinearLayout
@@ -58,6 +59,32 @@
 
                 <include
                     android:id="@+id/menuBudget"
+                    layout="@layout/item_menu_row" />
+
+                <!-- V3：云同步分组（基线第 34 章）。与其他菜单行同构；
+                     开关在同步中心内（那里有完整的开启流程与状态展示）。 -->
+                <View
+                    style="@style/AppDivider"
+                    android:layout_marginStart="@dimen/menu_divider_indent" />
+
+                <include
+                    android:id="@+id/menuSync"
+                    layout="@layout/item_menu_row" />
+
+                <View
+                    style="@style/AppDivider"
+                    android:layout_marginStart="@dimen/menu_divider_indent" />
+
+                <include
+                    android:id="@+id/menuSyncCenter"
+                    layout="@layout/item_menu_row" />
+
+                <View
+                    style="@style/AppDivider"
+                    android:layout_marginStart="@dimen/menu_divider_indent" />
+
+                <include
+                    android:id="@+id/menuDevice"
                     layout="@layout/item_menu_row" />
 
                 <View

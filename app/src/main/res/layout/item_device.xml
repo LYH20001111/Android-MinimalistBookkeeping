@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    style="@style/Widget.App.Card"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginBottom="@dimen/spacing_md">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/deviceName"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textAppearance="@style/TextAppearance.App.Body"
+                tools:text="Pixel 8（本机）" />
+
+            <TextView
+                android:id="@+id/deviceMeta"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/spacing_xxs"
+                android:textAppearance="@style/TextAppearance.App.Caption"
+                tools:text="android · 3.0.0 · 最近活跃 2026-09-04 12:00" />
+
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/currentBadge"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="@dimen/spacing_sm"
+            android:background="@color/primary_light"
+            android:paddingHorizontal="@dimen/spacing_sm"
+            android:paddingVertical="@dimen/spacing_xxs"
+            android:text="@string/device_badge_current"
+            android:textAppearance="@style/TextAppearance.App.Caption"
+            android:textColor="@color/primary"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/revokeButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:padding="@dimen/spacing_sm"
+            android:text="@string/device_revoke"
+            android:textAppearance="@style/TextAppearance.App.Secondary"
+            android:textColor="@color/danger" />
+
+    </LinearLayout>
+
+</com.google.android.material.card.MaterialCardView>

@@ -15,6 +15,9 @@ import com.skyanchor.bookkeeping.data.entity.AccountEntity;
 import com.skyanchor.bookkeeping.data.entity.BudgetEntity;
 import com.skyanchor.bookkeeping.data.entity.CategoryEntity;
 import com.skyanchor.bookkeeping.data.entity.RecurringTransactionEntity;
+import com.skyanchor.bookkeeping.data.entity.SyncChangeQueueEntity;
+import com.skyanchor.bookkeeping.data.entity.SyncCursorEntity;
+import com.skyanchor.bookkeeping.data.entity.SyncStateEntity;
 import com.skyanchor.bookkeeping.data.entity.TransactionEntity;
 import com.skyanchor.bookkeeping.data.entity.UserSettingsEntity;
 
@@ -28,6 +31,9 @@ import java.util.List;
  * 做 schema 变更，全部集中在单个 {@link #MIGRATION_2_3}（避免多次升版）。
  * V2.1 升级到 version 4，为 recurring_transaction 增加 {@code anchor_day_of_month}
  * （月 / 年周期的原始锚点日，消除月末日期漂移），见 {@link #MIGRATION_3_4}。
+ * V3 升级到 version 5：5 张可同步业务表增加同步元数据（sync_id / version /
+ * server_received_at / is_deleted），并新建 sync_change_queue、sync_cursor、sync_state
+ * 三张同步支撑表，见 {@link #MIGRATION_4_5}。
  *
  * <p>禁止使用 destructiveMigration，否则用户已有账单数据将丢失。
  */
@@ -38,9 +44,12 @@ import java.util.List;
                 BudgetEntity.class,
                 UserSettingsEntity.class,
                 AccountEntity.class,
-                RecurringTransactionEntity.class
+                RecurringTransactionEntity.class,
+                SyncChangeQueueEntity.class,
+                SyncCursorEntity.class,
+                SyncStateEntity.class
         },
-        version = 4,
+        version = 5,
         exportSchema = true)
 public abstract class AppDatabase extends RoomDatabase {
 
@@ -59,6 +68,12 @@ public abstract class AppDatabase extends RoomDatabase {
     public abstract AccountDao accountDao();
 
     public abstract RecurringTransactionDao recurringTransactionDao();
+
+    public abstract SyncChangeQueueDao syncChangeQueueDao();
+
+    public abstract SyncCursorDao syncCursorDao();
+
+    public abstract SyncStateDao syncStateDao();
 
     /**
      * V1.1 基线第 36 章：将 transactions 表的外键从 CASCADE 改为 RESTRICT，
@@ -221,6 +236,74 @@ public abstract class AppDatabase extends RoomDatabase {
         }
     };
 
+    /**
+     * V3 升级 4 → 5：同步基础设施。
+     *
+     * <p>1) 5 张可同步业务表各加 4 列同步元数据（基线第 14 章），并为存量行回填
+     * UUID 身份（老数据也要能上云）；SQLite 无 UUID 函数，用 randomblob 拼装 v4 格式。
+     * 2) 新建 sync_change_queue / sync_cursor / sync_state 三张同步支撑表
+     * （基线第 23、26 章），建表语句与 Room 由实体推导的 schema 逐列一致。
+     */
+    static final Migration MIGRATION_4_5 = new Migration(4, 5) {
+        @Override
+        public void migrate(@NonNull SupportSQLiteDatabase db) {
+            String uuidExpr =
+                    "lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4' "
+                            + "|| substr(lower(hex(randomblob(2))),2) || '-' "
+                            + "|| substr('89ab', abs(random()) % 4 + 1, 1) "
+                            + "|| substr(lower(hex(randomblob(2))),2) || '-' "
+                            + "|| lower(hex(randomblob(6)))";
+
+            String[] businessTables = {
+                    "transactions", "category", "account", "budget", "recurring_transaction"};
+            for (String table : businessTables) {
+                db.execSQL("ALTER TABLE " + table
+                        + " ADD COLUMN sync_id TEXT NOT NULL DEFAULT ''");
+                db.execSQL("ALTER TABLE " + table
+                        + " ADD COLUMN version INTEGER NOT NULL DEFAULT 0");
+                db.execSQL("ALTER TABLE " + table
+                        + " ADD COLUMN server_received_at INTEGER NOT NULL DEFAULT 0");
+                db.execSQL("ALTER TABLE " + table
+                        + " ADD COLUMN is_deleted INTEGER NOT NULL DEFAULT 0");
+                db.execSQL("UPDATE " + table + " SET sync_id = (" + uuidExpr + ") "
+                        + "WHERE sync_id = ''");
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_" + table + "_sync_id "
+                        + "ON " + table + "(sync_id)");
+            }
+
+            db.execSQL("CREATE TABLE IF NOT EXISTS sync_change_queue ("
+                    + "id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, "
+                    + "entity_type TEXT NOT NULL, "
+                    + "sync_id TEXT NOT NULL, "
+                    + "operation TEXT NOT NULL, "
+                    + "base_version INTEGER NOT NULL, "
+                    + "created_at INTEGER NOT NULL, "
+                    + "retry_count INTEGER NOT NULL, "
+                    + "last_error TEXT, "
+                    + "next_retry_at INTEGER NOT NULL)");
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_sync_change_queue_entity_type_sync_id "
+                    + "ON sync_change_queue(entity_type, sync_id)");
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_sync_change_queue_next_retry_at "
+                    + "ON sync_change_queue(next_retry_at)");
+
+            db.execSQL("CREATE TABLE IF NOT EXISTS sync_cursor ("
+                    + "account_email TEXT NOT NULL, "
+                    + "last_change_id INTEGER NOT NULL, "
+                    + "updated_at INTEGER NOT NULL, "
+                    + "PRIMARY KEY(account_email))");
+
+            // status / last_error 在实体中无 @NonNull，Room 期望可空列（默认值由字段初始化保证）
+            db.execSQL("CREATE TABLE IF NOT EXISTS sync_state ("
+                    + "id INTEGER NOT NULL, "
+                    + "sync_enabled INTEGER NOT NULL, "
+                    + "status TEXT, "
+                    + "last_sync_at INTEGER NOT NULL, "
+                    + "last_error TEXT, "
+                    + "conflict_count INTEGER NOT NULL, "
+                    + "PRIMARY KEY(id))");
+        }
+    };
+
     public static AppDatabase getInstance(@NonNull Context context) {
         AppDatabase local = instance;
         if (local == null) {
@@ -229,7 +312,7 @@ public abstract class AppDatabase extends RoomDatabase {
                 if (local == null) {
                     local = Room.databaseBuilder(
                                     context.getApplicationContext(), AppDatabase.class, DB_NAME)
-                            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                             .addCallback(SEED_CALLBACK)
                             .build();
                     instance = local;

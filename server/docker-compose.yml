@@ -1,0 +1,44 @@
+# 家庭自建服务器部署（基线第 6 章）：PostgreSQL + Spring Boot API。
+# 数据库只在 compose 内部网络暴露，端口不映射到宿主公网（基线第 30 章）。
+# 首次部署：
+#   JWT_SECRET=$(openssl rand -base64 48) docker compose up -d --build
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: bookkeeping
+      POSTGRES_USER: bookkeeping
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-change-me-in-env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bookkeeping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/bookkeeping
+      DB_USER: bookkeeping
+      DB_PASSWORD: ${DB_PASSWORD:-change-me-in-env}
+      JWT_SECRET: ${JWT_SECRET:?请在环境中设置 JWT_SECRET}
+      MAIL_ENABLED: ${MAIL_ENABLED:-false}
+      MAIL_DEV_LOG_ONLY: ${MAIL_DEV_LOG_ONLY:-true}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:8080}
+    ports:
+      # 家庭局域网直连入口；公网部署请改用 docker-compose.https.yml（Caddy 终结 HTTPS）
+      - "8080:8080"
+
+volumes:
+  pgdata:

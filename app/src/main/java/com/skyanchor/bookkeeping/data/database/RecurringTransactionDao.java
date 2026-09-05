@@ -19,29 +19,56 @@ import java.util.List;
 @Dao
 public interface RecurringTransactionDao {
 
-    @Query("SELECT * FROM recurring_transaction ORDER BY is_enabled DESC, next_run_date ASC, id ASC")
+    /** V3：业务查询排除软删行（基线第 17.2 章）。 */
+    @Query("SELECT * FROM recurring_transaction WHERE is_deleted = 0 "
+            + "ORDER BY is_enabled DESC, next_run_date ASC, id ASC")
     LiveData<List<RecurringTransactionEntity>> observeAll();
 
     @Query("SELECT * FROM recurring_transaction "
-            + "WHERE is_enabled = 1 AND next_run_date <= :today "
+            + "WHERE is_deleted = 0 AND is_enabled = 1 AND next_run_date <= :today "
             + "ORDER BY next_run_date ASC, id ASC")
     LiveData<List<RecurringTransactionEntity>> observeDue(long today);
 
-    @Query("SELECT * FROM recurring_transaction WHERE is_enabled = 1 AND next_run_date <= :today "
+    @Query("SELECT * FROM recurring_transaction WHERE is_deleted = 0 "
+            + "AND is_enabled = 1 AND next_run_date <= :today "
             + "ORDER BY next_run_date ASC, id ASC")
     List<RecurringTransactionEntity> getDue(long today);
 
-    @Query("SELECT COUNT(*) FROM recurring_transaction WHERE is_enabled = 1 AND next_run_date <= :today")
+    @Query("SELECT COUNT(*) FROM recurring_transaction WHERE is_deleted = 0 "
+            + "AND is_enabled = 1 AND next_run_date <= :today")
     LiveData<Integer> observeDueCount(long today);
 
     @Query("SELECT * FROM recurring_transaction WHERE id = :id")
     RecurringTransactionEntity getById(long id);
 
-    @Query("SELECT * FROM recurring_transaction ORDER BY next_run_date ASC, id ASC")
+    /** V3：跨设备身份定位（同步 Pull 应用用）。 */
+    @Query("SELECT * FROM recurring_transaction WHERE sync_id = :syncId LIMIT 1")
+    RecurringTransactionEntity getBySyncId(String syncId);
+
+    /** V3：重名分类合并——周期账单分类引用改指向。 */
+    @Query("UPDATE recurring_transaction SET category_id = :toId, updated_at = :updatedAt "
+            + "WHERE is_deleted = 0 AND category_id = :fromId")
+    int repointCategory(long fromId, long toId, long updatedAt);
+
+    /** V3：重名账户合并——周期账单账户引用改指向。 */
+    @Query("UPDATE recurring_transaction SET account_id = :toId, updated_at = :updatedAt "
+            + "WHERE is_deleted = 0 AND account_id = :fromId")
+    int repointAccount(long fromId, long toId, long updatedAt);
+
+    /** 有效规则（供备份序列化）。 */
+    @Query("SELECT * FROM recurring_transaction WHERE is_deleted = 0 "
+            + "ORDER BY next_run_date ASC, id ASC")
     List<RecurringTransactionEntity> getAll();
 
-    @Query("SELECT COUNT(*) FROM recurring_transaction")
+    /** 全量规则（含软删），供首次同步统计与全量推送。仅在 IO 线程调用。 */
+    @Query("SELECT * FROM recurring_transaction ORDER BY next_run_date ASC, id ASC")
+    List<RecurringTransactionEntity> getAllIncludingDeleted();
+
+    @Query("SELECT COUNT(*) FROM recurring_transaction WHERE is_deleted = 0")
     LiveData<Integer> observeCount();
+
+    @Query("SELECT COUNT(*) FROM recurring_transaction WHERE is_deleted = 0")
+    int countAll();
 
     @Insert
     long insert(RecurringTransactionEntity entity);

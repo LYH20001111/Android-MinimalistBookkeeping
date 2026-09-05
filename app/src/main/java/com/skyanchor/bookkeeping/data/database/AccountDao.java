@@ -20,65 +20,83 @@ import java.util.List;
 @Dao
 public interface AccountDao {
 
-    /** 余额重算投影：initial_balance + 收入 - 支出 + 转入 - 转出。 */
+    /**
+     * 余额重算投影：initial_balance + 收入 - 支出 + 转入 - 转出。
+     * V3：聚合排除软删交易（is_deleted = 0），删除不再影响余额。
+     */
     String BALANCE_EXPR = "(a.initial_balance"
             + " + COALESCE((SELECT SUM(t.amount) FROM transactions t"
-            + "   WHERE t.type = 2 AND t.account_id = a.id), 0)"
+            + "   WHERE t.is_deleted = 0 AND t.type = 2 AND t.account_id = a.id), 0)"
             + " - COALESCE((SELECT SUM(t.amount) FROM transactions t"
-            + "   WHERE t.type = 1 AND t.account_id = a.id), 0)"
+            + "   WHERE t.is_deleted = 0 AND t.type = 1 AND t.account_id = a.id), 0)"
             + " + COALESCE((SELECT SUM(t.amount) FROM transactions t"
-            + "   WHERE t.type = 3 AND t.transfer_account_id = a.id), 0)"
+            + "   WHERE t.is_deleted = 0 AND t.type = 3 AND t.transfer_account_id = a.id), 0)"
             + " - COALESCE((SELECT SUM(t.amount) FROM transactions t"
-            + "   WHERE t.type = 3 AND t.account_id = a.id), 0))";
+            + "   WHERE t.is_deleted = 0 AND t.type = 3 AND t.account_id = a.id), 0))";
 
-    /** 全部账户（含已归档），按 sort_order 升序，供账户管理页使用。 */
-    @Query("SELECT * FROM account ORDER BY sort_order ASC, id ASC")
+    /** 全部账户（含已归档，不含软删），按 sort_order 升序，供账户管理页使用。 */
+    @Query("SELECT * FROM account WHERE is_deleted = 0 ORDER BY sort_order ASC, id ASC")
     LiveData<List<AccountEntity>> observeAll();
 
     /** 未归档账户，按 sort_order 升序，供记账 / 转账账户选择器使用。 */
-    @Query("SELECT * FROM account WHERE is_archived = 0 ORDER BY sort_order ASC, id ASC")
+    @Query("SELECT * FROM account WHERE is_deleted = 0 AND is_archived = 0 "
+            + "ORDER BY sort_order ASC, id ASC")
     LiveData<List<AccountEntity>> observeActive();
 
     /** 全部账户余额（联表重算），按 sort_order 升序，供图表页「账户资金」卡片使用。 */
     @Query("SELECT a.id AS id, a.name AS name, a.type AS type, a.is_credit AS is_credit, "
             + "a.sort_order AS sort_order, a.is_archived AS is_archived, "
             + "a.initial_balance AS initial_balance, " + BALANCE_EXPR + " AS balance "
-            + "FROM account a ORDER BY a.sort_order ASC, a.id ASC")
+            + "FROM account a WHERE a.is_deleted = 0 ORDER BY a.sort_order ASC, a.id ASC")
     LiveData<List<AccountBalance>> observeAccountBalances();
 
     /** 未归档账户余额（联表重算），用于账户总余额等只统计活跃账户的场景。 */
     @Query("SELECT a.id AS id, a.name AS name, a.type AS type, a.is_credit AS is_credit, "
             + "a.sort_order AS sort_order, a.is_archived AS is_archived, "
             + "a.initial_balance AS initial_balance, " + BALANCE_EXPR + " AS balance "
-            + "FROM account a WHERE a.is_archived = 0 ORDER BY a.sort_order ASC, a.id ASC")
+            + "FROM account a WHERE a.is_deleted = 0 AND a.is_archived = 0 "
+            + "ORDER BY a.sort_order ASC, a.id ASC")
     LiveData<List<AccountBalance>> observeActiveAccountBalances();
 
     @Query("SELECT * FROM account WHERE id = :id")
     AccountEntity getById(long id);
 
+    /** V3：跨设备身份定位（同步 Push/Pull 用）。 */
+    @Query("SELECT * FROM account WHERE sync_id = :syncId LIMIT 1")
+    AccountEntity getBySyncId(String syncId);
+
     /** 观察单个账户，供账户流水详情页随编辑 / 归档实时刷新。 */
     @Query("SELECT * FROM account WHERE id = :id")
     LiveData<AccountEntity> observeById(long id);
 
-    @Query("SELECT * FROM account ORDER BY sort_order ASC, id ASC")
+    /** 有效账户（含已归档），供 CSV 导入解析账户 id。 */
+    @Query("SELECT * FROM account WHERE is_deleted = 0 ORDER BY sort_order ASC, id ASC")
     List<AccountEntity> getAll();
+
+    /** 全量账户（含软删），供首次同步统计与全量推送。仅在 IO 线程调用。 */
+    @Query("SELECT * FROM account ORDER BY sort_order ASC, id ASC")
+    List<AccountEntity> getAllIncludingDeleted();
 
     /** 单个账户的重算余额（分），供一致性校验与缓存纠正使用。 */
     @Query("SELECT " + BALANCE_EXPR + " FROM account a WHERE a.id = :id")
     long recalcBalance(long id);
 
     /** 首个未归档账户 id，记账默认落账账户；无账户时返回 null。 */
-    @Query("SELECT id FROM account WHERE is_archived = 0 ORDER BY sort_order ASC, id ASC LIMIT 1")
+    @Query("SELECT id FROM account WHERE is_deleted = 0 AND is_archived = 0 "
+            + "ORDER BY sort_order ASC, id ASC LIMIT 1")
     Long firstActiveAccountId();
 
     @Query("SELECT COALESCE(MAX(sort_order), 0) FROM account")
     int maxSortOrder();
 
-    @Query("SELECT COUNT(*) FROM account")
+    @Query("SELECT COUNT(*) FROM account WHERE is_deleted = 0")
     LiveData<Integer> observeCount();
 
-    @Query("SELECT COUNT(*) FROM account")
+    @Query("SELECT COUNT(*) FROM account WHERE is_deleted = 0")
     int count();
+
+    @Query("SELECT COUNT(*) FROM account WHERE is_deleted = 0")
+    int countAll();
 
     @Insert
     long insert(AccountEntity entity);
@@ -100,8 +118,9 @@ public interface AccountDao {
     @Query("UPDATE account SET is_archived = :archived, updated_at = :updatedAt WHERE id = :id")
     void setArchived(long id, boolean archived, long updatedAt);
 
-    /** 删除守卫：账户被账单（含转出 / 转入）引用的数量。 */
-    @Query("SELECT COUNT(*) FROM transactions WHERE account_id = :id OR transfer_account_id = :id")
+    /** 删除守卫：账户被有效账单（含转出 / 转入）引用的数量。 */
+    @Query("SELECT COUNT(*) FROM transactions "
+            + "WHERE is_deleted = 0 AND (account_id = :id OR transfer_account_id = :id)")
     int countTransactionsByAccount(long id);
 
     @Query("DELETE FROM account WHERE id = :id")

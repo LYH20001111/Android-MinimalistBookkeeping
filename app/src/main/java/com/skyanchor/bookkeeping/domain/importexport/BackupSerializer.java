@@ -40,7 +40,12 @@ public final class BackupSerializer {
      * 恢复时拒绝高于当前版本的文件（schema 未知，混写有风险）；
      * V2 的 version 3 备份仍可恢复，缺失的锚点日由序列化侧按开始日期推导补齐。
      */
-    public static final int SCHEMA_VERSION = 4;
+    /**
+     * V3 = 5：每个实体增补 {@code syncId}（跨设备身份）。恢复时保留身份、
+     * 重置版本号并全量重推，云端以 LWW 收敛（开发计划备注 9）。
+     * 旧备份缺 syncId 时恢复侧自动补发新身份。
+     */
+    public static final int SCHEMA_VERSION = 5;
 
     /** 仍可恢复的最低备份格式版本：3 = V2 基线（无锚点日字段）。 */
     public static final int MIN_SUPPORTED_VERSION = 3;
@@ -144,6 +149,7 @@ public final class BackupSerializer {
         json.put("isArchived", account.isArchived);
         json.put("createdAt", account.createdAt);
         json.put("updatedAt", account.updatedAt);
+        json.put("syncId", account.syncId);
         return json;
     }
 
@@ -175,6 +181,7 @@ public final class BackupSerializer {
         putNullableString(json, "note", transaction.note);
         json.put("createdAt", transaction.createdAt);
         json.put("updatedAt", transaction.updatedAt);
+        json.put("syncId", transaction.syncId);
         return json;
     }
 
@@ -188,6 +195,7 @@ public final class BackupSerializer {
         json.put("amount", budget.amount);
         json.put("createdAt", budget.createdAt);
         json.put("updatedAt", budget.updatedAt);
+        json.put("syncId", budget.syncId);
         return json;
     }
 
@@ -208,6 +216,7 @@ public final class BackupSerializer {
         json.put("endDate", item.endDate);
         json.put("nextRunDate", item.nextRunDate);
         json.put("isEnabled", item.isEnabled);
+        json.put("syncId", item.syncId);
         putNullableString(json, "note", item.note);
         json.put("createdAt", item.createdAt);
         json.put("updatedAt", item.updatedAt);
@@ -256,6 +265,7 @@ public final class BackupSerializer {
             account.isArchived = json.optBoolean("isArchived");
             account.createdAt = json.optLong("createdAt");
             account.updatedAt = json.optLong("updatedAt");
+            account.syncId = json.optString("syncId", "");
             list.add(account);
         }
         return list;
@@ -279,6 +289,7 @@ public final class BackupSerializer {
             category.type = json.optInt("type", CategoryEntity.TYPE_EXPENSE);
             category.sortOrder = json.optInt("sortOrder");
             category.isDefault = json.optBoolean("isDefault");
+            category.syncId = json.optString("syncId", "");
             list.add(category);
         }
         return list;
@@ -297,6 +308,7 @@ public final class BackupSerializer {
             }
             TransactionEntity transaction = new TransactionEntity();
             transaction.id = json.optLong("id");
+            transaction.syncId = json.optString("syncId", "");
             transaction.type = json.optInt("type", CategoryEntity.TYPE_EXPENSE);
             transaction.amount = json.optLong("amount");
             transaction.categoryId = nullableLong(json, "categoryId");
@@ -331,6 +343,7 @@ public final class BackupSerializer {
             budget.amount = json.optLong("amount");
             budget.createdAt = json.optLong("createdAt");
             budget.updatedAt = json.optLong("updatedAt");
+            budget.syncId = json.optString("syncId", "");
             list.add(budget);
         }
         return list;
@@ -348,6 +361,7 @@ public final class BackupSerializer {
                 continue;
             }
             RecurringTransactionEntity item = new RecurringTransactionEntity();
+            item.syncId = json.optString("syncId", "");
             item.id = json.optLong("id");
             item.name = json.optString("name", "");
             item.type = json.optInt("type", CategoryEntity.TYPE_EXPENSE);

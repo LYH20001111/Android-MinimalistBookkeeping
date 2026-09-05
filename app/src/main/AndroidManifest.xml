@@ -3,9 +3,14 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <!--
-        V1 基线第 16 章「断网可用」：这里刻意不声明 android.permission.INTERNET，
-        从构建层面保证所有记账与统计能力都不依赖网络。新增网络权限会直接破坏该验收项。
+        V1 基线「断网可用」：本地记账/图表/账户/预算/搜索全部能力不依赖网络，
+        该验收项由「本地优先」架构保证。V3 起为可选云同步声明网络权限——
+        服务器关机/断网时同步暂停、本地功能照常，语义不变。
+        usesCleartextTraffic 仅服务家庭局域网直连自建服务器的开发场景，
+        公网部署走 docker-compose 的 Caddy HTTPS 入口（见 server/README）。
     -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <application
         android:name=".BookkeepingApp"
@@ -16,6 +21,7 @@
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
+        android:usesCleartextTraffic="true"
         android:theme="@style/Theme.MinimalistBookkeeping">
         <activity
             android:name=".MainActivity"
@@ -83,6 +89,26 @@
             android:parentActivityName=".MainActivity" />
         <activity
             android:name=".ui.settings.AboutActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity" />
+
+        <!-- V3：认证与云同步页面（只能由应用内部跳转） -->
+        <activity
+            android:name=".ui.auth.LoginActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity"
+            android:windowSoftInputMode="adjustResize" />
+        <activity
+            android:name=".ui.auth.RegisterActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity"
+            android:windowSoftInputMode="adjustResize" />
+        <activity
+            android:name=".ui.sync.SyncCenterActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity" />
+        <activity
+            android:name=".ui.sync.DeviceManageActivity"
             android:exported="false"
             android:parentActivityName=".MainActivity" />
     </application>

@@ -14,6 +14,7 @@ import com.skyanchor.bookkeeping.data.entity.AccountEntity;
 import com.skyanchor.bookkeeping.data.entity.BudgetEntity;
 import com.skyanchor.bookkeeping.data.entity.CategoryEntity;
 import com.skyanchor.bookkeeping.data.entity.RecurringTransactionEntity;
+import com.skyanchor.bookkeeping.data.entity.SyncEntityTypes;
 import com.skyanchor.bookkeeping.data.entity.TransactionEntity;
 import com.skyanchor.bookkeeping.data.entity.TransactionExport;
 import com.skyanchor.bookkeeping.data.entity.TransactionItem;
@@ -27,6 +28,8 @@ import com.skyanchor.bookkeeping.data.model.SearchFilter;
 import com.skyanchor.bookkeeping.domain.account.AccountBalanceValidator;
 import com.skyanchor.bookkeeping.domain.account.CalculateAccountBalanceUseCase;
 import com.skyanchor.bookkeeping.domain.recurring.GenerateRecurringTransactionsUseCase;
+import com.skyanchor.bookkeeping.sync.SyncEnqueuer;
+import com.skyanchor.bookkeeping.sync.SyncPayloadMapper;
 import com.skyanchor.bookkeeping.util.Callback;
 import com.skyanchor.bookkeeping.util.DateUtil;
 import com.skyanchor.bookkeeping.util.ThemeStore;
@@ -58,6 +61,13 @@ public class BookkeepingRepository {
     /** 余额缓存一致性校验：启动时兜底纠正缓存与重算的偏差（V2 Phase 9）。 */
     private final AccountBalanceValidator balanceValidator;
 
+    /**
+     * V3：同步入队器（可选依赖，组合根在构建 SyncCoordinator 前注入）。
+     * 所有业务写路径在**同一 DB 事务内**标记待同步变更（基线第 23 章）。
+     */
+    @Nullable
+    private SyncEnqueuer syncEnqueuer;
+
     public BookkeepingRepository(@NonNull Context context, @NonNull AppDatabase database) {
         this.appContext = context.getApplicationContext();
         this.database = database;
@@ -71,6 +81,78 @@ public class BookkeepingRepository {
     @NonNull
     public CalculateAccountBalanceUseCase getBalanceUseCase() {
         return balanceUseCase;
+    }
+
+    /** V3：暴露单线程 IO 执行器（同步层共用同一线程，保证数据库访问串行）。 */
+    @NonNull
+    public java.util.concurrent.ExecutorService getIoExecutor() {
+        return io;
+    }
+
+    /** V3：注入同步入队器（组合根一次性调用）。 */
+    public void setSyncEnqueuer(@NonNull SyncEnqueuer enqueuer) {
+        this.syncEnqueuer = enqueuer;
+    }
+
+    /**
+     * V3：在 IO 执行器上运行一个数据库事务（同步引擎专用）。
+     * 单线程执行器保证与业务写路径串行——同步 ack 判断与业务写不会交错。
+     */
+    public void runInIoTransaction(@NonNull Runnable task) {
+        io.execute(() -> database.runInTransaction(task));
+    }
+
+    /** V3：同步引擎在 IO 线程直接调用的一致性校验（不回调 UI）。 */
+    public void validateAccountBalancesInternal() {
+        balanceValidator.validateAndFixAll();
+    }
+
+    /**
+     * V3：事务内标记待同步变更。syncEnqueuer 未注入时为 no-op，
+     * 本地优先语义完全不受影响。
+     */
+    private void enqueueSync(@NonNull String entityType, @Nullable String syncId,
+                             boolean deleted) {
+        if (syncEnqueuer != null && syncId != null && !syncId.isEmpty()) {
+            syncEnqueuer.enqueue(entityType, syncId,
+                    deleted ? SyncEntityTypes.OP_DELETE : SyncEntityTypes.OP_UPSERT, 0);
+            // 触发 3 秒防抖自动同步（基线 9.3）。通知经主线程 → SyncScheduler 防抖 →
+            // requestSync → IO 队列，天然排在当前写事务提交之后，无重入风险。
+            syncEnqueuer.notifyPendingChanges();
+        }
+    }
+
+    /** V3：更新路径回填同步元数据——UI 可能传「半实体」，@Update 会整行覆写。 */
+    private static void carryTransactionMetadata(@NonNull TransactionEntity target,
+                                                 @Nullable TransactionEntity existing) {
+        if (existing != null) {
+            target.syncId = existing.syncId;
+            target.version = existing.version;
+            target.serverReceivedAt = existing.serverReceivedAt;
+            target.isDeleted = existing.isDeleted;
+        }
+    }
+
+    /** V3：同上（账户）。 */
+    private static void carryAccountMetadata(@NonNull AccountEntity target,
+                                             @Nullable AccountEntity existing) {
+        if (existing != null) {
+            target.syncId = existing.syncId;
+            target.version = existing.version;
+            target.serverReceivedAt = existing.serverReceivedAt;
+            target.isDeleted = existing.isDeleted;
+        }
+    }
+
+    /** V3：同上（周期账单）。 */
+    private static void carryRecurringMetadata(@NonNull RecurringTransactionEntity target,
+                                               @Nullable RecurringTransactionEntity existing) {
+        if (existing != null) {
+            target.syncId = existing.syncId;
+            target.version = existing.version;
+            target.serverReceivedAt = existing.serverReceivedAt;
+            target.isDeleted = existing.isDeleted;
+        }
     }
 
     // ------------------------------------------------------------------
@@ -239,7 +321,13 @@ public class BookkeepingRepository {
         io.execute(() -> {
             int assigned = database.runInTransaction(() -> {
                 long now = System.currentTimeMillis();
+                // 先取待归属集合（含 syncId），归属后逐笔入队
+                List<TransactionEntity> unassigned = database.transactionDao()
+                        .getUnassignedEntities();
                 int count = database.transactionDao().assignUnassigned(accountId, now);
+                for (TransactionEntity transaction : unassigned) {
+                    enqueueSync(SyncEntityTypes.TRANSACTION, transaction.syncId, false);
+                }
                 Set<Long> allAccountIds = new LinkedHashSet<>();
                 for (AccountEntity account : database.accountDao().getAll()) {
                     allAccountIds.add(account.id);
@@ -279,11 +367,18 @@ public class BookkeepingRepository {
                 if (entity.id == 0L) {
                     entity.createdAt = now;
                     entity.updatedAt = now;
+                    // V3：入库即持有跨设备身份，version=0 表示从未与服务器同步
+                    SyncPayloadMapper.ensureSyncId(entity);
+                    entity.version = 0;
+                    entity.serverReceivedAt = 0;
+                    entity.isDeleted = false;
                     entity.id = database.transactionDao().insert(entity);
                 } else {
                     TransactionEntity existing = database.transactionDao().getEntityById(entity.id);
                     entity.createdAt = existing != null ? existing.createdAt : now;
                     entity.updatedAt = now;
+                    // V3：回填同步元数据（UI 半实体不覆写身份 / 版本）
+                    carryTransactionMetadata(entity, existing);
                     // 旧账户也需重算（编辑时可能改了账户 / 类型 / 金额）。
                     if (existing != null) {
                         collectAccount(affected, existing.accountId);
@@ -294,6 +389,7 @@ public class BookkeepingRepository {
                 collectAccount(affected, entity.accountId);
                 collectAccount(affected, entity.transferAccountId);
                 recalcAccounts(affected, now);
+                enqueueSync(SyncEntityTypes.TRANSACTION, entity.syncId, entity.isDeleted);
                 return entity.id;
             });
             post(callback, id);
@@ -306,7 +402,8 @@ public class BookkeepingRepository {
     }
 
     /**
-     * 删除账单。V2：删除与受影响账户的余额重算包在同一 DB 事务内。
+     * 删除账单。V3 改为 Soft Delete（基线第 17 章）：置 is_deleted 后更新，
+     * 让「删除」本身成为可同步事件；余额聚合已排除软删行，缓存照常重算。
      */
     public void deleteTransaction(long id, @Nullable Callback<Boolean> callback) {
         io.execute(() -> {
@@ -317,8 +414,11 @@ public class BookkeepingRepository {
                 if (existing != null) {
                     collectAccount(affected, existing.accountId);
                     collectAccount(affected, existing.transferAccountId);
+                    existing.isDeleted = true;
+                    existing.updatedAt = now;
+                    database.transactionDao().update(existing);
+                    enqueueSync(SyncEntityTypes.TRANSACTION, existing.syncId, true);
                 }
-                database.transactionDao().deleteById(id);
                 recalcAccounts(affected, now);
             });
             post(callback, Boolean.TRUE);
@@ -430,20 +530,47 @@ public class BookkeepingRepository {
             database.categoryDao().deleteAll();
             database.userSettingsDao().deleteAll();
 
+            // V3：恢复行保留备份中的 syncId（身份连续，云端 LWW 收敛）；
+            // 旧备份缺 syncId 时补发；version/serverReceivedAt 归零后全量重推
             for (AccountEntity account : accounts) {
+                SyncPayloadMapper.ensureSyncId(account);
+                account.version = 0;
+                account.serverReceivedAt = 0;
+                account.isDeleted = false;
                 database.accountDao().insert(account);
+                enqueueSync(SyncEntityTypes.ACCOUNT, account.syncId, false);
             }
             for (CategoryEntity category : categories) {
+                SyncPayloadMapper.ensureSyncId(category);
+                category.version = 0;
+                category.serverReceivedAt = 0;
+                category.isDeleted = false;
                 database.categoryDao().insert(category);
+                enqueueSync(SyncEntityTypes.CATEGORY, category.syncId, false);
             }
             for (TransactionEntity transaction : transactions) {
+                SyncPayloadMapper.ensureSyncId(transaction);
+                transaction.version = 0;
+                transaction.serverReceivedAt = 0;
+                transaction.isDeleted = false;
                 database.transactionDao().insert(transaction);
+                enqueueSync(SyncEntityTypes.TRANSACTION, transaction.syncId, false);
             }
             for (BudgetEntity budget : budgets) {
+                SyncPayloadMapper.ensureSyncId(budget);
+                budget.version = 0;
+                budget.serverReceivedAt = 0;
+                budget.isDeleted = false;
                 database.budgetDao().upsert(budget);
+                enqueueSync(SyncEntityTypes.BUDGET, budget.syncId, false);
             }
             for (RecurringTransactionEntity item : recurring) {
+                SyncPayloadMapper.ensureSyncId(item);
+                item.version = 0;
+                item.serverReceivedAt = 0;
+                item.isDeleted = false;
                 database.recurringTransactionDao().insert(item);
+                enqueueSync(SyncEntityTypes.RECURRING, item.syncId, false);
             }
             if (settings != null) {
                 database.userSettingsDao().upsert(settings);
@@ -456,6 +583,9 @@ public class BookkeepingRepository {
                         balanceUseCase.calculate(account.id), now);
             }
         });
+        if (syncEnqueuer != null) {
+            syncEnqueuer.notifyPendingChanges();
+        }
     }
 
     /**
@@ -507,13 +637,21 @@ public class BookkeepingRepository {
                     entity.updatedAt = now;
                     // 新账户还没有任何交易，余额缓存即初始余额。
                     entity.balance = entity.initialBalance;
-                    return database.accountDao().insert(entity);
+                    SyncPayloadMapper.ensureSyncId(entity);
+                    entity.version = 0;
+                    entity.serverReceivedAt = 0;
+                    entity.isDeleted = false;
+                    long newId = database.accountDao().insert(entity);
+                    enqueueSync(SyncEntityTypes.ACCOUNT, entity.syncId, false);
+                    return newId;
                 }
                 AccountEntity existing = database.accountDao().getById(entity.id);
                 entity.createdAt = existing != null ? existing.createdAt : now;
                 entity.updatedAt = now;
                 entity.isArchived = existing != null ? existing.isArchived : entity.isArchived;
+                carryAccountMetadata(entity, existing);
                 database.accountDao().update(entity);
+                enqueueSync(SyncEntityTypes.ACCOUNT, entity.syncId, entity.isDeleted);
                 // 初始余额可能改了，从交易重算后对齐缓存。
                 long balance = balanceUseCase.calculate(entity.id);
                 database.accountDao().updateBalance(entity.id, balance, now);
@@ -523,17 +661,25 @@ public class BookkeepingRepository {
         });
     }
 
-    /** 归档 / 取消归档账户（不物理删除），被账单引用的账户只能归档。 */
+    /** 归档 / 取消归档账户（不物理删除），被账单引用的账户只能归档。V3 入队同步。 */
     public void setAccountArchived(long id, boolean archived, @Nullable Callback<Boolean> callback) {
         io.execute(() -> {
-            database.accountDao().setArchived(id, archived, System.currentTimeMillis());
+            database.runInTransaction(() -> {
+                AccountEntity entity = database.accountDao().getById(id);
+                if (entity != null) {
+                    entity.isArchived = archived;
+                    entity.updatedAt = System.currentTimeMillis();
+                    database.accountDao().update(entity);
+                    enqueueSync(SyncEntityTypes.ACCOUNT, entity.syncId, entity.isDeleted);
+                }
+            });
             post(callback, Boolean.TRUE);
         });
     }
 
     /**
-     * 删除账户。V2：已被账单（含转出 / 转入）引用的账户禁止物理删除，
-     * 守卫放在仓库层，与分类删除守卫同风格。
+     * 删除账户。V2：已被账单（含转出 / 转入）引用的账户禁止删除，守卫放在仓库层。
+     * V3：未引用账户的删除也改为 Soft Delete（基线第 17 章），删除可跨设备传播。
      */
     public void deleteAccount(long id, @Nullable Callback<DeleteAccountResult> callback) {
         io.execute(() -> {
@@ -542,7 +688,15 @@ public class BookkeepingRepository {
                 post(callback, DeleteAccountResult.blocked(used));
                 return;
             }
-            database.accountDao().deleteById(id);
+            database.runInTransaction(() -> {
+                AccountEntity entity = database.accountDao().getById(id);
+                if (entity != null) {
+                    entity.isDeleted = true;
+                    entity.updatedAt = System.currentTimeMillis();
+                    database.accountDao().update(entity);
+                    enqueueSync(SyncEntityTypes.ACCOUNT, entity.syncId, true);
+                }
+            });
             post(callback, DeleteAccountResult.ok());
         });
     }
@@ -589,11 +743,18 @@ public class BookkeepingRepository {
                     entity.createdAt = now;
                     entity.updatedAt = now;
                     entity.nextRunDate = entity.startDate;
-                    return database.recurringTransactionDao().insert(entity);
+                    SyncPayloadMapper.ensureSyncId(entity);
+                    entity.version = 0;
+                    entity.serverReceivedAt = 0;
+                    entity.isDeleted = false;
+                    long newId = database.recurringTransactionDao().insert(entity);
+                    enqueueSync(SyncEntityTypes.RECURRING, entity.syncId, false);
+                    return newId;
                 }
                 RecurringTransactionEntity existing =
                         database.recurringTransactionDao().getById(entity.id);
                 entity.createdAt = existing != null ? existing.createdAt : now;
+                carryRecurringMetadata(entity, existing);
                 boolean scheduleChanged = existing == null
                         || existing.startDate != entity.startDate
                         || existing.frequency != entity.frequency
@@ -604,16 +765,27 @@ public class BookkeepingRepository {
                     entity.nextRunDate = existing.nextRunDate;
                 }
                 database.recurringTransactionDao().update(entity);
+                enqueueSync(SyncEntityTypes.RECURRING, entity.syncId, entity.isDeleted);
                 return entity.id;
             });
             post(callback, id);
         });
     }
 
-    /** 删除规则。已按它生成的历史账单不受影响。 */
+    /** 删除规则。V3 改为 Soft Delete；已按它生成的历史账单不受影响。 */
     public void deleteRecurring(long id, @Nullable Callback<Boolean> callback) {
         io.execute(() -> {
-            database.recurringTransactionDao().deleteById(id);
+            database.runInTransaction(() -> {
+                RecurringTransactionEntity entity =
+                        database.recurringTransactionDao().getById(id);
+                if (entity != null) {
+                    entity.isDeleted = true;
+                    entity.isEnabled = false;
+                    entity.updatedAt = System.currentTimeMillis();
+                    database.recurringTransactionDao().update(entity);
+                    enqueueSync(SyncEntityTypes.RECURRING, entity.syncId, true);
+                }
+            });
             post(callback, Boolean.TRUE);
         });
     }
@@ -622,12 +794,16 @@ public class BookkeepingRepository {
     public void setRecurringEnabled(long id, boolean enabled,
                                     @Nullable Callback<Boolean> callback) {
         io.execute(() -> {
-            RecurringTransactionEntity existing = database.recurringTransactionDao().getById(id);
-            if (existing != null) {
-                existing.isEnabled = enabled;
-                existing.updatedAt = System.currentTimeMillis();
-                database.recurringTransactionDao().update(existing);
-            }
+            database.runInTransaction(() -> {
+                RecurringTransactionEntity existing =
+                        database.recurringTransactionDao().getById(id);
+                if (existing != null) {
+                    existing.isEnabled = enabled;
+                    existing.updatedAt = System.currentTimeMillis();
+                    database.recurringTransactionDao().update(existing);
+                    enqueueSync(SyncEntityTypes.RECURRING, existing.syncId, existing.isDeleted);
+                }
+            });
             post(callback, Boolean.TRUE);
         });
     }
@@ -678,7 +854,12 @@ public class BookkeepingRepository {
             transaction.note = rule.note;
             transaction.createdAt = now;
             transaction.updatedAt = now;
+            SyncPayloadMapper.ensureSyncId(transaction);
+            transaction.version = 0;
+            transaction.serverReceivedAt = 0;
+            transaction.isDeleted = false;
             database.transactionDao().insert(transaction);
+            enqueueSync(SyncEntityTypes.TRANSACTION, transaction.syncId, false);
             collectAccount(affectedAccounts, transaction.accountId);
         }
         if (!dueDates.isEmpty()) {
@@ -692,6 +873,7 @@ public class BookkeepingRepository {
         }
         rule.updatedAt = now;
         database.recurringTransactionDao().update(rule);
+        enqueueSync(SyncEntityTypes.RECURRING, rule.syncId, rule.isDeleted);
         return dueDates.size();
     }
 
@@ -717,7 +899,12 @@ public class BookkeepingRepository {
             }
             Collections.swap(all, index, swapIndex);
             renumberAccounts(all);
-            database.accountDao().updateAll(all);
+            database.runInTransaction(() -> {
+                database.accountDao().updateAll(all);
+                for (AccountEntity entity : all) {
+                    enqueueSync(SyncEntityTypes.ACCOUNT, entity.syncId, entity.isDeleted);
+                }
+            });
             post(callback, Boolean.TRUE);
         });
     }
@@ -751,14 +938,29 @@ public class BookkeepingRepository {
 
     public void saveCategory(@NonNull CategoryEntity entity, @Nullable Callback<Long> callback) {
         io.execute(() -> {
-            long id;
-            if (entity.id == 0L) {
-                entity.sortOrder = database.categoryDao().maxSortOrder(entity.type) + 1;
-                id = database.categoryDao().insert(entity);
-            } else {
+            long id = database.runInTransaction(() -> {
+                if (entity.id == 0L) {
+                    entity.sortOrder = database.categoryDao().maxSortOrder(entity.type) + 1;
+                    SyncPayloadMapper.ensureSyncId(entity);
+                    entity.version = 0;
+                    entity.serverReceivedAt = 0;
+                    entity.isDeleted = false;
+                    long newId = database.categoryDao().insert(entity);
+                    enqueueSync(SyncEntityTypes.CATEGORY, entity.syncId, false);
+                    return newId;
+                }
+                CategoryEntity existing = database.categoryDao().getById(entity.id);
+                if (existing != null) {
+                    // 回填同步元数据（UI 半实体不覆写身份 / 版本）
+                    entity.syncId = existing.syncId;
+                    entity.version = existing.version;
+                    entity.serverReceivedAt = existing.serverReceivedAt;
+                    entity.isDeleted = existing.isDeleted;
+                }
                 database.categoryDao().update(entity);
-                id = entity.id;
-            }
+                enqueueSync(SyncEntityTypes.CATEGORY, entity.syncId, entity.isDeleted);
+                return entity.id;
+            });
             post(callback, id);
         });
     }
@@ -770,6 +972,11 @@ public class BookkeepingRepository {
      * <p>V2：分类被删除时在同一事务内连带清理其所有月份的分类预算
      * （budget 表无外键，避免残留指向已删除分类的陈旧预算）。
      */
+    /**
+     * 删除分类。V1 基线第 6 章：已被账单使用的分类禁止直接删除。
+     * V3：未引用分类的删除改为 Soft Delete，其分类预算一并软删
+     * 并作为可同步事件传播（开发计划备注 9）。
+     */
     public void deleteCategory(long id, @Nullable Callback<DeleteCategoryResult> callback) {
         io.execute(() -> {
             int used = database.transactionDao().countByCategory(id);
@@ -778,8 +985,19 @@ public class BookkeepingRepository {
                 return;
             }
             database.runInTransaction(() -> {
-                database.categoryDao().deleteById(id);
-                database.budgetDao().deleteByCategoryId(id);
+                CategoryEntity entity = database.categoryDao().getById(id);
+                if (entity != null) {
+                    entity.isDeleted = true;
+                    database.categoryDao().update(entity);
+                    enqueueSync(SyncEntityTypes.CATEGORY, entity.syncId, true);
+                }
+                long now = System.currentTimeMillis();
+                for (BudgetEntity budget : database.budgetDao().getActiveByCategoryId(id)) {
+                    budget.isDeleted = true;
+                    budget.updatedAt = now;
+                    database.budgetDao().upsert(budget);
+                    enqueueSync(SyncEntityTypes.BUDGET, budget.syncId, true);
+                }
             });
             post(callback, DeleteCategoryResult.ok());
         });
@@ -807,7 +1025,12 @@ public class BookkeepingRepository {
             }
             Collections.swap(all, index, swapIndex);
             renumber(all);
-            database.categoryDao().updateAll(all);
+            database.runInTransaction(() -> {
+                database.categoryDao().updateAll(all);
+                for (CategoryEntity entity : all) {
+                    enqueueSync(SyncEntityTypes.CATEGORY, entity.syncId, entity.isDeleted);
+                }
+            });
             post(callback, Boolean.TRUE);
         });
     }
@@ -854,8 +1077,14 @@ public class BookkeepingRepository {
         io.execute(() -> {
             BudgetEntity existing = database.budgetDao().get(year, month, categoryId);
             if (amountCents <= 0L) {
-                if (existing != null) {
-                    database.budgetDao().delete(year, month, categoryId);
+                if (existing != null && !existing.isDeleted) {
+                    // V3：删除预算 = Soft Delete（可同步事件）
+                    database.runInTransaction(() -> {
+                        existing.isDeleted = true;
+                        existing.updatedAt = System.currentTimeMillis();
+                        database.budgetDao().upsert(existing);
+                        enqueueSync(SyncEntityTypes.BUDGET, existing.syncId, true);
+                    });
                 }
                 post(callback, Boolean.TRUE);
                 return;
@@ -868,12 +1097,24 @@ public class BookkeepingRepository {
             entity.amount = amountCents;
             entity.updatedAt = now;
             if (existing != null) {
+                // 身份复用：软删行重建 = 解除删除（server 端 is_deleted 翻转、version+1）
                 entity.id = existing.id;
                 entity.createdAt = existing.createdAt;
+                entity.syncId = existing.syncId;
+                entity.version = existing.version;
+                entity.serverReceivedAt = existing.serverReceivedAt;
+                entity.isDeleted = false;
             } else {
                 entity.createdAt = now;
+                SyncPayloadMapper.ensureSyncId(entity);
+                entity.version = 0;
+                entity.serverReceivedAt = 0;
+                entity.isDeleted = false;
             }
-            database.budgetDao().upsert(entity);
+            database.runInTransaction(() -> {
+                database.budgetDao().upsert(entity);
+                enqueueSync(SyncEntityTypes.BUDGET, entity.syncId, entity.isDeleted);
+            });
             post(callback, Boolean.TRUE);
         });
     }
@@ -909,6 +1150,11 @@ public class BookkeepingRepository {
      * 先删交易再删账户 / 分类以满足外键约束，随后重置为系统默认分类、默认账户与默认设置。
      * V2：一并清空周期账单与账户，并重建 6 个默认账户。
      */
+    /**
+     * 清空所有本地数据（V1 基线第 9 章）。V3：同步队列一并清空——本地清空
+     * 不作为删除事件传播（云端数据保留、其他设备不受影响，见开发计划风险表 #2）；
+     * 重建的默认分类 / 账户不带 syncId，由下次同步的修复通道补齐。
+     */
     public void clearAllData(@Nullable Callback<Boolean> callback) {
         io.execute(() -> {
             database.runInTransaction(() -> {
@@ -918,6 +1164,7 @@ public class BookkeepingRepository {
                 database.accountDao().deleteAll();
                 database.categoryDao().deleteAll();
                 database.userSettingsDao().deleteAll();
+                database.syncChangeQueueDao().clearAll();
 
                 database.categoryDao().insertAll(DefaultData.defaultCategories());
                 long now = System.currentTimeMillis();
