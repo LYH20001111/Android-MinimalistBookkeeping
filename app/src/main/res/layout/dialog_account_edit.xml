@@ -28,7 +28,7 @@
 
     </com.google.android.material.textfield.TextInputLayout>
 
-    <!-- 账户类型：现金 / 微信 / 支付宝 / 储蓄卡 / 信用卡 / 其他，代码里用 setSimpleItems 填充 -->
+    <!-- 账户类型下拉：展示项（emoji + 标签）与选中值由代码经 AccountTypes 统一填充 -->
     <com.google.android.material.textfield.TextInputLayout
         android:id="@+id/typeLayout"
         style="@style/Widget.App.TextInputLayout.Dropdown"
@@ -42,8 +42,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:inputType="none"
-            android:textSize="@dimen/font_body"
-            app:simpleItems="@array/account_type_labels" />
+            android:textSize="@dimen/font_body" />
 
     </com.google.android.material.textfield.TextInputLayout>
 

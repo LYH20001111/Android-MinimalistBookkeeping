@@ -10,7 +10,8 @@ import androidx.room.PrimaryKey;
 import java.util.Objects;
 
 /**
- * 账户表（V2 新增）。现金 / 微信 / 支付宝 / 储蓄卡 / 信用卡 / 其他。
+ * 账户表（V2 新增）。类型常量见下方 TYPE_*（现金 / 微信 / 支付宝 / 云闪付 / 数字人民币 /
+ * 储蓄卡 / 信用卡 / 交通卡 / 校园卡 / 公积金 / 理财 / 其他）。
  *
  * <p>余额统一「可正可负」模型：
  * {@code balance = initial_balance + 收入 - 支出 + 转入 - 转出}，
@@ -35,6 +36,18 @@ public class AccountEntity {
     public static final int TYPE_DEBIT = 4;
     /** 信用卡。 */
     public static final int TYPE_CREDIT = 5;
+    /** 云闪付。 */
+    public static final int TYPE_UNIONPAY = 7;
+    /** 数字人民币。 */
+    public static final int TYPE_DIGITAL_RMB = 8;
+    /** 交通卡（公交 / 地铁等储值卡）。 */
+    public static final int TYPE_TRANSPORT = 9;
+    /** 校园卡。 */
+    public static final int TYPE_CAMPUS = 10;
+    /** 公积金。 */
+    public static final int TYPE_HOUSING_FUND = 11;
+    /** 理财 / 投资账户。 */
+    public static final int TYPE_INVESTMENT = 12;
     /** 其他。 */
     public static final int TYPE_OTHER = 6;
 

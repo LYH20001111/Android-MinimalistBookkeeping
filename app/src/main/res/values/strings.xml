@@ -253,19 +253,15 @@
     <string name="account_type_cash">现金</string>
     <string name="account_type_wechat">微信</string>
     <string name="account_type_alipay">支付宝</string>
+    <string name="account_type_unionpay">云闪付</string>
+    <string name="account_type_digital_rmb">数字人民币</string>
     <string name="account_type_debit">储蓄卡</string>
     <string name="account_type_credit">信用卡</string>
+    <string name="account_type_transport">交通卡</string>
+    <string name="account_type_campus">校园卡</string>
+    <string name="account_type_housing_fund">公积金</string>
+    <string name="account_type_investment">理财</string>
     <string name="account_type_other">其他</string>
-
-    <!-- 账户类型下拉项，顺序必须与 AccountTypes.ALL 一致（代码按 position 回取类型） -->
-    <string-array name="account_type_labels">
-        <item>@string/account_type_cash</item>
-        <item>@string/account_type_wechat</item>
-        <item>@string/account_type_alipay</item>
-        <item>@string/account_type_debit</item>
-        <item>@string/account_type_credit</item>
-        <item>@string/account_type_other</item>
-    </string-array>
 
     <!-- ============ V2 搜索 + 筛选 ============ -->
     <string name="search_title">搜索</string>

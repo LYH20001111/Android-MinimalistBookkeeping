@@ -243,11 +243,12 @@ public class AccountManageActivity extends AppCompatActivity {
         DialogAccountEditBinding dialogBinding =
                 DialogAccountEditBinding.inflate(getLayoutInflater());
 
-        // 类型下拉：ALL 与 account_type_labels 同序，按 position 回取类型常量。
-        String[] labels = getResources().getStringArray(R.array.account_type_labels);
+        // 类型下拉：展示项为「emoji + 标签」，顺序与 AccountTypes.ALL 一致，按 position 回取类型常量。
+        String[] typeItems = AccountTypes.displayItems(this);
         int initialType = existing == null ? AccountEntity.TYPE_CASH : existing.type;
         final int[] selectedType = {initialType};
-        dialogBinding.typeInput.setText(labels[typeIndex(initialType)], false);
+        dialogBinding.typeInput.setText(typeItems[typeIndex(initialType)], false);
+        dialogBinding.typeInput.setSimpleItems(typeItems);
         dialogBinding.typeInput.setOnItemClickListener((parent, view, position, id) ->
                 selectedType[0] = AccountTypes.ALL[position]);
 
