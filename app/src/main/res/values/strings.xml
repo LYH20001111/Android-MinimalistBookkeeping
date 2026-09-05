@@ -176,6 +176,13 @@
 
     <!-- ============ 我的 ============ -->
     <string name="mine_title">我的</string>
+    <!-- 分组标题：卡片外的轻量小节标签，与下方卡片一一对应 -->
+    <string name="mine_section_accounting">账务管理</string>
+    <string name="mine_section_data">数据管理</string>
+    <string name="mine_section_sync">同步与云服务</string>
+    <string name="mine_section_appearance">外观与个性化</string>
+    <string name="mine_section_security">账户与安全</string>
+    <string name="mine_section_about">关于</string>
     <string name="mine_category">分类管理</string>
     <string name="mine_category_subtitle">新增、编辑、删除与排序</string>
     <string name="mine_account">账户管理</string>

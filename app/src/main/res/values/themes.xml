@@ -90,6 +90,13 @@
         <item name="android:textColor">@color/text_tertiary</item>
     </style>
 
+    <!-- 「我的」页分组标题：卡片外的轻量小节标签，介于 Caption 与 Body 之间 -->
+    <style name="TextAppearance.App.GroupLabel" parent="TextAppearance.Material3.LabelLarge">
+        <item name="android:textSize">@dimen/font_secondary</item>
+        <item name="android:textColor">@color/text_secondary</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
     <!-- ============================================================== -->
     <!-- 组件样式                                                          -->
     <!-- ============================================================== -->
@@ -256,6 +263,14 @@
         <item name="android:background">?attr/selectableItemBackground</item>
         <item name="android:clickable">true</item>
         <item name="android:focusable">true</item>
+    </style>
+
+    <!-- 「我的」页分组标签：卡片外的小节标题，上 16dp 与上一组拉开、下 8dp 贴近自己的卡片 -->
+    <style name="AppGroupLabel" parent="TextAppearance.App.GroupLabel">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">@dimen/spacing_lg</item>
+        <item name="android:layout_marginBottom">@dimen/spacing_sm</item>
     </style>
 
 </resources>

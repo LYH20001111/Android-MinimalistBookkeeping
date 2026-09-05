@@ -9,9 +9,10 @@
     android:fillViewport="true">
 
     <!--
-      「我的」页（V1 基线第 9 章，V3 增加云同步分组）：
-      云同步为可选能力（基线第 34 章），开关与同步中心位于数据管理区域，
-      视觉上不压过核心账务功能。
+      「我的」页（V1 基线第 9 章，V3 增加云同步分组）。
+      功能入口按用途分为六个分组，每组一张卡片、卡片外配一个 GroupLabel 小节标题：
+      账务管理 / 数据管理 / 同步与云服务 / 外观与个性化 / 账户与安全 / 关于。
+      云同步为可选能力（基线第 34 章），开关在同步中心内，这里只做入口。
     -->
 
     <LinearLayout
@@ -29,11 +30,15 @@
             android:text="@string/mine_title"
             android:textAppearance="@style/TextAppearance.App.PageTitle" />
 
+        <!-- ===== 账务管理 ===== -->
+        <TextView
+            style="@style/AppGroupLabel"
+            android:text="@string/mine_section_accounting" />
+
         <com.google.android.material.card.MaterialCardView
             style="@style/Widget.App.Card"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/spacing_lg"
             app:contentPadding="@dimen/spacing_none">
 
             <LinearLayout
@@ -58,40 +63,6 @@
                     android:layout_marginStart="@dimen/menu_divider_indent" />
 
                 <include
-                    android:id="@+id/menuBudget"
-                    layout="@layout/item_menu_row" />
-
-                <!-- V3：云同步分组（基线第 34 章）。与其他菜单行同构；
-                     开关在同步中心内（那里有完整的开启流程与状态展示）。 -->
-                <View
-                    style="@style/AppDivider"
-                    android:layout_marginStart="@dimen/menu_divider_indent" />
-
-                <include
-                    android:id="@+id/menuSync"
-                    layout="@layout/item_menu_row" />
-
-                <View
-                    style="@style/AppDivider"
-                    android:layout_marginStart="@dimen/menu_divider_indent" />
-
-                <include
-                    android:id="@+id/menuSyncCenter"
-                    layout="@layout/item_menu_row" />
-
-                <View
-                    style="@style/AppDivider"
-                    android:layout_marginStart="@dimen/menu_divider_indent" />
-
-                <include
-                    android:id="@+id/menuDevice"
-                    layout="@layout/item_menu_row" />
-
-                <View
-                    style="@style/AppDivider"
-                    android:layout_marginStart="@dimen/menu_divider_indent" />
-
-                <include
                     android:id="@+id/menuRecurring"
                     layout="@layout/item_menu_row" />
 
@@ -100,12 +71,28 @@
                     android:layout_marginStart="@dimen/menu_divider_indent" />
 
                 <include
-                    android:id="@+id/menuAppearance"
+                    android:id="@+id/menuBudget"
                     layout="@layout/item_menu_row" />
 
-                <View
-                    style="@style/AppDivider"
-                    android:layout_marginStart="@dimen/menu_divider_indent" />
+            </LinearLayout>
+
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- ===== 数据管理 ===== -->
+        <TextView
+            style="@style/AppGroupLabel"
+            android:text="@string/mine_section_data" />
+
+        <com.google.android.material.card.MaterialCardView
+            style="@style/Widget.App.Card"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:contentPadding="@dimen/spacing_none">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
 
                 <include
                     android:id="@+id/menuData"
@@ -116,7 +103,7 @@
                     android:layout_marginStart="@dimen/menu_divider_indent" />
 
                 <include
-                    android:id="@+id/menuExport"
+                    android:id="@+id/menuImport"
                     layout="@layout/item_menu_row" />
 
                 <View
@@ -124,7 +111,7 @@
                     android:layout_marginStart="@dimen/menu_divider_indent" />
 
                 <include
-                    android:id="@+id/menuImport"
+                    android:id="@+id/menuExport"
                     layout="@layout/item_menu_row" />
 
                 <View
@@ -143,9 +130,105 @@
                     android:id="@+id/menuRestore"
                     layout="@layout/item_menu_row" />
 
+            </LinearLayout>
+
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- ===== 同步与云服务 ===== -->
+        <TextView
+            style="@style/AppGroupLabel"
+            android:text="@string/mine_section_sync" />
+
+        <com.google.android.material.card.MaterialCardView
+            style="@style/Widget.App.Card"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:contentPadding="@dimen/spacing_none">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <include
+                    android:id="@+id/menuSync"
+                    layout="@layout/item_menu_row" />
+
                 <View
                     style="@style/AppDivider"
                     android:layout_marginStart="@dimen/menu_divider_indent" />
+
+                <include
+                    android:id="@+id/menuSyncCenter"
+                    layout="@layout/item_menu_row" />
+
+            </LinearLayout>
+
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- ===== 外观与个性化 ===== -->
+        <TextView
+            style="@style/AppGroupLabel"
+            android:text="@string/mine_section_appearance" />
+
+        <com.google.android.material.card.MaterialCardView
+            style="@style/Widget.App.Card"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:contentPadding="@dimen/spacing_none">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <include
+                    android:id="@+id/menuAppearance"
+                    layout="@layout/item_menu_row" />
+
+            </LinearLayout>
+
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- ===== 账户与安全 ===== -->
+        <TextView
+            style="@style/AppGroupLabel"
+            android:text="@string/mine_section_security" />
+
+        <com.google.android.material.card.MaterialCardView
+            style="@style/Widget.App.Card"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:contentPadding="@dimen/spacing_none">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <include
+                    android:id="@+id/menuDevice"
+                    layout="@layout/item_menu_row" />
+
+            </LinearLayout>
+
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- ===== 关于 ===== -->
+        <TextView
+            style="@style/AppGroupLabel"
+            android:text="@string/mine_section_about" />
+
+        <com.google.android.material.card.MaterialCardView
+            style="@style/Widget.App.Card"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:contentPadding="@dimen/spacing_none">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
 
                 <include
                     android:id="@+id/menuAbout"
