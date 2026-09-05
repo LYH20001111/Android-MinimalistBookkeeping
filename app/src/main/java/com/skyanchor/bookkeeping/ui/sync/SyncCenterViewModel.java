@@ -112,6 +112,11 @@ public class SyncCenterViewModel extends AndroidViewModel {
         coordinator.requestSync(true);
     }
 
+    /** 主动探测服务器是否可达（保存 URL 后调用）。 */
+    public void checkServerStatus() {
+        coordinator.checkServerStatus();
+    }
+
     /** 退出登录：吊销当前设备会话，本地业务数据保留（基线 32.1）。 */
     public void logout(@NonNull Callback<Boolean> callback) {
         authRepository.logout(callback);

@@ -45,6 +45,15 @@ public class JwtService {
                 .compact();
     }
 
+    /** 校验并解析；失败返回 null（过滤器用，避免在过滤器链里抛 500）。 */
+    public AuthUser parseQuietly(String token) {
+        try {
+            return parse(token);
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
     /** 校验并解析；失败抛 AUTH_REQUIRED（客户端据此走 refresh 流程）。 */
     public AuthUser parse(String token) {
         try {

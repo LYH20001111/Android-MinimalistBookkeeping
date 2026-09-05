@@ -12,6 +12,7 @@ import androidx.lifecycle.ViewModelProvider;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.snackbar.Snackbar;
 import com.skyanchor.bookkeeping.R;
+import com.skyanchor.bookkeeping.data.entity.SyncStateEntity;
 import com.skyanchor.bookkeeping.data.remote.ApiDtos;
 import com.skyanchor.bookkeeping.databinding.ActivitySyncCenterBinding;
 import com.skyanchor.bookkeeping.sync.SyncCoordinator;
@@ -69,6 +70,8 @@ public class SyncCenterActivity extends AppCompatActivity {
                         count == null ? 0 : count)));
         viewModel.syncState().observe(this, state -> {
             if (state == null) {
+                // 无持久化同步状态（如首次安装尚未触发同步）：根据服务器地址配置显示状态
+                binding.serverStateText.setText(serverStateText(null));
                 return;
             }
             binding.syncSwitch.setOnCheckedChangeListener(null);
@@ -192,7 +195,17 @@ public class SyncCenterActivity extends AppCompatActivity {
             return;
         }
         viewModel.setServerBaseUrl(url);
+        // 立即基于 URL 更新显示（乐观），再异步探测验证，syncState observer 会最终修正
+        refreshServerState();
+        viewModel.checkServerStatus();
         Snackbar.make(binding.syncRoot, R.string.sync_server_saved, Snackbar.LENGTH_SHORT).show();
+    }
+
+    /** 根据当前持久化状态和服务器地址配置刷新服务器状态显示。 */
+    private void refreshServerState() {
+        SyncStateEntity state = viewModel.syncState().getValue();
+        String status = state != null ? state.status : null;
+        binding.serverStateText.setText(serverStateText(status));
     }
 
     private void confirmLogout() {
@@ -267,6 +280,13 @@ public class SyncCenterActivity extends AppCompatActivity {
     private String serverStateText(String status) {
         boolean unavailable = SyncCoordinator.Status.SERVER_UNAVAILABLE.name().equals(status)
                 || SyncCoordinator.Status.WAITING_NETWORK.name().equals(status);
+        // 如果服务器地址未配置，服务器不可能在线（基线第 2 章：本地优先，服务器为可选增强）
+        if (!unavailable) {
+            String url = viewModel.serverBaseUrl();
+            if (url == null || url.isEmpty()) {
+                unavailable = true;
+            }
+        }
         return getString(unavailable
                 ? R.string.sync_server_unavailable_short
                 : R.string.sync_server_online_short);

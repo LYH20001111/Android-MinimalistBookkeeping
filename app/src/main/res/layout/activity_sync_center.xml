@@ -174,7 +174,7 @@
                             android:id="@+id/serverStateText"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="@string/sync_server_online_short"
+                            android:text="@string/sync_server_unavailable_short"
                             android:textAppearance="@style/TextAppearance.App.Secondary" />
 
                     </LinearLayout>

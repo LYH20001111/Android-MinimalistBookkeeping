@@ -39,6 +39,16 @@ public class SecurityConfig {
                                 "/api/v1/auth/verify-email").permitAll()
                         .requestMatchers("/api/**").authenticated()
                         .anyRequest().denyAll())
+                // 未认证（含 Token 过期）必须回 401 + JSON：客户端 OkHttp Authenticator
+                // 以 401 为触发条件走 Refresh Token 续期，403/500 会让自动刷新失效
+                .exceptionHandling(handling -> handling.authenticationEntryPoint(
+                        (request, response, ex) -> {
+                            response.setStatus(401);
+                            response.setContentType("application/json;charset=UTF-8");
+                            response.getWriter().write(
+                                    "{\"error\":{\"code\":\"AUTH_REQUIRED\","
+                                            + "\"message\":\"登录状态已过期，正在自动续期或需要重新登录\"}}");
+                        }))
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }

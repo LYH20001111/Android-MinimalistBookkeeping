@@ -24,5 +24,5 @@ dependencyResolutionManagement {
 
 rootProject.name = "Minimalist Bookkeeping"
 include(":app")
-include(":server")
+//include(":server")
  

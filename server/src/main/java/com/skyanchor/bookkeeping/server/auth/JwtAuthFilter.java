@@ -43,13 +43,17 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         try {
             String header = request.getHeader("Authorization");
             if (header != null && header.startsWith("Bearer ")) {
-                AuthUser user = jwtService.parse(header.substring(7).trim());
-                CurrentUserHolder.set(user);
-                // 同时写入 SecurityContext，否则 .authenticated() 规则一律拒绝
-                var authentication = new org.springframework.security.authentication
-                        .UsernamePasswordAuthenticationToken(user, null, java.util.List.of());
-                org.springframework.security.core.context.SecurityContextHolder
-                        .getContext().setAuthentication(authentication);
+                // Token 缺失 / 过期 / 非法：不抛异常（过滤器链不经过全局异常处理器，
+                // 抛出会变成 500），只是不设置认证上下文，由 Security 以 401 拒绝——
+                // 客户端 OkHttp Authenticator 收到 401 才会走 Refresh Token 自动续期。
+                AuthUser user = jwtService.parseQuietly(header.substring(7).trim());
+                if (user != null) {
+                    CurrentUserHolder.set(user);
+                    var authentication = new org.springframework.security.authentication
+                            .UsernamePasswordAuthenticationToken(user, null, java.util.List.of());
+                    org.springframework.security.core.context.SecurityContextHolder
+                            .getContext().setAuthentication(authentication);
+                }
             }
             chain.doFilter(request, response);
         } finally {

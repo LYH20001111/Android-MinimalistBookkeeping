@@ -142,6 +142,28 @@ public class SyncCoordinator {
                 && apiClient.api() != null;
     }
 
+    /** 主动探测服务器是否可达并更新持久化状态（保存 URL 后调用，基线第 2 章）。 */
+    public void checkServerStatus() {
+        repository.runOnIo(() -> {
+            ApiService api = apiClient.api();
+            Status newStatus;
+            if (api == null) {
+                newStatus = Status.SERVER_UNAVAILABLE;
+            } else {
+                try {
+                    Response<ApiDtos.StatusResponse> response = api.status().execute();
+                    newStatus = response.isSuccessful() ? Status.IDLE : Status.SERVER_UNAVAILABLE;
+                } catch (IOException e) {
+                    newStatus = Status.SERVER_UNAVAILABLE;
+                }
+            }
+            postStatus(newStatus);
+            SyncStateEntity state = requireState();
+            state.status = newStatus.name();
+            database.syncStateDao().upsert(state);
+        });
+    }
+
     // ===== 触发入口 =====
 
     /** 各触发源统一入口；运行中只置 pendingAgain，不并发创建任务（基线 12.1）。 */
@@ -185,6 +207,7 @@ public class SyncCoordinator {
         ApiService api = apiClient.api();
         if (api == null) {
             postStatus(Status.SERVER_UNAVAILABLE);
+            persistState(Status.SERVER_UNAVAILABLE, null, 0);
             return;
         }
         running = true;
