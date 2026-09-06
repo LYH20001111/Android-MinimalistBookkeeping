@@ -15,10 +15,12 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.snackbar.Snackbar;
+import com.skyanchor.bookkeeping.BookkeepingApp;
 import com.skyanchor.bookkeeping.R;
 import com.skyanchor.bookkeeping.data.entity.TransactionItem;
 import com.skyanchor.bookkeeping.databinding.FragmentRecordBinding;
 import com.skyanchor.bookkeeping.ui.adapter.TransactionListAdapter;
+import com.skyanchor.bookkeeping.ui.ledger.LedgerManageActivity;
 import com.skyanchor.bookkeeping.ui.search.SearchActivity;
 import com.skyanchor.bookkeeping.util.AmountUtil;
 import com.skyanchor.bookkeeping.util.DateUtil;
@@ -53,6 +55,19 @@ public class RecordFragment extends Fragment {
     public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
         viewModel = new ViewModelProvider(this).get(RecordViewModel.class);
+
+        // V3.2：首页账本切换入口（基线第 7 章——明显但不抢记账主功能）
+        BookkeepingApp.get(requireContext()).getRepository().observeCurrentLedger()
+                .observe(getViewLifecycleOwner(), ledger -> {
+                    if (binding == null) {
+                        return;
+                    }
+                    binding.ledgerChip.setText(ledger == null
+                            ? getString(R.string.record_current_ledger, "我的账本")
+                            : getString(R.string.record_current_ledger, ledger.name));
+                });
+        binding.ledgerChip.setOnClickListener(v ->
+                LedgerManageActivity.start(requireContext()));
 
         adapter = new TransactionListAdapter(new TransactionListAdapter.Listener() {
             @Override

@@ -10,4 +10,8 @@ public interface TransactionRowRepository extends SyncRowRepositoryBase<Transact
     @Modifying
     @Query("DELETE FROM TransactionRow r WHERE r.userId = :userId")
     void deleteAllByUserId(@Param("userId") Long userId);
+
+    @Modifying
+    @Query("DELETE FROM TransactionRow r WHERE r.ledgerId = :ledgerId")
+    void deleteAllByLedgerId(@Param("ledgerId") Long ledgerId);
 }

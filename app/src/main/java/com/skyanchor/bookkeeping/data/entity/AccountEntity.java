@@ -24,7 +24,8 @@ import java.util.Objects;
  *
  * <p>账户被历史账单引用后禁止物理删除，只能归档（{@link #isArchived}）。
  */
-@Entity(tableName = "account", indices = {@Index(value = "sync_id")})
+@Entity(tableName = "account", indices = {@Index(value = "ledger_id"),
+                @Index(value = "sync_id")})
 public class AccountEntity {
 
     /** 现金。 */
@@ -112,6 +113,13 @@ public class AccountEntity {
     @Nullable
     @ColumnInfo(name = "deleted_at")
     public Long deletedAt;
+
+    // ===== V3.2 账本归属（基线第 3.2 章）=====
+
+    /** 所属账本的本地行 id；迁移回填数据归默认账本（id=1），写入时由 Repository 对齐当前账本。 */
+    @ColumnInfo(name = "ledger_id", defaultValue = "1")
+    public long ledgerId = 1;
+
 
     public AccountEntity() {
     }

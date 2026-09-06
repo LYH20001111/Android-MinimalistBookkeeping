@@ -7,6 +7,7 @@ import com.skyanchor.bookkeeping.data.database.AppDatabase;
 import com.skyanchor.bookkeeping.data.entity.AccountEntity;
 import com.skyanchor.bookkeeping.data.entity.BudgetEntity;
 import com.skyanchor.bookkeeping.data.entity.CategoryEntity;
+import com.skyanchor.bookkeeping.data.entity.LedgerEntity;
 import com.skyanchor.bookkeeping.data.entity.RecurringTransactionEntity;
 import com.skyanchor.bookkeeping.data.entity.SyncEntityTypes;
 import com.skyanchor.bookkeeping.data.entity.TransactionEntity;
@@ -161,8 +162,31 @@ public final class SyncPayloadMapper {
         return payload;
     }
 
-    // ===== 引用翻译工具 =====
+    // ===== Ledger（V3.2 基线第 3.2 章：账本自身走同步通道）=====
 
+    /** 为尚未持有 syncId 的账本行生成 UUID。 */
+    public static void ensureSyncId(@NonNull LedgerEntity entity) {
+        if (entity.syncId == null || entity.syncId.isEmpty()) {
+            entity.syncId = UUID.randomUUID().toString();
+        }
+    }
+
+    /** 账本 → 载荷：name/isArchived/isDefault 复用公共字段，is_current 为本地状态不入协议。 */
+    @NonNull
+    public static ApiDtos.SyncPayload toPayload(@NonNull LedgerEntity entity) {
+        ApiDtos.SyncPayload payload = new ApiDtos.SyncPayload();
+        payload.name = entity.name;
+        payload.description = entity.description;
+        payload.currency = entity.currency;
+        payload.isArchived = entity.isArchived;
+        payload.isDefault = entity.isDefault;
+        payload.clientUpdatedAt = entity.clientUpdatedAt;
+        payload.isDeleted = entity.isDeleted;
+        payload.deletedAt = entity.deletedAt;
+        return payload;
+    }
+
+    // ===== 引用翻译工具 =====
     @Nullable
     public static String syncIdOfCategory(@NonNull AppDatabase db, long categoryId) {
         CategoryEntity category = db.categoryDao().getById(categoryId);
@@ -193,9 +217,11 @@ public final class SyncPayloadMapper {
         return account == null ? null : account.id;
     }
 
-    /** Push 批次的实体处理顺序：分类 → 账户 → 交易 → 预算 → 周期（降低悬挂引用）。 */
+    /** Push 批次的实体处理顺序：账本 → 分类 → 账户 → 交易 → 预算 → 周期（降低悬挂引用）。 */
     public static int orderOf(@NonNull String entityType) {
         switch (entityType) {
+            case SyncEntityTypes.LEDGER:
+                return -1;
             case SyncEntityTypes.CATEGORY:
                 return 0;
             case SyncEntityTypes.ACCOUNT:

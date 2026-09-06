@@ -14,6 +14,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase;
 import com.skyanchor.bookkeeping.data.entity.AccountEntity;
 import com.skyanchor.bookkeeping.data.entity.BudgetEntity;
 import com.skyanchor.bookkeeping.data.entity.CategoryEntity;
+import com.skyanchor.bookkeeping.data.entity.LedgerEntity;
 import com.skyanchor.bookkeeping.data.entity.RecurringTransactionEntity;
 import com.skyanchor.bookkeeping.data.entity.SyncChangeQueueEntity;
 import com.skyanchor.bookkeeping.data.entity.SyncCursorEntity;
@@ -23,6 +24,7 @@ import com.skyanchor.bookkeeping.data.entity.TransactionEntity;
 import com.skyanchor.bookkeeping.data.entity.UserSettingsEntity;
 
 import java.util.List;
+import java.util.UUID;
 
 /**
  * 本地数据库。
@@ -37,6 +39,10 @@ import java.util.List;
  * 三张同步支撑表，见 {@link #MIGRATION_4_5}。
  * V3.1 升级到 version 6：5 张业务表增加 deleted_at（回收站排序与展示）；
  * sync_state 增加诊断列；新建 sync_events 事件历史表，见 {@link #MIGRATION_5_6}。
+ * V3.2 升级到 version 7：新建 ledger 表（业务根节点）并写入默认账本；5 张业务表增加
+ * ledger_id（回填默认账本）；budget 唯一键升级为 (ledger_id, year, month, category_id)；
+ * sync_cursor 升级为 (account_email, ledger_sync_id) 复合主键（账本级游标），见
+ * {@link #MIGRATION_6_7}。
  *
  * <p>禁止使用 destructiveMigration，否则用户已有账单数据将丢失。
  */
@@ -48,12 +54,13 @@ import java.util.List;
                 UserSettingsEntity.class,
                 AccountEntity.class,
                 RecurringTransactionEntity.class,
+                LedgerEntity.class,
                 SyncChangeQueueEntity.class,
                 SyncCursorEntity.class,
                 SyncStateEntity.class,
                 SyncEventEntity.class
         },
-        version = 6,
+        version = 7,
         exportSchema = true)
 public abstract class AppDatabase extends RoomDatabase {
 
@@ -72,6 +79,8 @@ public abstract class AppDatabase extends RoomDatabase {
     public abstract AccountDao accountDao();
 
     public abstract RecurringTransactionDao recurringTransactionDao();
+
+    public abstract LedgerDao ledgerDao();
 
     public abstract SyncChangeQueueDao syncChangeQueueDao();
 
@@ -146,7 +155,7 @@ public abstract class AppDatabase extends RoomDatabase {
                     + "is_archived INTEGER NOT NULL, "
                     + "created_at INTEGER NOT NULL, "
                     + "updated_at INTEGER NOT NULL)");
-            seedAccounts(db);
+            seedAccounts(db, 0);
 
             // 2) 重建 transactions：category_id 可空 + account_id / transfer_account_id 可空 FK
             db.execSQL("CREATE TABLE IF NOT EXISTS transactions_new ("
@@ -357,6 +366,87 @@ public abstract class AppDatabase extends RoomDatabase {
         }
     };
 
+    /**
+     * V3.2 升级 6 → 7（基线第 3、5.3 章）：Ledger 成为业务根节点。
+     * <ol>
+     *   <li>新建 ledger 表并写入默认账本「我的账本」（sync_id 用与 V4→5 同款 randomblob
+     *       UUID，is_default=1、is_current=1）；</li>
+     *   <li>5 张业务表加 ledger_id NOT NULL DEFAULT 1（存量数据全部归属默认账本）
+     *       并加索引；</li>
+     *   <li>budget 唯一键升级为 (ledger_id, year, month, category_id)——不同账本同月份
+     *       的预算互不冲突；</li>
+     *   <li>sync_cursor 重建为 (account_email, ledger_sync_id) 复合主键，存量游标迁到
+     *       默认账本名下（ledger_sync_id 空串行由同步引擎在对账后重写为真实 syncId）。</li>
+     * </ol>
+     */
+    static final Migration MIGRATION_6_7 = new Migration(6, 7) {
+        @Override
+        public void migrate(@NonNull SupportSQLiteDatabase db) {
+            String uuidExpr =
+                    "lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4' "
+                            + "|| substr(lower(hex(randomblob(2))),2) || '-' "
+                            + "|| substr('89ab', abs(random()) % 4 + 1, 1) "
+                            + "|| substr(lower(hex(randomblob(2))),2) || '-' "
+                            + "|| lower(hex(randomblob(6)))";
+
+            db.execSQL("CREATE TABLE IF NOT EXISTS ledger ("
+                    + "id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, "
+                    + "sync_id TEXT NOT NULL, "
+                    + "name TEXT NOT NULL, "
+                    + "description TEXT NOT NULL, "
+                    + "currency TEXT NOT NULL, "
+                    + "role TEXT NOT NULL, "
+                    + "owner_user_id INTEGER, "
+                    + "is_default INTEGER NOT NULL, "
+                    + "is_archived INTEGER NOT NULL, "
+                    + "is_deleted INTEGER NOT NULL, "
+                    + "deleted_at INTEGER, "
+                    + "is_current INTEGER NOT NULL, "
+                    + "version INTEGER NOT NULL, "
+                    + "server_received_at INTEGER NOT NULL, "
+                    + "created_at INTEGER NOT NULL, "
+                    + "updated_at INTEGER NOT NULL)");
+            db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_ledger_sync_id "
+                    + "ON ledger(sync_id)");
+            long now = System.currentTimeMillis();
+            db.execSQL("INSERT INTO ledger (id, sync_id, name, description, currency, role, "
+                    + "owner_user_id, is_default, is_archived, is_deleted, deleted_at, "
+                    + "is_current, version, server_received_at, created_at, updated_at) "
+                    + "VALUES (1, (" + uuidExpr + "), '我的账本', '', 'CNY', 'OWNER', "
+                    + "NULL, 1, 0, 0, NULL, 1, 0, 0, " + now + ", " + now + ")");
+
+            String[] businessTables = {
+                    "transactions", "category", "account", "budget", "recurring_transaction"};
+            for (String table : businessTables) {
+                db.execSQL("ALTER TABLE " + table
+                        + " ADD COLUMN ledger_id INTEGER NOT NULL DEFAULT 1");
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_" + table + "_ledger_id "
+                        + "ON " + table + "(ledger_id)");
+            }
+
+            // budget 唯一键从 (year, month, category_id) 升级为 (ledger_id, ...)，
+            // 仅索引变更：删旧建新即可，无需重建表。
+            db.execSQL("DROP INDEX IF EXISTS index_budget_year_month_category_id");
+            db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS "
+                    + "index_budget_ledger_id_year_month_category_id "
+                    + "ON budget(ledger_id, year, month, category_id)");
+
+            // 游标表升级为 (account_email, ledger_sync_id) 复合主键；存量游标挂到空串键，
+            // 首次对账后由同步引擎改写为默认账本的真实 syncId。
+            db.execSQL("CREATE TABLE IF NOT EXISTS sync_cursor_new ("
+                    + "account_email TEXT NOT NULL, "
+                    + "ledger_sync_id TEXT NOT NULL, "
+                    + "last_change_id INTEGER NOT NULL, "
+                    + "updated_at INTEGER NOT NULL, "
+                    + "PRIMARY KEY(account_email, ledger_sync_id))");
+            db.execSQL("INSERT INTO sync_cursor_new (account_email, ledger_sync_id, "
+                    + "last_change_id, updated_at) "
+                    + "SELECT account_email, '', last_change_id, updated_at FROM sync_cursor");
+            db.execSQL("DROP TABLE sync_cursor");
+            db.execSQL("ALTER TABLE sync_cursor_new RENAME TO sync_cursor");
+        }
+    };
+
     public static AppDatabase getInstance(@NonNull Context context) {
         AppDatabase local = instance;
         if (local == null) {
@@ -366,7 +456,7 @@ public abstract class AppDatabase extends RoomDatabase {
                     local = Room.databaseBuilder(
                                     context.getApplicationContext(), AppDatabase.class, DB_NAME)
                             .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4,
-                                    MIGRATION_4_5, MIGRATION_5_6)
+                                    MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
                             .addCallback(SEED_CALLBACK)
                             .build();
                     instance = local;
@@ -386,6 +476,26 @@ public abstract class AppDatabase extends RoomDatabase {
         @Override
         public void onCreate(@NonNull SupportSQLiteDatabase db) {
             super.onCreate(db);
+            // V3.2：先建默认账本，默认分类/账户全部归属它（业务根节点，基线第 3.2 章）。
+            long now = System.currentTimeMillis();
+            ContentValues ledger = new ContentValues();
+            ledger.put("id", 1L);
+            ledger.put("sync_id", UUID.randomUUID().toString());
+            ledger.put("name", "我的账本");
+            ledger.put("description", "");
+            ledger.put("currency", "CNY");
+            ledger.put("role", "OWNER");
+            ledger.put("is_default", 1);
+            ledger.put("is_archived", 0);
+            ledger.put("is_deleted", 0);
+            ledger.put("is_current", 1);
+            ledger.put("version", 0);
+            ledger.put("server_received_at", 0);
+            ledger.put("created_at", now);
+            ledger.put("updated_at", now);
+            db.insert("ledger", SQLiteDatabase.CONFLICT_REPLACE, ledger);
+            long defaultLedgerId = 1L;
+
             for (CategoryEntity category : DefaultData.defaultCategories()) {
                 ContentValues values = new ContentValues();
                 values.put("name", category.name);
@@ -393,12 +503,12 @@ public abstract class AppDatabase extends RoomDatabase {
                 values.put("type", category.type);
                 values.put("sort_order", category.sortOrder);
                 values.put("is_default", category.isDefault ? 1 : 0);
+                values.put("ledger_id", defaultLedgerId);
                 db.insert("category", SQLiteDatabase.CONFLICT_IGNORE, values);
             }
 
-            seedAccounts(db);
+            seedAccounts(db, defaultLedgerId);
 
-            long now = System.currentTimeMillis();
             ContentValues settings = new ContentValues();
             settings.put("id", UserSettingsEntity.SINGLETON_ID);
             settings.put("theme", UserSettingsEntity.THEME_LIGHT);
@@ -411,8 +521,10 @@ public abstract class AppDatabase extends RoomDatabase {
 
     /**
      * 播种 6 个默认账户。迁移（老用户）与建库（新用户）共用，初始余额 0、balance 缓存 0。
+     * V3.2：ledgerId &gt; 0 时账户归属指定账本（建库 = 默认账本）；
+     * 2→3 迁移发生在 ledger 列出现之前，传 0 表示不写该列。
      */
-    private static void seedAccounts(@NonNull SupportSQLiteDatabase db) {
+    private static void seedAccounts(@NonNull SupportSQLiteDatabase db, long ledgerId) {
         long now = System.currentTimeMillis();
         List<AccountEntity> accounts = DefaultData.defaultAccounts();
         for (AccountEntity account : accounts) {
@@ -426,6 +538,9 @@ public abstract class AppDatabase extends RoomDatabase {
             values.put("is_archived", account.isArchived ? 1 : 0);
             values.put("created_at", now);
             values.put("updated_at", now);
+            if (ledgerId > 0) {
+                values.put("ledger_id", ledgerId);
+            }
             db.insert("account", SQLiteDatabase.CONFLICT_IGNORE, values);
         }
     }

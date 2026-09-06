@@ -10,4 +10,8 @@ public interface RecurringRowRepository extends SyncRowRepositoryBase<RecurringR
     @Modifying
     @Query("DELETE FROM RecurringRow r WHERE r.userId = :userId")
     void deleteAllByUserId(@Param("userId") Long userId);
+
+    @Modifying
+    @Query("DELETE FROM RecurringRow r WHERE r.ledgerId = :ledgerId")
+    void deleteAllByLedgerId(@Param("ledgerId") Long ledgerId);
 }

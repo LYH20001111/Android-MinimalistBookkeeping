@@ -9,6 +9,7 @@ import com.skyanchor.bookkeeping.data.database.AppDatabase;
 import com.skyanchor.bookkeeping.data.entity.AccountEntity;
 import com.skyanchor.bookkeeping.data.entity.BudgetEntity;
 import com.skyanchor.bookkeeping.data.entity.CategoryEntity;
+import com.skyanchor.bookkeeping.data.entity.LedgerEntity;
 import com.skyanchor.bookkeeping.data.entity.RecurringTransactionEntity;
 import com.skyanchor.bookkeeping.data.entity.SyncChangeQueueEntity;
 import com.skyanchor.bookkeeping.data.entity.SyncCursorEntity;
@@ -64,6 +65,8 @@ public class SyncCoordinator {
     private final SyncEnqueuer enqueuer;
 
     private final MutableLiveData<Status> status = new MutableLiveData<>(Status.IDLE);
+    /** 成员关系变化通知（V3.2 基线第 25 章：被移出账本 / 角色变化，下次同步后提示）。 */
+    private final MutableLiveData<String> notice = new MutableLiveData<>();
     private volatile boolean running;
     private volatile boolean pendingAgain;
     private volatile int failedRounds;
@@ -95,6 +98,16 @@ public class SyncCoordinator {
         return status;
     }
 
+    /** 成员关系变化通知（一次性事件流，UI 弹提示或横幅）。 */
+    @NonNull
+    public LiveData<String> observeNotice() {
+        return notice;
+    }
+
+    private void postNotice(@NonNull String message) {
+        notice.postValue(message);
+    }
+
     @NonNull
     public LiveData<Integer> observePendingCount() {
         return database.syncChangeQueueDao().observePendingCount();
@@ -124,7 +137,8 @@ public class SyncCoordinator {
         if (email == null) {
             return false;
         }
-        return database.syncCursorDao().find(email) != null;
+        // V3.2：任一账本存在游标即代表已完成首次同步（游标已按账本拆分）
+        return database.syncCursorDao().countForEmail(email) > 0;
     }
 
     // ===== 开关（基线第 7 章） =====
@@ -245,8 +259,10 @@ public class SyncCoordinator {
         try {
             repairSyncIds();
             mergeDuplicateRows();
+            // V3.2：先对账成员关系（新账本 / 角色变化 / 被移出），再 Push、按账本逐个 Pull
+            reconcileLedgers(api);
             counters.conflicts = pushPending(api, counters);
-            pullChanges(api, counters);
+            pullAllLedgers(api, counters);
             failedRounds = 0;
             lastError = null;
             finishRound(Status.SUCCESS, counters, startedAt);
@@ -257,6 +273,11 @@ public class SyncCoordinator {
                 // Refresh Token 已失效：本地功能照常，重新登录后恢复同步（基线 24.3）
                 postStatus(Status.AUTH_REQUIRED);
                 persistState(Status.AUTH_REQUIRED, e.getMessage(), counters.conflicts);
+            } else if ("USER_DISABLED".equals(e.code)) {
+                // 账号被服务器禁用：明确语义，不映射为网络异常（V3.2 基线 16.1）
+                failedRounds++;
+                postStatus(Status.ERROR);
+                persistState(Status.ERROR, e.getMessage(), counters.conflicts);
             } else if (e.isNetworkLevel()) {
                 failedRounds++;
                 postStatus(Status.SERVER_UNAVAILABLE);
@@ -332,77 +353,122 @@ public class SyncCoordinator {
         return list;
     }
 
+    /** 账本本地行 id → 账本 syncId（推送项寻址依据，基线第 10.1 章）。 */
+    @Nullable
+    private String ledgerSyncIdOf(long ledgerRowId) {
+        LedgerEntity ledger = database.ledgerDao().getById(ledgerRowId);
+        return ledger != null ? ledger.syncId : null;
+    }
+
     /**
      * 用实体当前状态构建推送项（快照在发送前重读，基线 12.2）。
-     * 实体已被物理清除且从未同步 → 丢弃队列项；否则按软删态推 DELETE。
+     * 实体已被物理清除且从未同步 → 丢弃队列项；账本行丢失（无法寻址）同样丢弃。
      */
     @Nullable
     private ApiDtos.PushItem buildPushItem(@NonNull SyncChangeQueueEntity entry,
                                            @NonNull Map<String, PushSnapshot> snapshots) {
         String syncId = entry.syncId;
         switch (entry.entityType) {
+            case SyncEntityTypes.LEDGER: {
+                LedgerEntity entity = database.ledgerDao().getBySyncId(syncId);
+                if (entity == null) {
+                    database.syncChangeQueueDao().clearFor(entry.entityType, syncId);
+                    return null;
+                }
+                ApiDtos.SyncPayload payload = SyncPayloadMapper.toPayload(entity);
+                snapshots.put(key(entry), new PushSnapshot(entry.entityType, syncId,
+                        entity.version, payload, entity.isDeleted, 0L));
+                return new ApiDtos.PushItem(entry.entityType, syncId,
+                        entity.isDeleted ? SyncEntityTypes.OP_DELETE : SyncEntityTypes.OP_UPSERT,
+                        entity.version, syncId, payload);
+            }
             case SyncEntityTypes.CATEGORY: {
                 CategoryEntity entity = database.categoryDao().getBySyncId(syncId);
                 if (entity == null) {
-                    return dropOrDelete(entry, null, snapshots);
+                    return dropOrDelete(entry, snapshots);
+                }
+                String ledgerSyncId = ledgerSyncIdOf(entity.ledgerId);
+                if (ledgerSyncId == null) {
+                    database.syncChangeQueueDao().clearFor(entry.entityType, syncId);
+                    return null;
                 }
                 SyncPayloadMapper.ensureSyncId(entity);
                 ApiDtos.SyncPayload payload = SyncPayloadMapper.toPayload(entity, database);
                 snapshots.put(key(entry), new PushSnapshot(entry.entityType, syncId,
-                        entity.version, payload, entity.isDeleted));
+                        entity.version, payload, entity.isDeleted, entity.ledgerId));
                 return new ApiDtos.PushItem(entry.entityType, syncId,
                         entity.isDeleted ? SyncEntityTypes.OP_DELETE : SyncEntityTypes.OP_UPSERT,
-                        entity.version, payload);
+                        entity.version, ledgerSyncId, payload);
             }
             case SyncEntityTypes.ACCOUNT: {
                 AccountEntity entity = database.accountDao().getBySyncId(syncId);
                 if (entity == null) {
-                    return dropOrDelete(entry, null, snapshots);
+                    return dropOrDelete(entry, snapshots);
+                }
+                String ledgerSyncId = ledgerSyncIdOf(entity.ledgerId);
+                if (ledgerSyncId == null) {
+                    database.syncChangeQueueDao().clearFor(entry.entityType, syncId);
+                    return null;
                 }
                 ApiDtos.SyncPayload payload = SyncPayloadMapper.toPayload(entity, database);
                 snapshots.put(key(entry), new PushSnapshot(entry.entityType, syncId,
-                        entity.version, payload, entity.isDeleted));
+                        entity.version, payload, entity.isDeleted, entity.ledgerId));
                 return new ApiDtos.PushItem(entry.entityType, syncId,
                         entity.isDeleted ? SyncEntityTypes.OP_DELETE : SyncEntityTypes.OP_UPSERT,
-                        entity.version, payload);
+                        entity.version, ledgerSyncId, payload);
             }
             case SyncEntityTypes.TRANSACTION: {
                 TransactionEntity entity = database.transactionDao().getBySyncId(syncId);
                 if (entity == null) {
-                    return dropOrDelete(entry, null, snapshots);
+                    return dropOrDelete(entry, snapshots);
+                }
+                String ledgerSyncId = ledgerSyncIdOf(entity.ledgerId);
+                if (ledgerSyncId == null) {
+                    database.syncChangeQueueDao().clearFor(entry.entityType, syncId);
+                    return null;
                 }
                 ApiDtos.SyncPayload payload = SyncPayloadMapper.toPayload(entity, database);
                 snapshots.put(key(entry), new PushSnapshot(entry.entityType, syncId,
-                        entity.version, payload, entity.isDeleted));
+                        entity.version, payload, entity.isDeleted, entity.ledgerId));
                 return new ApiDtos.PushItem(entry.entityType, syncId,
                         entity.isDeleted ? SyncEntityTypes.OP_DELETE : SyncEntityTypes.OP_UPSERT,
-                        entity.version, payload);
+                        entity.version, ledgerSyncId, payload);
             }
             case SyncEntityTypes.BUDGET: {
                 // 队列中没有本地 id，按 syncId 全表定位
                 BudgetEntity entity = findBudgetBySyncId(syncId);
                 if (entity == null) {
-                    return dropOrDelete(entry, null, snapshots);
+                    return dropOrDelete(entry, snapshots);
+                }
+                String ledgerSyncId = ledgerSyncIdOf(entity.ledgerId);
+                if (ledgerSyncId == null) {
+                    database.syncChangeQueueDao().clearFor(entry.entityType, syncId);
+                    return null;
                 }
                 ApiDtos.SyncPayload payload = SyncPayloadMapper.toPayload(entity, database);
                 snapshots.put(key(entry), new PushSnapshot(entry.entityType, syncId,
-                        entity.version, payload, entity.isDeleted));
+                        entity.version, payload, entity.isDeleted, entity.ledgerId));
                 return new ApiDtos.PushItem(entry.entityType, syncId,
                         entity.isDeleted ? SyncEntityTypes.OP_DELETE : SyncEntityTypes.OP_UPSERT,
-                        entity.version, payload);
+                        entity.version, ledgerSyncId, payload);
             }
             case SyncEntityTypes.RECURRING: {
                 RecurringTransactionEntity entity =
                         database.recurringTransactionDao().getBySyncId(syncId);
                 if (entity == null) {
-                    return dropOrDelete(entry, null, snapshots);
+                    return dropOrDelete(entry, snapshots);
+                }
+                String ledgerSyncId = ledgerSyncIdOf(entity.ledgerId);
+                if (ledgerSyncId == null) {
+                    database.syncChangeQueueDao().clearFor(entry.entityType, syncId);
+                    return null;
                 }
                 ApiDtos.SyncPayload payload = SyncPayloadMapper.toPayload(entity, database);
                 snapshots.put(key(entry), new PushSnapshot(entry.entityType, syncId,
-                        entity.version, payload, entity.isDeleted));
+                        entity.version, payload, entity.isDeleted, entity.ledgerId));
                 return new ApiDtos.PushItem(entry.entityType, syncId,
                         entity.isDeleted ? SyncEntityTypes.OP_DELETE : SyncEntityTypes.OP_UPSERT,
-                        entity.version, payload);
+                        entity.version, ledgerSyncId, payload);
             }
             default:
                 database.syncChangeQueueDao().clearFor(entry.entityType, syncId);
@@ -410,22 +476,15 @@ public class SyncCoordinator {
         }
     }
 
+    /**
+     * 实体已被物理清除：无法解析账本归属（无寻址依据），直接丢弃队列项。
+     * 服务器侧数据不受影响；物理清除只发生在本地清空 / 本地恢复等运维场景。
+     */
     @Nullable
     private ApiDtos.PushItem dropOrDelete(@NonNull SyncChangeQueueEntity entry,
-                                          @Nullable Void unused,
                                           @NonNull Map<String, PushSnapshot> snapshots) {
-        if (entry.baseVersion <= 0) {
-            // 从未同步过且本地已不在：无事可做
-            database.syncChangeQueueDao().clearFor(entry.entityType, entry.syncId);
-            return null;
-        }
-        // 本地已物理清除但服务器可能有：推 DELETE 幂等
-        ApiDtos.SyncPayload payload = new ApiDtos.SyncPayload();
-        payload.isDeleted = true;
-        snapshots.put(key(entry), new PushSnapshot(entry.entityType, entry.syncId,
-                entry.baseVersion, payload, true));
-        return new ApiDtos.PushItem(entry.entityType, entry.syncId,
-                SyncEntityTypes.OP_DELETE, entry.baseVersion, payload);
+        database.syncChangeQueueDao().clearFor(entry.entityType, entry.syncId);
+        return null;
     }
 
     /**
@@ -459,7 +518,7 @@ public class SyncCoordinator {
                     // 服务器版本胜出（罕见：同毫秒边界）：接受服务器最终状态
                     conflicts[0]++;
                     applyServerPayload(result.entityType, result.syncId, result.payload,
-                            result.version, result.serverReceivedAt);
+                            result.version, result.serverReceivedAt, snapshot.ledgerRowId);
                     database.syncChangeQueueDao().clearFor(result.entityType, result.syncId);
                 } else if (result.errorCode != null) {
                     // 逐项失败（如悬挂引用）：按退避留在队列，等引用方同步后再试
@@ -480,6 +539,18 @@ public class SyncCoordinator {
         boolean unchanged;
         String op = snapshot.isDeleted ? SyncEntityTypes.OP_DELETE : SyncEntityTypes.OP_UPSERT;
         switch (snapshot.entityType) {
+            case SyncEntityTypes.LEDGER: {
+                LedgerEntity current = database.ledgerDao().getBySyncId(syncId);
+                unchanged = current != null && current.version == snapshot.baseVersion
+                        && current.isDeleted == snapshot.isDeleted
+                        && payloadEquals(SyncPayloadMapper.toPayload(current), snapshot.payload);
+                if (unchanged) {
+                    current.version = result.version;
+                    current.serverReceivedAt = result.serverReceivedAt;
+                    database.ledgerDao().update(current);
+                }
+                break;
+            }
             case SyncEntityTypes.CATEGORY: {
                 CategoryEntity current = database.categoryDao().getBySyncId(syncId);
                 unchanged = current != null && current.version == snapshot.baseVersion
@@ -553,15 +624,132 @@ public class SyncCoordinator {
         // 未通过护栏：保留队列行，下一轮以最新状态重推（旧快照绝不覆盖本地，基线 12.2）
     }
 
-    // ===== Pull（基线第 22 章 8-10 步） =====
+    // ===== 账本对账 + Pull（V3.2 基线第 10、25 章） =====
 
-    private void pullChanges(ApiService api, RoundCounters counters)
+    /**
+     * 成员关系对账：以 sync/status 的 ledgerMemberships 为权威，插入新账本、
+     * 更新角色、感知被移出（本地标记 REMOVED 并切走当前账本）。
+     * 邀请的接受走 REST（我的邀请页），接受后的账本经这里落到本地。
+     */
+    private void reconcileLedgers(ApiService api) throws ApiException, IOException {
+        Response<ApiDtos.StatusResponse> response = api.status().execute();
+        if (!response.isSuccessful() || response.body() == null) {
+            throw ApiClient.toApiError(response);
+        }
+        ApiDtos.StatusResponse statusResponse = response.body();
+        handleRecoveryEpoch(statusResponse.recoveryEpoch);
+        long now = System.currentTimeMillis();
+        if (statusResponse.ledgerMemberships != null) {
+            database.runInTransaction(() -> {
+                for (ApiDtos.LedgerMembershipSummary summary : statusResponse.ledgerMemberships) {
+                    reconcileMembership(summary, now);
+                }
+            });
+        }
+        // V3.1 → V3.2 升级遗留：空键游标挂到默认账本名下（默认账本身份确立后一次即可）
+        String email = tokenStore.getAccountEmail();
+        if (email != null) {
+            SyncCursorEntity legacy = database.syncCursorDao().find(email, "");
+            LedgerEntity defaultLedger = database.ledgerDao().getDefaultLedger();
+            if (legacy != null && defaultLedger != null
+                    && defaultLedger.syncId != null && !defaultLedger.syncId.isEmpty()
+                    && !defaultLedger.syncId.equals("")) {
+                database.syncCursorDao().renameKey(email, "", defaultLedger.syncId, now);
+            }
+        }
+    }
+
+    /** 单条成员关系对账（须处于 DB 事务内）。 */
+    private void reconcileMembership(@NonNull ApiDtos.LedgerMembershipSummary summary,
+                                     long now) {
+        LedgerEntity local = database.ledgerDao().getBySyncId(summary.ledgerSyncId);
+        boolean removed = "REMOVED".equals(summary.membershipStatus);
+        if (local == null) {
+            if (removed) {
+                return; // 与本机无关的旧成员关系
+            }
+            LedgerEntity created = new LedgerEntity();
+            created.syncId = summary.ledgerSyncId;
+            created.name = summary.name != null ? summary.name : "";
+            created.description = summary.description != null ? summary.description : "";
+            created.currency = summary.currency != null ? summary.currency : "CNY";
+            created.role = summary.role != null ? summary.role : LedgerEntity.ROLE_VIEWER;
+            created.ownerUserId = summary.ownerUserId;
+            created.isDefault = summary.isDefault;
+            created.isArchived = summary.isArchived;
+            created.isDeleted = summary.isDeleted;
+            created.version = summary.version;
+            created.serverReceivedAt = now;
+            created.createdAt = now;
+            database.ledgerDao().insert(created);
+            postNotice("已加入账本「" + created.name + "」");
+            return;
+        }
+        if (removed && !LedgerEntity.ROLE_REMOVED.equals(local.role)) {
+            database.ledgerDao().markRemoved(local.syncId, now);
+            postNotice("你已被移出账本「" + local.name + "」");
+            switchAwayIfCurrent(local.id);
+        } else if (!removed && !LedgerEntity.ROLE_REMOVED.equals(local.role)
+                && summary.role != null && !summary.role.equals(local.role)) {
+            local.role = summary.role;
+            database.ledgerDao().update(local);
+            postNotice("你在账本「" + local.name + "」中的角色变为 "
+                    + roleLabel(summary.role));
+        }
+    }
+
+    private void switchAwayIfCurrent(long ledgerRowId) {
+        Long current = database.ledgerDao().getCurrentId();
+        if (current != null && current == ledgerRowId) {
+            List<LedgerEntity> remaining = database.ledgerDao().getActive();
+            if (!remaining.isEmpty()) {
+                database.ledgerDao().setCurrent(remaining.get(0).id);
+            }
+        }
+    }
+
+    @NonNull
+    private static String roleLabel(@NonNull String role) {
+        switch (role) {
+            case LedgerEntity.ROLE_OWNER: return "所有者";
+            case LedgerEntity.ROLE_ADMIN: return "管理员";
+            case LedgerEntity.ROLE_MEMBER: return "成员";
+            case LedgerEntity.ROLE_VIEWER: return "观察者";
+            default: return role;
+        }
+    }
+
+    /** 逐账本拉取：每个账本独立游标（基线第 10.2 章：账号 + 账本 + cursor）。 */
+    private void pullAllLedgers(ApiService api, RoundCounters counters)
             throws ApiException, IOException {
         String email = tokenStore.getAccountEmail();
         if (email == null) {
             return;
         }
-        SyncCursorEntity cursorRow = database.syncCursorDao().find(email);
+        for (LedgerEntity ledger : database.ledgerDao().getActive()) {
+            try {
+                pullLedger(api, email, ledger, counters);
+            } catch (ApiException e) {
+                if ("LEDGER_ACCESS_DENIED".equals(e.code)
+                        || "LEDGER_NOT_FOUND".equals(e.code)) {
+                    // 已被移出 / 账本不可达：本地隐藏并切走，其余账本继续同步
+                    database.runInTransaction(() -> {
+                        database.ledgerDao().markRemoved(ledger.syncId,
+                                System.currentTimeMillis());
+                        switchAwayIfCurrent(ledger.id);
+                    });
+                    postNotice("你已被移出账本「" + ledger.name + "」");
+                    continue;
+                }
+                throw e;
+            }
+        }
+    }
+
+    private void pullLedger(@NonNull ApiService api, @NonNull String email,
+                            @NonNull LedgerEntity ledger, @NonNull RoundCounters counters)
+            throws ApiException, IOException {
+        SyncCursorEntity cursorRow = database.syncCursorDao().find(email, ledger.syncId);
         long cursor = cursorRow != null ? cursorRow.lastChangeId : 0;
         long latestChangeId = cursor;
         List<ApiDtos.ChangeItem> deferred = new ArrayList<>();
@@ -570,7 +758,7 @@ public class SyncCoordinator {
         boolean hasMore = true;
         while (hasMore && pages < MAX_PULL_PAGES) {
             Response<ApiDtos.PullResponse> response =
-                    api.pull(new ApiDtos.PullRequest(cursor, PULL_LIMIT)).execute();
+                    api.pull(new ApiDtos.PullRequest(ledger.syncId, cursor, PULL_LIMIT)).execute();
             if (!response.isSuccessful() || response.body() == null) {
                 throw ApiClient.toApiError(response);
             }
@@ -580,7 +768,7 @@ public class SyncCoordinator {
             handleRecoveryEpoch(pull.recoveryEpoch);
             for (ApiDtos.ChangeItem change : pull.changes) {
                 latestChangeId = Math.max(latestChangeId, change.changeId);
-                boolean applied = applyServerChange(change);
+                boolean applied = applyServerChange(change, ledger.id);
                 if (applied) {
                     counters.pulled++;
                 } else {
@@ -597,7 +785,7 @@ public class SyncCoordinator {
         // 二次尝试暂存项（引用方可能在本轮后续页面里已到位）
         List<ApiDtos.ChangeItem> stillUnresolved = new ArrayList<>();
         for (ApiDtos.ChangeItem change : deferred) {
-            if (!applyServerChange(change)) {
+            if (!applyServerChange(change, ledger.id)) {
                 stillUnresolved.add(change);
             }
         }
@@ -605,10 +793,9 @@ public class SyncCoordinator {
                 ? latestChangeId
                 : Math.min(latestChangeId, minUnresolved - 1);
         // 游标只前进不后退：悬挂引用会把有效水位压回，待引用方同步后自然推进
-        SyncCursorEntity current = database.syncCursorDao().find(email);
+        SyncCursorEntity current = database.syncCursorDao().find(email, ledger.syncId);
         long finalCursor = Math.max(persisted, current != null ? current.lastChangeId : 0);
-        SyncCursorEntity row = new SyncCursorEntity();
-        row.accountEmail = email;
+        SyncCursorEntity row = new SyncCursorEntity(email, ledger.syncId);
         row.lastChangeId = finalCursor;
         row.updatedAt = System.currentTimeMillis();
         database.syncCursorDao().upsert(row);
@@ -617,24 +804,55 @@ public class SyncCoordinator {
     /**
      * 应用一条服务器变更。返回 false 表示引用未就绪，需暂存重试。
      * 仅当服务器 version &gt; 本地 version 时应用（本机 Push 回显自然跳过）。
+     * {@code ledgerRowId} 是变更所属账本的本地行 id，新落地行的账本归属依据。
      */
-    private boolean applyServerChange(@NonNull ApiDtos.ChangeItem change) {
+    private boolean applyServerChange(@NonNull ApiDtos.ChangeItem change, long ledgerRowId) {
         boolean[] applied = {false};
         database.runInTransaction(() -> {
             applied[0] = applyServerPayload(change.entityType, change.syncId,
-                    change.payload, change.version, change.serverReceivedAt);
+                    change.payload, change.version, change.serverReceivedAt, ledgerRowId);
         });
         return applied[0];
     }
 
     private boolean applyServerPayload(@NonNull String entityType, @NonNull String syncId,
                                        @Nullable ApiDtos.SyncPayload payload,
-                                       long serverVersion, long serverReceivedAt) {
+                                       long serverVersion, long serverReceivedAt,
+                                       long ledgerRowId) {
         if (payload == null) {
             return true; // DELETE 无载荷：对未知 syncId 无操作
         }
         boolean isDelete = payload.isDeleted != null && payload.isDeleted;
         switch (entityType) {
+            case SyncEntityTypes.LEDGER: {
+                LedgerEntity local = database.ledgerDao().getBySyncId(syncId);
+                if (local == null) {
+                    if (isDelete) {
+                        return true; // 本地没有、云端已删：无需建墓碑
+                    }
+                    LedgerEntity created = new LedgerEntity();
+                    created.syncId = syncId;
+                    created.createdAt = System.currentTimeMillis();
+                    applyLedgerFields(created, payload);
+                    created.version = serverVersion;
+                    created.serverReceivedAt = serverReceivedAt;
+                    database.ledgerDao().insert(created);
+                    return true;
+                }
+                if (serverVersion <= local.version) {
+                    return true; // 回显 / 过时变更
+                }
+                boolean wasDeleted = local.isDeleted;
+                applyLedgerFields(local, payload);
+                local.version = serverVersion;
+                local.serverReceivedAt = serverReceivedAt;
+                database.ledgerDao().update(local);
+                if (local.isDeleted && !wasDeleted) {
+                    postNotice("账本「" + local.name + "」已被所有者删除");
+                    switchAwayIfCurrent(local.id);
+                }
+                return true;
+            }
             case SyncEntityTypes.CATEGORY: {
                 CategoryEntity local = database.categoryDao().getBySyncId(syncId);
                 if (local == null) {
@@ -643,6 +861,7 @@ public class SyncCoordinator {
                     }
                     CategoryEntity created = new CategoryEntity();
                     created.syncId = syncId;
+                    created.ledgerId = ledgerRowId;
                     applyCategoryFields(created, payload);
                     created.version = serverVersion;
                     created.serverReceivedAt = serverReceivedAt;
@@ -666,6 +885,7 @@ public class SyncCoordinator {
                     }
                     AccountEntity created = new AccountEntity();
                     created.syncId = syncId;
+                    created.ledgerId = ledgerRowId;
                     created.createdAt = System.currentTimeMillis();
                     applyAccountFields(created, payload);
                     created.version = serverVersion;
@@ -699,6 +919,7 @@ public class SyncCoordinator {
                     }
                     TransactionEntity created = new TransactionEntity();
                     created.syncId = syncId;
+                    created.ledgerId = ledgerRowId;
                     applyTransactionFields(created, payload, categoryId, accountId,
                             transferAccountId);
                     created.version = serverVersion;
@@ -728,6 +949,7 @@ public class SyncCoordinator {
                     }
                     BudgetEntity created = new BudgetEntity();
                     created.syncId = syncId;
+                    created.ledgerId = ledgerRowId;
                     applyBudgetFields(created, payload, categoryId);
                     created.version = serverVersion;
                     created.serverReceivedAt = serverReceivedAt;
@@ -758,6 +980,7 @@ public class SyncCoordinator {
                     }
                     RecurringTransactionEntity created = new RecurringTransactionEntity();
                     created.syncId = syncId;
+                    created.ledgerId = ledgerRowId;
                     created.createdAt = System.currentTimeMillis();
                     applyRecurringFields(created, payload, categoryId, accountId);
                     created.version = serverVersion;
@@ -780,6 +1003,21 @@ public class SyncCoordinator {
     }
 
     // ===== 字段应用（Pull 侧） =====
+
+    /** 账本字段应用（Pull 侧）：is_current 是本地状态、不入协议；ownerUserId 仅服务端下发。 */
+    private void applyLedgerFields(LedgerEntity entity, ApiDtos.SyncPayload payload) {
+        entity.name = payload.name != null ? payload.name : entity.name;
+        entity.description = payload.description != null ? payload.description : entity.description;
+        entity.currency = payload.currency != null ? payload.currency : entity.currency;
+        entity.isArchived = payload.isArchived != null
+                ? payload.isArchived : entity.isArchived;
+        entity.isDefault = payload.isDefault != null ? payload.isDefault : entity.isDefault;
+        entity.ownerUserId = payload.ownerUserId != null ? payload.ownerUserId : entity.ownerUserId;
+        entity.clientUpdatedAt = payload.clientUpdatedAt != null
+                ? payload.clientUpdatedAt : entity.clientUpdatedAt;
+        entity.isDeleted = payload.isDeleted != null && payload.isDeleted;
+        entity.deletedAt = payload.deletedAt;
+    }
 
     private void applyCategoryFields(CategoryEntity entity, ApiDtos.SyncPayload payload) {
         entity.name = payload.name != null ? payload.name : entity.name;
@@ -872,6 +1110,12 @@ public class SyncCoordinator {
         String target = result.mergedInto;
         long now = System.currentTimeMillis();
         switch (result.entityType) {
+            case SyncEntityTypes.LEDGER: {
+                // V3.2 默认账本 claim 合并（V3.1 → V3.2 升级链路，基线第 5 章）：
+                // 本地默认账本并入服务端回填的「我的账本」，业务数据整体迁移，不换 syncId。
+                applyLedgerMergedInto(result, incoming, target, now);
+                break;
+            }
             case SyncEntityTypes.CATEGORY: {
                 CategoryEntity local = database.categoryDao().getBySyncId(incoming);
                 if (local == null) {
@@ -937,6 +1181,53 @@ public class SyncCoordinator {
                 database.syncChangeQueueDao().clearFor(result.entityType, incoming);
                 break;
         }
+    }
+
+    /**
+     * 账本身份合并（默认账本 claim 被 mergedInto，基线第 5.1/5.2 章）：
+     * 本地没有目标行 → 改写本地账本 syncId 采纳服务器身份，游标键随迁；
+     * 两行都在（状态对账已插入服务端回填账本）→ 全部业务行迁移 ledger_id 后删除本地空壳，
+     * 业务 sync_id 一律保持不变（基线第 5.2 章：迁移不得重生成 syncId）。
+     */
+    private void applyLedgerMergedInto(@NonNull ApiDtos.PushResultItem result,
+                                       @NonNull String incoming, @NonNull String target,
+                                       long now) {
+        LedgerEntity local = database.ledgerDao().getBySyncId(incoming);
+        if (local == null) {
+            database.syncChangeQueueDao().clearFor(SyncEntityTypes.LEDGER, incoming);
+            return;
+        }
+        boolean wasCurrent = local.isCurrent;
+        LedgerEntity twin = database.ledgerDao().getBySyncId(target);
+        String email = tokenStore.getAccountEmail();
+        if (twin == null) {
+            String oldSyncId = local.syncId;
+            local.syncId = target;
+            if (result.payload != null) {
+                applyLedgerFields(local, result.payload);
+            }
+            local.version = result.version;
+            local.serverReceivedAt = result.serverReceivedAt;
+            database.ledgerDao().update(local);
+            if (email != null) {
+                database.syncCursorDao().renameKey(email, oldSyncId, target, now);
+            }
+        } else {
+            database.transactionDao().repointLedger(local.id, twin.id);
+            database.categoryDao().repointLedger(local.id, twin.id);
+            database.accountDao().repointLedger(local.id, twin.id);
+            database.budgetDao().repointLedger(local.id, twin.id);
+            database.recurringTransactionDao().repointLedger(local.id, twin.id);
+            database.ledgerDao().deleteById(local.id);
+            if (wasCurrent) {
+                database.ledgerDao().setCurrent(twin.id);
+            }
+            if (email != null) {
+                database.syncCursorDao().renameKey(email, "", target, now);
+                database.syncCursorDao().renameKey(email, incoming, target, now);
+            }
+        }
+        database.syncChangeQueueDao().clearFor(SyncEntityTypes.LEDGER, incoming);
     }
 
     /** 把引用 loser 分类的预算改指向 keeper；撞唯一键时保留既有行、退役移动行。 */
@@ -1142,6 +1433,14 @@ public class SyncCoordinator {
     /** bootstrap 确认后：全量入队（UPSERT / DELETE 按软删态），走常规 Push 收敛。 */
     private void enqueueEverythingForBootstrap() {
         database.runInTransaction(() -> {
+            // V3.2：账本本身也要上云（本地新建账本 / 默认账本 claim / 本地删除墓碑）
+            for (LedgerEntity ledger : database.ledgerDao().getAllIncludingDeleted()) {
+                if (ledger.syncId == null || ledger.syncId.isEmpty()) {
+                    continue;
+                }
+                database.syncChangeQueueDao().upsert(queueRow(SyncEntityTypes.LEDGER,
+                        ledger.syncId, ledger.isDeleted));
+            }
             for (CategoryEntity entity : database.categoryDao().getAllIncludingDeleted()) {
                 database.syncChangeQueueDao().upsert(queueRow(SyncEntityTypes.CATEGORY,
                         entity.syncId, entity.isDeleted));
@@ -1258,17 +1557,8 @@ public class SyncCoordinator {
         if (state.recoveryEpoch == epoch) {
             return;
         }
-        String email = tokenStore.getAccountEmail();
-        if (email != null) {
-            SyncCursorEntity row = database.syncCursorDao().find(email);
-            if (row == null) {
-                row = new SyncCursorEntity();
-                row.accountEmail = email;
-            }
-            row.lastChangeId = 0;
-            row.updatedAt = System.currentTimeMillis();
-            database.syncCursorDao().upsert(row);
-        }
+        // V3.2：游标已按账本拆分，恢复后代际变化需要清空全部账本游标重新拉取
+        database.syncCursorDao().clearAll();
         state.recoveryEpoch = epoch;
         state.recoveredAt = System.currentTimeMillis();
         database.syncStateDao().upsert(state);
@@ -1348,6 +1638,9 @@ public class SyncCoordinator {
                 && java.util.Objects.equals(a.nextRunDate, b.nextRunDate)
                 && java.util.Objects.equals(a.anchorDayOfMonth, b.anchorDayOfMonth)
                 && java.util.Objects.equals(a.isEnabled, b.isEnabled)
+                && java.util.Objects.equals(a.description, b.description)
+                && java.util.Objects.equals(a.currency, b.currency)
+                && java.util.Objects.equals(a.ownerUserId, b.ownerUserId)
                 && java.util.Objects.equals(a.clientUpdatedAt, b.clientUpdatedAt)
                 && java.util.Objects.equals(a.isDeleted, b.isDeleted)
                 && java.util.Objects.equals(a.deletedAt, b.deletedAt);
@@ -1362,21 +1655,23 @@ public class SyncCoordinator {
         return null;
     }
 
-    /** Push 快照：发送时刻的实体版本与内容（ack 护栏依据）。 */
+    /** Push 快照：发送时刻的实体版本与内容（ack 护栏依据）；ledgerRowId 供服务器胜出时落地。 */
     private static final class PushSnapshot {
         final String entityType;
         final String syncId;
         final long baseVersion;
         final ApiDtos.SyncPayload payload;
         final boolean isDeleted;
+        final long ledgerRowId;
 
         PushSnapshot(String entityType, String syncId, long baseVersion,
-                     ApiDtos.SyncPayload payload, boolean isDeleted) {
+                     ApiDtos.SyncPayload payload, boolean isDeleted, long ledgerRowId) {
             this.entityType = entityType;
             this.syncId = syncId;
             this.baseVersion = baseVersion;
             this.payload = payload;
             this.isDeleted = isDeleted;
+            this.ledgerRowId = ledgerRowId;
         }
     }
 }

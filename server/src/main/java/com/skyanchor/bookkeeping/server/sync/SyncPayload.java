@@ -6,7 +6,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 /**
  * 同步协议统一载荷（Sync Protocol Version 1）。
  *
- * <p>五个实体共用一个超集 DTO，按 entityType 取用对应字段，其余为 null——
+ * <p>六个实体共用一个超集 DTO，按 entityType 取用对应字段，其余为 null——
  * 协议向前加字段不破坏双方解析。引用字段一律是对方的 syncId（跨设备稳定身份），
  * 由客户端与本地自增 id 互转；预算的总预算哨兵在协议层是 categorySyncId=null/""。
  * 金额单位「分」（long），时间一律 epoch millis（long）。
@@ -46,6 +46,11 @@ public class SyncPayload {
     public Long nextRunDate;
     public Integer anchorDayOfMonth;
     public Boolean isEnabled;
+    // ===== Ledger（V3.2，entityType=LEDGER 专用；name/isArchived/isDefault 复用上方字段） =====
+    public String description;
+    public String currency;
+    /** 账本所有者的服务器用户 id：仅由服务端下发，客户端不参与裁决。 */
+    public Long ownerUserId;
     // ===== 通用 =====
     public Long clientUpdatedAt;
     public Boolean isDeleted;

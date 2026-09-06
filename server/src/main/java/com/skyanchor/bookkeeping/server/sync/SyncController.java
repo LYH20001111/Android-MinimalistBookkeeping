@@ -66,12 +66,15 @@ public class SyncController {
         return syncService.conflicts(AuthUser.current(), limit);
     }
 
-    /** 云端同步要求邮箱已验证（基线 5.1：验证后才开通正常云同步能力）。 */
+    /** 云端同步要求邮箱已验证（基线 5.1）且账号未被禁用（V3.2 基线 16.1）。 */
     private AuthUser requireVerified() {
         AuthUser user = AuthUser.current();
         UserEntity entity = userRepository.findById(user.userId())
                 .filter(u -> u.getDeletedAt() == null)
                 .orElseThrow(() -> ApiException.unauthorized("账号不存在"));
+        if (!entity.isActive()) {
+            throw ApiException.forbidden("USER_DISABLED", "账号已被服务器禁用");
+        }
         if (!entity.isEmailVerified()) {
             throw ApiException.forbidden("EMAIL_NOT_VERIFIED", "请先完成邮箱验证");
         }

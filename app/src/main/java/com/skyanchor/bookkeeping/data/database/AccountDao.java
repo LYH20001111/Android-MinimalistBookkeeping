@@ -35,11 +35,11 @@ public interface AccountDao {
             + "   WHERE t.is_deleted = 0 AND t.type = 3 AND t.account_id = a.id), 0))";
 
     /** 全部账户（含已归档，不含软删），按 sort_order 升序，供账户管理页使用。 */
-    @Query("SELECT * FROM account WHERE is_deleted = 0 ORDER BY sort_order ASC, id ASC")
+    @Query("SELECT * FROM account WHERE is_deleted = 0 AND ledger_id = (SELECT id FROM ledger WHERE is_current = 1 LIMIT 1) ORDER BY sort_order ASC, id ASC")
     LiveData<List<AccountEntity>> observeAll();
 
     /** 未归档账户，按 sort_order 升序，供记账 / 转账账户选择器使用。 */
-    @Query("SELECT * FROM account WHERE is_deleted = 0 AND is_archived = 0 "
+    @Query("SELECT * FROM account WHERE is_deleted = 0 AND is_archived = 0 AND ledger_id = (SELECT id FROM ledger WHERE is_current = 1 LIMIT 1) "
             + "ORDER BY sort_order ASC, id ASC")
     LiveData<List<AccountEntity>> observeActive();
 
@@ -47,14 +47,14 @@ public interface AccountDao {
     @Query("SELECT a.id AS id, a.name AS name, a.type AS type, a.is_credit AS is_credit, "
             + "a.sort_order AS sort_order, a.is_archived AS is_archived, "
             + "a.initial_balance AS initial_balance, " + BALANCE_EXPR + " AS balance "
-            + "FROM account a WHERE a.is_deleted = 0 ORDER BY a.sort_order ASC, a.id ASC")
+            + "FROM account a WHERE a.is_deleted = 0 AND a.ledger_id = (SELECT id FROM ledger WHERE is_current = 1 LIMIT 1) ORDER BY a.sort_order ASC, a.id ASC")
     LiveData<List<AccountBalance>> observeAccountBalances();
 
     /** 未归档账户余额（联表重算），用于账户总余额等只统计活跃账户的场景。 */
     @Query("SELECT a.id AS id, a.name AS name, a.type AS type, a.is_credit AS is_credit, "
             + "a.sort_order AS sort_order, a.is_archived AS is_archived, "
             + "a.initial_balance AS initial_balance, " + BALANCE_EXPR + " AS balance "
-            + "FROM account a WHERE a.is_deleted = 0 AND a.is_archived = 0 "
+            + "FROM account a WHERE a.is_deleted = 0 AND a.is_archived = 0 AND a.ledger_id = (SELECT id FROM ledger WHERE is_current = 1 LIMIT 1) "
             + "ORDER BY a.sort_order ASC, a.id ASC")
     LiveData<List<AccountBalance>> observeActiveAccountBalances();
 
@@ -70,7 +70,7 @@ public interface AccountDao {
     LiveData<AccountEntity> observeById(long id);
 
     /** 有效账户（含已归档），供 CSV 导入解析账户 id。 */
-    @Query("SELECT * FROM account WHERE is_deleted = 0 ORDER BY sort_order ASC, id ASC")
+    @Query("SELECT * FROM account WHERE is_deleted = 0 AND ledger_id = (SELECT id FROM ledger WHERE is_current = 1 LIMIT 1) ORDER BY sort_order ASC, id ASC")
     List<AccountEntity> getAll();
 
     /** 全量账户（含软删），供首次同步统计与全量推送。仅在 IO 线程调用。 */
@@ -82,20 +82,20 @@ public interface AccountDao {
     long recalcBalance(long id);
 
     /** 首个未归档账户 id，记账默认落账账户；无账户时返回 null。 */
-    @Query("SELECT id FROM account WHERE is_deleted = 0 AND is_archived = 0 "
+    @Query("SELECT id FROM account WHERE is_deleted = 0 AND is_archived = 0 AND ledger_id = (SELECT id FROM ledger WHERE is_current = 1 LIMIT 1) "
             + "ORDER BY sort_order ASC, id ASC LIMIT 1")
     Long firstActiveAccountId();
 
-    @Query("SELECT COALESCE(MAX(sort_order), 0) FROM account")
+    @Query("SELECT COALESCE(MAX(sort_order), 0) FROM account WHERE ledger_id = (SELECT id FROM ledger WHERE is_current = 1 LIMIT 1)")
     int maxSortOrder();
 
-    @Query("SELECT COUNT(*) FROM account WHERE is_deleted = 0")
+    @Query("SELECT COUNT(*) FROM account WHERE is_deleted = 0 AND ledger_id = (SELECT id FROM ledger WHERE is_current = 1 LIMIT 1)")
     LiveData<Integer> observeCount();
 
-    @Query("SELECT COUNT(*) FROM account WHERE is_deleted = 0")
+    @Query("SELECT COUNT(*) FROM account WHERE is_deleted = 0 AND ledger_id = (SELECT id FROM ledger WHERE is_current = 1 LIMIT 1)")
     int count();
 
-    @Query("SELECT COUNT(*) FROM account WHERE is_deleted = 0")
+    @Query("SELECT COUNT(*) FROM account WHERE is_deleted = 0 AND ledger_id = (SELECT id FROM ledger WHERE is_current = 1 LIMIT 1)")
     int countAll();
 
     @Insert
@@ -132,7 +132,15 @@ public interface AccountDao {
     // ===== V3.1 回收站 =====
 
     /** 回收站：全部软删账户，删除时间新→旧。 */
-    @Query("SELECT * FROM account WHERE is_deleted = 1 "
+    @Query("SELECT * FROM account WHERE is_deleted = 1 AND ledger_id = (SELECT id FROM ledger WHERE is_current = 1 LIMIT 1) "
             + "ORDER BY COALESCE(deleted_at, updated_at) DESC")
     LiveData<List<AccountEntity>> observeRecycleBin();
+
+    /** V3.2：仅清空当前账本的业务数据（「清空数据」按账本作用域，其他账本不受影响）。 */
+    @Query("DELETE FROM account WHERE ledger_id = (SELECT id FROM ledger WHERE is_current = 1 LIMIT 1)")
+    void clearCurrentLedger();
+
+    /** V3.2：默认账本 claim 合并后，把本账本全部业务行迁移到合并目标账本。 */
+    @Query("UPDATE account SET ledger_id = :toLedgerId WHERE ledger_id = :fromLedgerId")
+    int repointLedger(long fromLedgerId, long toLedgerId);
 }

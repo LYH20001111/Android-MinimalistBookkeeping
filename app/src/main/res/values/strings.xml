@@ -192,7 +192,7 @@
     <string name="mine_appearance">外观设置</string>
     <string name="mine_appearance_subtitle">浅色 / 跟随系统</string>
     <string name="mine_data">数据管理</string>
-    <string name="mine_data_subtitle">查看数据量与清空本地数据</string>
+    <string name="mine_data_subtitle">查看数据量与清空当前账本数据</string>
     <string name="mine_export">数据导出</string>
     <string name="mine_export_subtitle">将全部账单导出为 CSV 文件</string>
     <string name="mine_import">数据导入</string>
@@ -314,7 +314,7 @@
     <string name="export_file_prefix">极简记账-账单</string>
 
     <string name="import_title">数据导入</string>
-    <string name="import_desc">从 CSV 文件导入账单。导入前先解析并预览：合法行默认写入，疑似重复行默认跳过（可在预览中逐行选择保留），错误行不会写入并标注原因。</string>
+    <string name="import_desc">从 CSV 文件导入账单。账单将导入到「当前账本」（V3.2 起按账本归属）。导入前先解析并预览：合法行默认写入，疑似重复行默认跳过（可在预览中逐行选择保留），错误行不会写入并标注原因。</string>
     <string name="import_pick">选择 CSV 文件</string>
     <string name="import_parsing">正在解析文件…</string>
     <string name="import_preview_title">导入预览</string>
@@ -444,11 +444,11 @@
     <string name="data_recurring_count">周期账单</string>
     <string name="data_count_format">%1$d 条</string>
     <string name="data_local_only">所有数据只保存在本机，V1 不含账号与云同步，断网也可完整使用。</string>
-    <string name="data_clear_title">清空所有本地数据</string>
-    <string name="data_clear_subtitle">删除全部账单、预算与自定义分类，并恢复系统默认分类</string>
-    <string name="data_clear_button">清空所有本地数据</string>
-    <string name="data_clear_dialog_title">确定清空所有本地数据？</string>
-    <string name="data_clear_dialog_message">将删除全部账单、预算与自定义分类，并恢复系统默认分类与默认外观。此操作不可恢复。</string>
+    <string name="data_clear_title">清空当前账本数据</string>
+    <string name="data_clear_subtitle">删除当前账本的全部账单、预算与自定义分类，并恢复系统默认分类</string>
+    <string name="data_clear_button">清空当前账本数据</string>
+    <string name="data_clear_dialog_title">确定清空当前账本数据？</string>
+    <string name="data_clear_dialog_message">将删除「当前账本」的全部账单、预算与自定义分类，并恢复系统默认分类。其他账本不受影响。此操作不可恢复。</string>
     <string name="data_cleared">本地数据已清空</string>
     <string name="data_clear_verify_title">管理员验证</string>
     <string name="data_clear_verify_message">此操作不可恢复，请输入管理员账号与密码继续</string>
@@ -677,5 +677,62 @@
 
 本地账单不会自动删除。
 下次登录其他账号时，当前本地账本不会自动变成新账号的数据。</string>
+
+    <string name="common_ok">确定</string>
+    <string name="common_cancel">取消</string>
+    <!-- ===== V3.2 账本与共享 ===== -->
+    <string name="mine_section_ledger">账本</string>
+    <string name="mine_ledgers">账本管理</string>
+    <string name="mine_ledgers_subtitle">新建、切换与管理多本账</string>
+    <string name="mine_invitations">我的邀请</string>
+    <string name="mine_invitations_subtitle">查看家人发来的共享账本邀请</string>
+    <string name="ledger_manage_title">账本管理</string>
+    <string name="ledger_create_title">新建账本</string>
+    <string name="ledger_rename_title">重命名账本</string>
+    <string name="ledger_name_hint">账本名称</string>
+    <string name="ledger_description_hint">描述（可选）</string>
+    <string name="ledger_name_required">请输入账本名称</string>
+    <string name="ledger_created">账本已创建，数据将同步到服务器</string>
+    <string name="ledger_current">当前账本</string>
+    <string name="ledger_removed_hint">你已被移出，仅本地保留</string>
+    <string name="ledger_action_switch">切换到此账本</string>
+    <string name="ledger_action_members">成员管理</string>
+    <string name="ledger_action_rename">重命名</string>
+    <string name="ledger_action_delete">删除账本</string>
+    <string name="ledger_delete_title">删除账本</string>
+    <string name="ledger_delete_message">删除「%1$s」将影响该账本的所有成员，账本进入回收站且仅你能恢复。确定删除吗？</string>
+    <string name="ledger_delete_confirm">删除</string>
+    <string name="ledger_recycle_bin_title">账本回收站</string>
+    <string name="ledger_recycle_bin_empty">回收站没有已删除的账本</string>
+    <string name="ledger_restored">账本已恢复，正在同步数据</string>
+    <string name="ledger_restore_failed">恢复失败：仅账本所有者可恢复</string>
+    <string name="member_manage_title">成员管理 · %1$s</string>
+    <string name="member_invite_title">邀请成员</string>
+    <string name="member_invite_email_hint">对方注册时使用的邮箱</string>
+    <string name="member_invite_send">发送邀请</string>
+    <string name="member_invite_sent">邀请已发送给 %1$s（7 天内有效）</string>
+    <string name="member_action_change_role">修改角色</string>
+    <string name="member_action_remove">移出账本</string>
+    <string name="member_change_role_title">修改 %1$s 的角色</string>
+    <string name="member_remove_title">移出成员</string>
+    <string name="member_remove_message">移出后 %1$s 将立即失去对该账本的访问权。确定移出吗？</string>
+    <string name="member_remove_confirm">移出</string>
+    <string name="member_load_failed">加载失败：%1$s</string>
+    <string name="member_op_failed">操作失败：%1$s</string>
+    <string name="role_owner">所有者</string>
+    <string name="role_admin">管理员</string>
+    <string name="role_member">成员</string>
+    <string name="role_viewer">观察者</string>
+    <string name="invitation_title">我的邀请</string>
+    <string name="invitation_empty">暂无待处理的邀请</string>
+    <string name="invitation_accept">接受</string>
+    <string name="invitation_decline">拒绝</string>
+    <string name="invitation_decline_title">拒绝邀请</string>
+    <string name="invitation_decline_message">确定拒绝加入「%1$s」吗？</string>
+    <string name="invitation_decline_confirm">拒绝</string>
+    <string name="invitation_accepted">已加入账本「%1$s」，正在同步</string>
+    <string name="invitation_item_title">加入「%1$s」</string>
+    <string name="invitation_item_subtitle">%1$s 邀请你以「%2$s」身份加入 · %3$s 前有效</string>
+    <string name="record_current_ledger">当前账本：%1$s</string>
 </resources>
 

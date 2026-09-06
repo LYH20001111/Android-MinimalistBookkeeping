@@ -27,6 +27,10 @@ public class SyncChangeRow {
     @Column(name = "user_id", nullable = false)
     private Long userId;
 
+    /** 变更所属账本（V3.2）：Pull 按账本隔离，同一账本的所有成员共享这条变更流。 */
+    @Column(name = "ledger_id", nullable = false)
+    private Long ledgerId;
+
     @Column(name = "entity_type", nullable = false)
     private String entityType;
 
@@ -52,6 +56,14 @@ public class SyncChangeRow {
 
     public void setUserId(Long userId) {
         this.userId = userId;
+    }
+
+    public Long getLedgerId() {
+        return ledgerId;
+    }
+
+    public void setLedgerId(Long ledgerId) {
+        this.ledgerId = ledgerId;
     }
 
     public String getEntityType() {

@@ -5,7 +5,7 @@ import androidx.annotation.Nullable;
 import java.util.List;
 
 /**
- * 服务端 API DTO 集合（API Version 1 / Sync Protocol Version 1）。
+ * 服务端 API DTO 集合（API Version 2 / Sync Protocol Version 2：账本级隔离与共享）。
  * 字段名与服务器 JSON 对齐；Gson 宽松解析未知字段（协议向前兼容）。
  */
 public final class ApiDtos {
@@ -142,6 +142,11 @@ public final class ApiDtos {
         public Long nextRunDate;
         public Integer anchorDayOfMonth;
         public Boolean isEnabled;
+        // Ledger（entityType=LEDGER 专用；name/isArchived/isDefault/isDeleted 复用上方字段）
+        public String description;
+        public String currency;
+        /** 账本所有者的服务器用户 id：仅服务端下发，客户端只读展示。 */
+        public Long ownerUserId;
         // 通用
         public Long clientUpdatedAt;
         public Boolean isDeleted;
@@ -154,15 +159,20 @@ public final class ApiDtos {
         public String syncId;
         public String operation;
         public long baseVersion;
+        /** 所属账本 syncId（V3.2 基线 10.1）；LEDGER 实体传自身 syncId。 */
+        @Nullable
+        public String ledgerId;
         @Nullable
         public SyncPayload payload;
 
         public PushItem(String entityType, String syncId, String operation,
-                        long baseVersion, @Nullable SyncPayload payload) {
+                        long baseVersion, @Nullable String ledgerId,
+                        @Nullable SyncPayload payload) {
             this.entityType = entityType;
             this.syncId = syncId;
             this.operation = operation;
             this.baseVersion = baseVersion;
+            this.ledgerId = ledgerId;
             this.payload = payload;
         }
     }
@@ -203,10 +213,14 @@ public final class ApiDtos {
     }
 
     public static class PullRequest {
+        /** 目标账本 syncId（V3.2 基线 10.3）：Pull 只返回该账本变更，服务端隔离。 */
+        @Nullable
+        public String ledgerId;
         public long sinceChangeId;
         public int limit;
 
-        public PullRequest(long sinceChangeId, int limit) {
+        public PullRequest(@Nullable String ledgerId, long sinceChangeId, int limit) {
+            this.ledgerId = ledgerId;
             this.sinceChangeId = sinceChangeId;
             this.limit = limit;
         }
@@ -248,9 +262,104 @@ public final class ApiDtos {
     public static class StatusResponse {
         public long serverTime;
         public boolean emailVerified;
-        /** 服务器应用版本（V3.1，仅展示用，不参与业务判断）。 */
+        /** 服务器应用版本（仅展示用，不参与业务判断）。 */
         public String serverVersion;
         public long recoveryEpoch;
+        /** 我的成员关系摘要（V3.2 基线第 25 章）：对账本地账本表并提示邀请/移除/角色变化。 */
+        @Nullable
+        public List<LedgerMembershipSummary> ledgerMemberships;
+    }
+
+    /** 成员关系摘要：账本元数据 + 我在其中扮演的角色/状态。 */
+    public static class LedgerMembershipSummary {
+        public String ledgerSyncId;
+        public String name;
+        public String description;
+        public String currency;
+        public Long ownerUserId;
+        public boolean isDefault;
+        public boolean isArchived;
+        public boolean isDeleted;
+        /** OWNER / ADMIN / MEMBER / VIEWER。 */
+        public String role;
+        /** ACTIVE / REMOVED。 */
+        public String membershipStatus;
+        public long version;
+    }
+
+    // ===== V3.2 账本 / 成员 / 邀请 REST（基线第 8、9 章） =====
+
+    public static class LedgerSummary {
+        public String syncId;
+        public String name;
+        public String description;
+        public String currency;
+        public Long ownerUserId;
+        public boolean isDefault;
+        public boolean isArchived;
+        public boolean isDeleted;
+        public String role;
+        public String membershipStatus;
+        public long version;
+        public long memberCount;
+    }
+
+    public static class LedgerListResponse {
+        public List<LedgerSummary> ledgers;
+        public long serverTime;
+    }
+
+    public static class MemberItem {
+        public long userId;
+        public String email;
+        public String role;
+        public String status;
+        public long joinedAtMillis;
+    }
+
+    public static class MembersResponse {
+        public List<MemberItem> members;
+        public long serverTime;
+    }
+
+    public static class CreateInvitationRequest {
+        public String email;
+        public String role;
+
+        public CreateInvitationRequest(String email, String role) {
+            this.email = email;
+            this.role = role;
+        }
+    }
+
+    public static class InvitationItem {
+        public String invitationId;
+        public String ledgerSyncId;
+        public String ledgerName;
+        public String inviterEmail;
+        public String role;
+        public long createdAt;
+        public long expiresAt;
+    }
+
+    public static class InvitationsResponse {
+        public List<InvitationItem> invitations;
+        public long serverTime;
+    }
+
+    public static class UpdateMemberRequest {
+        public String role;
+
+        public UpdateMemberRequest(String role) {
+            this.role = role;
+        }
+    }
+
+    public static class AcceptInvitationResponse {
+        public String ledgerSyncId;
+        public String ledgerName;
+        public String role;
+        public long serverTime;
     }
 
     // ===== V3.1 服务器健康（基线第 8/10 章，公开端点） =====

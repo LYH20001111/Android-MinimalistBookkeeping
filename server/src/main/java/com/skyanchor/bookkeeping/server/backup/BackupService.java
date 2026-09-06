@@ -13,6 +13,8 @@ import com.skyanchor.bookkeeping.server.backup.BackupDtos.BudgetEntry;
 import com.skyanchor.bookkeeping.server.backup.BackupDtos.CategoryEntry;
 import com.skyanchor.bookkeeping.server.backup.BackupDtos.ConflictEntry;
 import com.skyanchor.bookkeeping.server.backup.BackupDtos.DeviceEntry;
+import com.skyanchor.bookkeeping.server.backup.BackupDtos.LedgerEntry;
+import com.skyanchor.bookkeeping.server.backup.BackupDtos.LedgerMemberEntry;
 import com.skyanchor.bookkeeping.server.backup.BackupDtos.RecurringEntry;
 import com.skyanchor.bookkeeping.server.backup.BackupDtos.TransactionEntry;
 import com.skyanchor.bookkeeping.server.backup.BackupDtos.UserEntry;
@@ -22,6 +24,10 @@ import com.skyanchor.bookkeeping.server.common.ServerInfo;
 import com.skyanchor.bookkeeping.server.common.ServerMeta;
 import com.skyanchor.bookkeeping.server.common.ServerMetaRepository;
 import com.skyanchor.bookkeeping.server.config.BackupProperties;
+import com.skyanchor.bookkeeping.server.ledger.domain.LedgerMemberRow;
+import com.skyanchor.bookkeeping.server.ledger.domain.LedgerRow;
+import com.skyanchor.bookkeeping.server.ledger.repo.LedgerMemberRowRepository;
+import com.skyanchor.bookkeeping.server.ledger.repo.LedgerRowRepository;
 import com.skyanchor.bookkeeping.server.sync.domain.AccountRow;
 import com.skyanchor.bookkeeping.server.sync.domain.BudgetRow;
 import com.skyanchor.bookkeeping.server.sync.domain.CategoryRow;
@@ -72,6 +78,8 @@ public class BackupService {
     private final BackupProperties properties;
     private final UserRepository userRepository;
     private final DeviceRepository deviceRepository;
+    private final LedgerRowRepository ledgerRepository;
+    private final LedgerMemberRowRepository memberRepository;
     private final CategoryRowRepository categoryRepository;
     private final AccountRowRepository accountRepository;
     private final TransactionRowRepository transactionRepository;
@@ -84,6 +92,8 @@ public class BackupService {
     public BackupService(BackupProperties properties,
                          UserRepository userRepository,
                          DeviceRepository deviceRepository,
+                         LedgerRowRepository ledgerRepository,
+                         LedgerMemberRowRepository memberRepository,
                          CategoryRowRepository categoryRepository,
                          AccountRowRepository accountRepository,
                          TransactionRowRepository transactionRepository,
@@ -95,6 +105,8 @@ public class BackupService {
         this.properties = properties;
         this.userRepository = userRepository;
         this.deviceRepository = deviceRepository;
+        this.ledgerRepository = ledgerRepository;
+        this.memberRepository = memberRepository;
         this.categoryRepository = categoryRepository;
         this.accountRepository = accountRepository;
         this.transactionRepository = transactionRepository;
@@ -144,7 +156,7 @@ public class BackupService {
         List<UserEntry> users = new ArrayList<>();
         for (UserEntity user : userRepository.findAll()) {
             users.add(new UserEntry(user.getId(), user.getEmail(), user.getPasswordHash(),
-                    user.isEmailVerified(), toMillis(user.getCreatedAt()),
+                    user.isEmailVerified(), user.getStatus(), toMillis(user.getCreatedAt()),
                     toMillis(user.getUpdatedAt()), toMillisOrNull(user.getDeletedAt())));
         }
         List<DeviceEntry> devices = new ArrayList<>();
@@ -154,13 +166,28 @@ public class BackupService {
                     toMillis(device.getLastSeenAt()), toMillis(device.getCreatedAt()),
                     toMillisOrNull(device.getRevokedAt())));
         }
+        List<LedgerEntry> ledgers = new ArrayList<>();
+        for (LedgerRow row : ledgerRepository.findAll()) {
+            ledgers.add(new LedgerEntry(row.getId(), row.getUserId(), row.getSyncId(),
+                    row.getName(), row.getDescription(), row.getCurrency(),
+                    row.isDefaultLedger(), row.isArchived(), row.getVersion(),
+                    row.getServerReceivedAt().toEpochMilli(), row.isDeleted(),
+                    row.getDeletedAt(), toMillis(row.getCreatedAt()), row.getClientUpdatedAt()));
+        }
+        List<LedgerMemberEntry> ledgerMembers = new ArrayList<>();
+        for (LedgerMemberRow row : memberRepository.findAll()) {
+            ledgerMembers.add(new LedgerMemberEntry(row.getLedgerId(), row.getUserId(),
+                    row.getRole(), row.getStatus(), row.getInvitedBy(),
+                    toMillisOrNull(row.getInvitedAt()), toMillisOrNull(row.getAcceptedAt()),
+                    toMillis(row.getCreatedAt()), toMillis(row.getUpdatedAt())));
+        }
         List<CategoryEntry> categories = new ArrayList<>();
         for (CategoryRow row : categoryRepository.findAll()) {
             categories.add(new CategoryEntry(row.getUserId(), row.getSyncId(), row.getVersion(),
                     row.getServerReceivedAt().toEpochMilli(), row.getClientUpdatedAt(),
                     row.isDeleted(), row.getDeletedAt(), toMillis(row.getCreatedAt()),
                     row.getName(), row.getIcon(), row.getType(), row.getSortOrder(),
-                    row.isDefault()));
+                    row.isDefault(), row.getLedgerId()));
         }
         List<AccountEntry> accounts = new ArrayList<>();
         for (AccountRow row : accountRepository.findAll()) {
@@ -168,7 +195,7 @@ public class BackupService {
                     row.getServerReceivedAt().toEpochMilli(), row.getClientUpdatedAt(),
                     row.isDeleted(), row.getDeletedAt(), toMillis(row.getCreatedAt()),
                     row.getName(), row.getType(), row.getInitialBalance(), row.getBalance(),
-                    row.isCredit(), row.getSortOrder(), row.isArchived()));
+                    row.isCredit(), row.getSortOrder(), row.isArchived(), row.getLedgerId()));
         }
         List<TransactionEntry> transactions = new ArrayList<>();
         for (TransactionRow row : transactionRepository.findAll()) {
@@ -178,14 +205,15 @@ public class BackupService {
                     toMillis(row.getCreatedAt()), row.getType(), row.getAmount(), row.getDate(),
                     row.getTime(), row.getNote(), row.getCategorySyncId(),
                     row.getAccountSyncId(), row.getTransferAccountSyncId(),
-                    row.getClientCreatedAt()));
+                    row.getClientCreatedAt(), row.getLedgerId()));
         }
         List<BudgetEntry> budgets = new ArrayList<>();
         for (BudgetRow row : budgetRepository.findAll()) {
             budgets.add(new BudgetEntry(row.getUserId(), row.getSyncId(), row.getVersion(),
                     row.getServerReceivedAt().toEpochMilli(), row.getClientUpdatedAt(),
                     row.isDeleted(), row.getDeletedAt(), toMillis(row.getCreatedAt()),
-                    row.getYear(), row.getMonth(), row.getCategorySyncId(), row.getAmount()));
+                    row.getYear(), row.getMonth(), row.getCategorySyncId(), row.getAmount(),
+                    row.getLedgerId()));
         }
         List<RecurringEntry> recurring = new ArrayList<>();
         for (RecurringRow row : recurringRepository.findAll()) {
@@ -195,7 +223,8 @@ public class BackupService {
                     row.getName(), row.getType(), row.getAmount(), row.getCategorySyncId(),
                     row.getAccountSyncId(), row.getFrequency(), row.getRepeatInterval(),
                     row.getStartDate(), row.getEndDate(), row.getNextRunDate(),
-                    row.getAnchorDayOfMonth(), row.isEnabled(), row.getNote()));
+                    row.getAnchorDayOfMonth(), row.isEnabled(), row.getNote(),
+                    row.getLedgerId()));
         }
         List<ConflictEntry> conflicts = new ArrayList<>();
         for (ConflictLogRow row : conflictRepository.findAll()) {
@@ -205,13 +234,13 @@ public class BackupService {
                     row.getServerPayloadDigest(), row.getWinner(),
                     toMillis(row.getCreatedAt())));
         }
-        BackupCounts counts = new BackupCounts(users.size(), devices.size(), categories.size(),
-                accounts.size(), transactions.size(), budgets.size(), recurring.size(),
-                conflicts.size());
+        BackupCounts counts = new BackupCounts(users.size(), devices.size(), ledgers.size(),
+                ledgerMembers.size(), categories.size(), accounts.size(), transactions.size(),
+                budgets.size(), recurring.size(), conflicts.size());
         return new BackupFile(BackupDtos.FORMAT, BackupDtos.FORMAT_VERSION,
                 ServerInfo.SERVER_VERSION, now, recoveryEpoch(), trigger, counts,
-                users, devices, categories, accounts, transactions, budgets, recurring,
-                conflicts);
+                users, devices, ledgers, ledgerMembers, categories, accounts, transactions,
+                budgets, recurring, conflicts);
     }
 
     private long recoveryEpoch() {

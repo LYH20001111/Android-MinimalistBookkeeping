@@ -21,8 +21,9 @@ import java.util.Map;
 @Component
 public class ApiVersionFilter extends OncePerRequestFilter {
 
-    public static final int API_VERSION = 1;
-    public static final int SYNC_PROTOCOL_VERSION = 1;
+    /** V3.2：协议升级到 2（账本级隔离与共享，基线第 10 章）；V3.1 旧客户端将收到 VERSION_MISMATCH。 */
+    public static final int API_VERSION = 2;
+    public static final int SYNC_PROTOCOL_VERSION = 2;
 
     private static final String PREFIX = "/api/v1/";
     private static final String BROWSER_VERIFY_PATH = "/api/v1/auth/verify-email";
@@ -47,7 +48,9 @@ public class ApiVersionFilter extends OncePerRequestFilter {
         if (!String.valueOf(API_VERSION).equals(api)
                 || !String.valueOf(SYNC_PROTOCOL_VERSION).equals(sync)) {
             response.setStatus(400);
-            response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+            // 必须先设字符编码再取 Writer：默认 ISO-8859-1 会把中文错误消息写成问号
+            response.setCharacterEncoding("UTF-8");
+            response.setContentType(MediaType.APPLICATION_JSON_VALUE + ";charset=UTF-8");
             objectMapper.writeValue(response.getWriter(), Map.of("error", Map.of(
                     "code", "VERSION_MISMATCH",
                     "message", "客户端与服务端版本不匹配，请升级 App 或服务器")));

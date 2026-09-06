@@ -23,6 +23,10 @@ public abstract class SyncRow {
     @Column(name = "user_id", nullable = false)
     private Long userId;
 
+    /** 所属账本（V3.2）：业务根节点，所有查询与鉴权都按它隔离（基线第 4 章）。 */
+    @Column(name = "ledger_id", nullable = false)
+    private Long ledgerId;
+
     @Column(name = "sync_id", nullable = false)
     private String syncId;
 
@@ -55,6 +59,14 @@ public abstract class SyncRow {
 
     public void setUserId(Long userId) {
         this.userId = userId;
+    }
+
+    public Long getLedgerId() {
+        return ledgerId;
+    }
+
+    public void setLedgerId(Long ledgerId) {
+        this.ledgerId = ledgerId;
     }
 
     public String getSyncId() {

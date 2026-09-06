@@ -27,7 +27,19 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:text="@string/record_title"
+                android:visibility="gone"
                 android:textAppearance="@style/TextAppearance.App.PageTitle" />
+
+            <TextView
+                android:id="@+id/ledgerChip"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginEnd="@dimen/spacing_sm"
+                android:background="?attr/selectableItemBackground"
+                android:paddingHorizontal="@dimen/spacing_sm"
+                android:paddingVertical="@dimen/spacing_xs"
+                android:textAppearance="@style/TextAppearance.App.Secondary" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/searchButton"

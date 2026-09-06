@@ -36,6 +36,26 @@ public class UserEntity {
     @Column(name = "deleted_at")
     private Instant deletedAt;
 
+    /** 账号状态（V3.2）：ACTIVE 正常；DISABLED 被服务器禁用，不能登录/刷新/同步。 */
+    @Column(nullable = false)
+    private String status = Status.ACTIVE.name();
+
+    public enum Status {
+        ACTIVE, DISABLED
+    }
+
+    public boolean isActive() {
+        return Status.ACTIVE.name().equals(status);
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
+    }
+
     public Long getId() {
         return id;
     }

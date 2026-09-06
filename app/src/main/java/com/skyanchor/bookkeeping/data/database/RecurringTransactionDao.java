@@ -20,21 +20,21 @@ import java.util.List;
 public interface RecurringTransactionDao {
 
     /** V3：业务查询排除软删行（基线第 17.2 章）。 */
-    @Query("SELECT * FROM recurring_transaction WHERE is_deleted = 0 "
+    @Query("SELECT * FROM recurring_transaction WHERE is_deleted = 0 AND ledger_id = (SELECT id FROM ledger WHERE is_current = 1 LIMIT 1) "
             + "ORDER BY is_enabled DESC, next_run_date ASC, id ASC")
     LiveData<List<RecurringTransactionEntity>> observeAll();
 
     @Query("SELECT * FROM recurring_transaction "
-            + "WHERE is_deleted = 0 AND is_enabled = 1 AND next_run_date <= :today "
+            + "WHERE is_deleted = 0 AND is_enabled = 1 AND next_run_date <= :today AND ledger_id = (SELECT id FROM ledger WHERE is_current = 1 LIMIT 1) "
             + "ORDER BY next_run_date ASC, id ASC")
     LiveData<List<RecurringTransactionEntity>> observeDue(long today);
 
     @Query("SELECT * FROM recurring_transaction WHERE is_deleted = 0 "
-            + "AND is_enabled = 1 AND next_run_date <= :today "
+            + "AND is_enabled = 1 AND next_run_date <= :today AND ledger_id = (SELECT id FROM ledger WHERE is_current = 1 LIMIT 1) "
             + "ORDER BY next_run_date ASC, id ASC")
     List<RecurringTransactionEntity> getDue(long today);
 
-    @Query("SELECT COUNT(*) FROM recurring_transaction WHERE is_deleted = 0 "
+    @Query("SELECT COUNT(*) FROM recurring_transaction WHERE is_deleted = 0 AND ledger_id = (SELECT id FROM ledger WHERE is_current = 1 LIMIT 1) "
             + "AND is_enabled = 1 AND next_run_date <= :today")
     LiveData<Integer> observeDueCount(long today);
 
@@ -56,7 +56,7 @@ public interface RecurringTransactionDao {
     int repointAccount(long fromId, long toId, long updatedAt);
 
     /** 有效规则（供备份序列化）。 */
-    @Query("SELECT * FROM recurring_transaction WHERE is_deleted = 0 "
+    @Query("SELECT * FROM recurring_transaction WHERE is_deleted = 0 AND ledger_id = (SELECT id FROM ledger WHERE is_current = 1 LIMIT 1) "
             + "ORDER BY next_run_date ASC, id ASC")
     List<RecurringTransactionEntity> getAll();
 
@@ -64,10 +64,10 @@ public interface RecurringTransactionDao {
     @Query("SELECT * FROM recurring_transaction ORDER BY next_run_date ASC, id ASC")
     List<RecurringTransactionEntity> getAllIncludingDeleted();
 
-    @Query("SELECT COUNT(*) FROM recurring_transaction WHERE is_deleted = 0")
+    @Query("SELECT COUNT(*) FROM recurring_transaction WHERE is_deleted = 0 AND ledger_id = (SELECT id FROM ledger WHERE is_current = 1 LIMIT 1)")
     LiveData<Integer> observeCount();
 
-    @Query("SELECT COUNT(*) FROM recurring_transaction WHERE is_deleted = 0")
+    @Query("SELECT COUNT(*) FROM recurring_transaction WHERE is_deleted = 0 AND ledger_id = (SELECT id FROM ledger WHERE is_current = 1 LIMIT 1)")
     int countAll();
 
     @Insert
@@ -88,7 +88,15 @@ public interface RecurringTransactionDao {
     // ===== V3.1 回收站 =====
 
     /** 回收站：全部软删周期规则，删除时间新→旧。 */
-    @Query("SELECT * FROM recurring_transaction WHERE is_deleted = 1 "
+    @Query("SELECT * FROM recurring_transaction WHERE is_deleted = 1 AND ledger_id = (SELECT id FROM ledger WHERE is_current = 1 LIMIT 1) "
             + "ORDER BY COALESCE(deleted_at, updated_at) DESC")
     LiveData<List<RecurringTransactionEntity>> observeRecycleBin();
+
+    /** V3.2：仅清空当前账本的业务数据（「清空数据」按账本作用域，其他账本不受影响）。 */
+    @Query("DELETE FROM recurring_transaction WHERE ledger_id = (SELECT id FROM ledger WHERE is_current = 1 LIMIT 1)")
+    void clearCurrentLedger();
+
+    /** V3.2：默认账本 claim 合并后，把本账本全部业务行迁移到合并目标账本。 */
+    @Query("UPDATE recurring_transaction SET ledger_id = :toLedgerId WHERE ledger_id = :fromLedgerId")
+    int repointLedger(long fromLedgerId, long toLedgerId);
 }

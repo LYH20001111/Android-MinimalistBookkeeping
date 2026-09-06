@@ -65,7 +65,9 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
     private void writeTooMany(HttpServletResponse response) throws IOException {
         response.setStatus(429);
-        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+        // 必须先设字符编码再取 Writer：默认 ISO-8859-1 会把中文错误消息写成问号
+        response.setCharacterEncoding("UTF-8");
+        response.setContentType(MediaType.APPLICATION_JSON_VALUE + ";charset=UTF-8");
         objectMapper.writeValue(response.getWriter(),
                 Map.of("error", Map.of("code", "RATE_LIMITED", "message", "请求过于频繁，请稍后再试")));
     }

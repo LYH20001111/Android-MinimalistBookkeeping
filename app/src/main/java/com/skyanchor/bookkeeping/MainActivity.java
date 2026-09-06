@@ -13,6 +13,7 @@ import androidx.fragment.app.FragmentTransaction;
 import androidx.lifecycle.ViewModelProvider;
 
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
+import com.skyanchor.bookkeeping.BookkeepingApp;
 import com.skyanchor.bookkeeping.databinding.ActivityMainBinding;
 import com.skyanchor.bookkeeping.ui.chart.ChartFragment;
 import com.skyanchor.bookkeeping.ui.mine.MineFragment;
@@ -77,6 +78,17 @@ public class MainActivity extends AppCompatActivity {
         binding.bottomNav.setSelectedItemId(itemIdOf(selectedTag));
 
         observeRecurringDue();
+        observeLedgerNotices();
+    }
+
+    /** V3.2 基线第 25 章：同步对账感知的成员关系变化（被移出 / 角色变化）全 App 级提示。 */
+    private void observeLedgerNotices() {
+        BookkeepingApp.get(this).getSyncCoordinator().observeNotice()
+                .observe(this, message -> {
+                    if (message != null && !isFinishing() && !isDestroyed()) {
+                        Toast.makeText(this, message, Toast.LENGTH_LONG).show();
+                    }
+                });
     }
 
     /** 首帧观察到期期数：非 0 且本次未提示过时弹确认对话框，确认后一键记账。 */

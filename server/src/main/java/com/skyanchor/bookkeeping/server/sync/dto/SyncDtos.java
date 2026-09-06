@@ -6,7 +6,7 @@ import com.skyanchor.bookkeeping.server.sync.SyncPayload;
 
 import java.util.List;
 
-/** 同步协议请求/响应体（Sync Protocol Version 1，见开发计划第 3 章）。 */
+/** 同步协议请求/响应体（Sync Protocol Version 2：账本级隔离与共享，见开发计划第 3 章）。 */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonIgnoreProperties(ignoreUnknown = true)
 public final class SyncDtos {
@@ -19,9 +19,11 @@ public final class SyncDtos {
     public static final String ENTITY_TRANSACTION = "TRANSACTION";
     public static final String ENTITY_BUDGET = "BUDGET";
     public static final String ENTITY_RECURRING = "RECURRING";
+    public static final String ENTITY_LEDGER = "LEDGER";
 
+    /** ledgerId = 账本 syncId（V3.2）：每个变更显式声明所属账本，服务端逐一校验成员与角色。 */
     public record PushItem(String entityType, String syncId, String operation,
-                           long baseVersion, SyncPayload payload) {
+                           long baseVersion, String ledgerId, SyncPayload payload) {
     }
 
     public record PushRequest(List<PushItem> changes) {
@@ -36,7 +38,8 @@ public final class SyncDtos {
                                long recoveryEpoch) {
     }
 
-    public record PullRequest(long sinceChangeId, int limit) {
+    /** ledgerId = 账本 syncId：Pull 只返回该账本的变更（服务端隔离，禁客户端自滤）。 */
+    public record PullRequest(String ledgerId, long sinceChangeId, int limit) {
     }
 
     public record ChangeItem(long changeId, String entityType, String syncId, String operation,
@@ -54,8 +57,16 @@ public final class SyncDtos {
                          long budget, long recurring) {
     }
 
+    /** 成员关系摘要（V3.2 基线第 25 章）：客户端据此对账本地账本表并提示邀请/移除/角色变化。 */
+    public record LedgerMembershipSummary(String ledgerSyncId, String name, String description,
+                                          String currency, Long ownerUserId, boolean isDefault,
+                                          boolean isArchived, boolean isDeleted, String role,
+                                          String membershipStatus, long version) {
+    }
+
     public record StatusResponse(long serverTime, boolean emailVerified,
-                                 String serverVersion, long recoveryEpoch) {
+                                 String serverVersion, long recoveryEpoch,
+                                 List<LedgerMembershipSummary> ledgerMemberships) {
     }
 
     // ===== V3.1 冲突历史（基线第 26 章：自动收敛 + 可事后查看） =====

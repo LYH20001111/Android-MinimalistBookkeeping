@@ -35,13 +35,13 @@ public interface TransactionDao {
 
     /** V3：业务查询一律排除软删行（基线第 17.2 章）。 */
     @Query("SELECT " + ITEM_COLUMNS + ITEM_FROM
-            + "WHERE t.is_deleted = 0 AND t.date BETWEEN :startDay AND :endDay "
+            + "WHERE t.is_deleted = 0 AND t.ledger_id = (SELECT id FROM ledger WHERE is_current = 1 LIMIT 1) AND t.date BETWEEN :startDay AND :endDay "
             + "ORDER BY t.date DESC, t.time DESC, t.id DESC")
     LiveData<List<TransactionItem>> observeBetween(long startDay, long endDay);
 
     /** 观察业务日期不晚于 endDay 的全部账单，用于记录页的历史账单列表。 */
     @Query("SELECT " + ITEM_COLUMNS + ITEM_FROM
-            + "WHERE t.is_deleted = 0 AND t.date <= :endDay "
+            + "WHERE t.is_deleted = 0 AND t.ledger_id = (SELECT id FROM ledger WHERE is_current = 1 LIMIT 1) AND t.date <= :endDay "
             + "ORDER BY t.date DESC, t.time DESC, t.id DESC")
     LiveData<List<TransactionItem>> observeUpTo(long endDay);
 
@@ -61,7 +61,7 @@ public interface TransactionDao {
      * 结果可直接喂给 {@code StatisticsCalculator.groupByDay} 与 {@code TransactionListAdapter}。
      */
     @Query("SELECT " + ITEM_COLUMNS + ITEM_FROM
-            + "WHERE t.is_deleted = 0 AND t.date BETWEEN :startDay AND :endDay "
+            + "WHERE t.is_deleted = 0 AND t.ledger_id = (SELECT id FROM ledger WHERE is_current = 1 LIMIT 1) AND t.date BETWEEN :startDay AND :endDay "
             + "AND t.amount BETWEEN :minAmount AND :maxAmount "
             + "AND (:categoryId = 0 OR t.category_id = :categoryId) "
             + "AND (:accountId = 0 OR t.account_id = :accountId "
@@ -116,11 +116,11 @@ public interface TransactionDao {
      * 一次性同步查询，由 {@code ExportTransactionsUseCase} 在 IO 线程调用。
      */
     @Query("SELECT " + EXPORT_COLUMNS + ITEM_FROM
-            + "WHERE t.is_deleted = 0 ORDER BY t.date ASC, t.time ASC, t.id ASC")
+            + "WHERE t.is_deleted = 0 AND t.ledger_id = (SELECT id FROM ledger WHERE is_current = 1 LIMIT 1) ORDER BY t.date ASC, t.time ASC, t.id ASC")
     List<TransactionExport> exportAll();
 
     /** 有效实体，供导入时构建「疑似重复」指纹集合（同日期+时间+金额+分类+账户+备注）。 */
-    @Query("SELECT * FROM transactions WHERE is_deleted = 0")
+    @Query("SELECT * FROM transactions WHERE is_deleted = 0 AND ledger_id = (SELECT id FROM ledger WHERE is_current = 1 LIMIT 1)")
     List<TransactionEntity> getAllEntities();
 
     /** 全量实体（含软删），供首次同步统计与全量推送。仅在 IO 线程调用。 */
@@ -160,7 +160,7 @@ public interface TransactionDao {
 
     /** 区间内某一类型的金额合计（单位：分）。V3 排除软删行。 */
     @Query("SELECT COALESCE(SUM(amount), 0) FROM transactions "
-            + "WHERE is_deleted = 0 AND type = :type AND date BETWEEN :startDay AND :endDay")
+            + "WHERE is_deleted = 0 AND ledger_id = (SELECT id FROM ledger WHERE is_current = 1 LIMIT 1) AND type = :type AND date BETWEEN :startDay AND :endDay")
     LiveData<Long> observeSum(int type, long startDay, long endDay);
 
     /** 某个分类下有效账单数量，用于分类删除守卫。 */
@@ -191,13 +191,13 @@ public interface TransactionDao {
             + "AND (account_id = :accountId OR transfer_account_id = :accountId)")
     int countByAccount(long accountId);
 
-    @Query("SELECT COUNT(*) FROM transactions WHERE is_deleted = 0")
+    @Query("SELECT COUNT(*) FROM transactions WHERE is_deleted = 0 AND ledger_id = (SELECT id FROM ledger WHERE is_current = 1 LIMIT 1)")
     LiveData<Integer> observeCount();
 
-    @Query("SELECT COUNT(*) FROM transactions WHERE is_deleted = 0")
+    @Query("SELECT COUNT(*) FROM transactions WHERE is_deleted = 0 AND ledger_id = (SELECT id FROM ledger WHERE is_current = 1 LIMIT 1)")
     int count();
 
-    @Query("SELECT COUNT(*) FROM transactions WHERE is_deleted = 0")
+    @Query("SELECT COUNT(*) FROM transactions WHERE is_deleted = 0 AND ledger_id = (SELECT id FROM ledger WHERE is_current = 1 LIMIT 1)")
     int countAll();
 
     // ------------------------------------------------------------------
@@ -208,19 +208,19 @@ public interface TransactionDao {
      * 未归属历史账单数量：V1 迁移数据 {@code account_id IS NULL}（早于账户体系，
      * 不含转账——转账从建立起就强制两个账户）。供账户管理页的归属提示与批量归属使用。
      */
-    @Query("SELECT COUNT(*) FROM transactions WHERE is_deleted = 0 AND account_id IS NULL")
+    @Query("SELECT COUNT(*) FROM transactions WHERE is_deleted = 0 AND ledger_id = (SELECT id FROM ledger WHERE is_current = 1 LIMIT 1) AND account_id IS NULL")
     int countUnassigned();
 
     /** 未归属历史账单实体（含 syncId），批量归属后逐笔入队同步用。 */
-    @Query("SELECT * FROM transactions WHERE is_deleted = 0 AND account_id IS NULL")
+    @Query("SELECT * FROM transactions WHERE is_deleted = 0 AND ledger_id = (SELECT id FROM ledger WHERE is_current = 1 LIMIT 1) AND account_id IS NULL")
     List<TransactionEntity> getUnassignedEntities();
 
-    @Query("SELECT COUNT(*) FROM transactions WHERE is_deleted = 0 AND account_id IS NULL")
+    @Query("SELECT COUNT(*) FROM transactions WHERE is_deleted = 0 AND ledger_id = (SELECT id FROM ledger WHERE is_current = 1 LIMIT 1) AND account_id IS NULL")
     LiveData<Integer> observeUnassignedCount();
 
     /** 把全部未归属历史账单一次性归属到指定账户，返回归属笔数；调用方需在事务内重算余额。 */
     @Query("UPDATE transactions SET account_id = :accountId, updated_at = :updatedAt "
-            + "WHERE account_id IS NULL")
+            + "WHERE ledger_id = (SELECT id FROM ledger WHERE is_current = 1 LIMIT 1) AND account_id IS NULL")
     int assignUnassigned(long accountId, long updatedAt);
 
     // ------------------------------------------------------------------
@@ -236,7 +236,7 @@ public interface TransactionDao {
             + "COALESCE(SUM(CASE WHEN type = 2 THEN amount ELSE 0 END), 0) AS income, "
             + "COUNT(*) AS transactionCount "
             + "FROM transactions "
-            + "WHERE is_deleted = 0 AND date BETWEEN :startDay AND :endDay "
+            + "WHERE is_deleted = 0 AND ledger_id = (SELECT id FROM ledger WHERE is_current = 1 LIMIT 1) AND date BETWEEN :startDay AND :endDay "
             + "GROUP BY date ORDER BY date ASC")
     LiveData<List<DailySummary>> observeDailySummaries(long startDay, long endDay);
 
@@ -248,7 +248,7 @@ public interface TransactionDao {
      * {@code %Y-%W} 拆成两行，但两行的周一相同，Java 侧聚合时自然合并。
      */
     @Query("SELECT MIN(date) AS day, COUNT(*) AS transactionCount "
-            + "FROM transactions WHERE is_deleted = 0 "
+            + "FROM transactions WHERE is_deleted = 0 AND ledger_id = (SELECT id FROM ledger WHERE is_current = 1 LIMIT 1) "
             + "GROUP BY strftime('%Y-%W', date / 1000, 'unixepoch', 'localtime') "
             + "ORDER BY day ASC")
     LiveData<List<DayCount>> observeWeekCounts();
@@ -258,7 +258,7 @@ public interface TransactionDao {
      * {@code day} 取该月最早一笔的日期，Java 侧据此还原年月。
      */
     @Query("SELECT MIN(date) AS day, COUNT(*) AS transactionCount "
-            + "FROM transactions WHERE is_deleted = 0 "
+            + "FROM transactions WHERE is_deleted = 0 AND ledger_id = (SELECT id FROM ledger WHERE is_current = 1 LIMIT 1) "
             + "GROUP BY strftime('%Y-%m', date / 1000, 'unixepoch', 'localtime') "
             + "ORDER BY day ASC")
     LiveData<List<DayCount>> observeMonthCounts();
@@ -268,7 +268,7 @@ public interface TransactionDao {
      * {@code day} 取该年最早一笔的日期，Java 侧据此还原年份。
      */
     @Query("SELECT MIN(date) AS day, COUNT(*) AS transactionCount "
-            + "FROM transactions WHERE is_deleted = 0 "
+            + "FROM transactions WHERE is_deleted = 0 AND ledger_id = (SELECT id FROM ledger WHERE is_current = 1 LIMIT 1) "
             + "GROUP BY strftime('%Y', date / 1000, 'unixepoch', 'localtime') "
             + "ORDER BY day ASC")
     LiveData<List<DayCount>> observeYearCounts();
@@ -276,13 +276,21 @@ public interface TransactionDao {
     // ===== V3.1 回收站（基线第 18/19 章）=====
 
     /** 回收站：全部软删交易，删除时间新→旧（历史墓碑无 deleted_at 时按更新时间）。 */
-    @Query("SELECT * FROM transactions WHERE is_deleted = 1 "
+    @Query("SELECT * FROM transactions WHERE is_deleted = 1 AND ledger_id = (SELECT id FROM ledger WHERE is_current = 1 LIMIT 1) "
             + "ORDER BY COALESCE(deleted_at, updated_at) DESC")
     LiveData<List<TransactionEntity>> observeRecycleBin();
 
     @Query("SELECT * FROM transactions WHERE sync_id = :syncId")
     TransactionEntity getEntityBySyncIdAnyState(String syncId);
 
-    @Query("SELECT COUNT(*) FROM transactions WHERE is_deleted = 1")
+    @Query("SELECT COUNT(*) FROM transactions WHERE is_deleted = 1 AND ledger_id = (SELECT id FROM ledger WHERE is_current = 1 LIMIT 1)")
     int countRecycleBin();
+
+    /** V3.2：仅清空当前账本的业务数据（「清空数据」按账本作用域，其他账本不受影响）。 */
+    @Query("DELETE FROM transactions WHERE ledger_id = (SELECT id FROM ledger WHERE is_current = 1 LIMIT 1)")
+    void clearCurrentLedger();
+
+    /** V3.2：默认账本 claim 合并后，把本账本全部业务行迁移到合并目标账本。 */
+    @Query("UPDATE transactions SET ledger_id = :toLedgerId WHERE ledger_id = :fromLedgerId")
+    int repointLedger(long fromLedgerId, long toLedgerId);
 }

@@ -57,6 +57,39 @@ public interface ApiService {
     @GET("api/v1/sync/conflicts")
     Call<ApiDtos.ConflictsResponse> conflicts(@retrofit2.http.Query("limit") int limit);
 
+    // ===== Ledger / 成员 / 邀请（V3.2 基线第 8、9 章） =====
+
+    @GET("api/v1/ledgers")
+    Call<ApiDtos.LedgerListResponse> ledgers();
+
+    @GET("api/v1/ledgers/{ledgerSyncId}/members")
+    Call<ApiDtos.MembersResponse> ledgerMembers(@Path("ledgerSyncId") String ledgerSyncId);
+
+    @POST("api/v1/ledgers/{ledgerSyncId}/invitations")
+    Call<ApiDtos.InvitationItem> invite(@Path("ledgerSyncId") String ledgerSyncId,
+                                        @Body ApiDtos.CreateInvitationRequest request);
+
+    @POST("api/v1/ledgers/{ledgerSyncId}/restore")
+    Call<ApiDtos.SimpleResponse> restoreLedger(@Path("ledgerSyncId") String ledgerSyncId);
+
+    @GET("api/v1/invitations")
+    Call<ApiDtos.InvitationsResponse> myInvitations();
+
+    @POST("api/v1/invitations/{invitationId}/accept")
+    Call<ApiDtos.AcceptInvitationResponse> acceptInvitation(@Path("invitationId") String invitationId);
+
+    @POST("api/v1/invitations/{invitationId}/decline")
+    Call<ApiDtos.SimpleResponse> declineInvitation(@Path("invitationId") String invitationId);
+
+    @retrofit2.http.HTTP(method = "DELETE", path = "api/v1/ledgers/{ledgerSyncId}/members/{userId}")
+    Call<ApiDtos.SimpleResponse> removeMember(@Path("ledgerSyncId") String ledgerSyncId,
+                                              @Path("userId") long userId);
+
+    @retrofit2.http.PATCH("api/v1/ledgers/{ledgerSyncId}/members/{userId}")
+    Call<ApiDtos.SimpleResponse> updateMemberRole(@Path("ledgerSyncId") String ledgerSyncId,
+                                                  @Path("userId") long userId,
+                                                  @Body ApiDtos.UpdateMemberRequest request);
+
     // ===== Server（V3.1） =====
 
     /** 服务器健康检查：公开端点，供测试连接与状态展示。 */

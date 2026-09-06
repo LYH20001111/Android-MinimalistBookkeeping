@@ -47,6 +47,7 @@ import androidx.room.PrimaryKey;
                 @Index(value = "date"),
                 @Index(value = "account_id"),
                 @Index(value = "transfer_account_id"),
+                @Index(value = "ledger_id"),
                 @Index(value = "sync_id")
         })
 public class TransactionEntity {
@@ -120,5 +121,12 @@ public class TransactionEntity {
     @Nullable
     @ColumnInfo(name = "deleted_at")
     public Long deletedAt;
+
+    // ===== V3.2 账本归属（基线第 3.2 章）=====
+
+    /** 所属账本的本地行 id；迁移回填数据归默认账本（id=1），写入时由 Repository 对齐当前账本。 */
+    @ColumnInfo(name = "ledger_id", defaultValue = "1")
+    public long ledgerId = 1;
+
 }
 

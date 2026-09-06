@@ -18,6 +18,10 @@ import com.skyanchor.bookkeeping.server.auth.repo.UserRepository;
 import com.skyanchor.bookkeeping.server.common.ApiException;
 import com.skyanchor.bookkeeping.server.common.HashUtil;
 import com.skyanchor.bookkeeping.server.config.AppProperties;
+import com.skyanchor.bookkeeping.server.ledger.domain.LedgerMemberRow;
+import com.skyanchor.bookkeeping.server.ledger.domain.LedgerRow;
+import com.skyanchor.bookkeeping.server.ledger.repo.LedgerMemberRowRepository;
+import com.skyanchor.bookkeeping.server.ledger.repo.LedgerRowRepository;
 import com.skyanchor.bookkeeping.server.sync.repo.SyncRowRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -48,6 +52,8 @@ public class AuthService {
     private final DeviceRepository deviceRepository;
     private final RefreshTokenRepository refreshTokenRepository;
     private final SyncRowRepository syncRowRepository;
+    private final LedgerRowRepository ledgerRepository;
+    private final LedgerMemberRowRepository memberRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final MailService mailService;
@@ -58,6 +64,8 @@ public class AuthService {
                        DeviceRepository deviceRepository,
                        RefreshTokenRepository refreshTokenRepository,
                        SyncRowRepository syncRowRepository,
+                       LedgerRowRepository ledgerRepository,
+                       LedgerMemberRowRepository memberRepository,
                        PasswordEncoder passwordEncoder,
                        JwtService jwtService,
                        MailService mailService,
@@ -67,6 +75,8 @@ public class AuthService {
         this.deviceRepository = deviceRepository;
         this.refreshTokenRepository = refreshTokenRepository;
         this.syncRowRepository = syncRowRepository;
+        this.ledgerRepository = ledgerRepository;
+        this.memberRepository = memberRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
         this.mailService = mailService;
@@ -143,6 +153,10 @@ public class AuthService {
         if (user == null || !passwordEncoder.matches(request.password(), user.getPasswordHash())) {
             throw ApiException.unauthorized("邮箱或密码错误");
         }
+        if (!user.isActive()) {
+            // 禁用账号给出明确语义，客户端禁止映射为网络异常（V3.2 基线 16.1）
+            throw ApiException.forbidden("USER_DISABLED", "账号已被服务器禁用，请联系管理员");
+        }
 
         DeviceEntity device = upsertDevice(user.getId(), request.device());
         String refreshToken = issueRefreshToken(user.getId(), device.getId());
@@ -164,6 +178,9 @@ public class AuthService {
         UserEntity user = userRepository.findById(stored.getUserId())
                 .filter(u -> u.getDeletedAt() == null)
                 .orElseThrow(() -> ApiException.unauthorized("登录状态已失效，请重新登录"));
+        if (!user.isActive()) {
+            throw ApiException.forbidden("USER_DISABLED", "账号已被服务器禁用，请联系管理员");
+        }
 
         stored.setRevokedAt(Instant.now());
         refreshTokenRepository.save(stored);
@@ -238,7 +255,9 @@ public class AuthService {
         if (!passwordEncoder.matches(request.password(), user.getPasswordHash())) {
             throw ApiException.unauthorized("密码不正确");
         }
-        // 云端数据删除：全部业务行 + 变更日志 + 冲突日志
+        settleOwnedLedgers(userId);
+        // 云端数据删除：本人写入的业务行 + 变更日志 + 冲突日志
+        // （共享账本中本人写入的行随之删除由账本语义决定：非本人账本数据保留给其他成员）
         syncRowRepository.deleteAllUserData(userId);
         logoutAll(userId);
         // 匿名化并保留行（释放邮箱唯一键；审计上保留占位）
@@ -248,6 +267,37 @@ public class AuthService {
         user.setUpdatedAt(Instant.now());
         userRepository.save(user);
         log.info("账号已注销并匿名化（userId={}）", userId);
+    }
+
+    /**
+     * 注销前结算本人拥有的账本（V3.2）：
+     * 仍有其他 ACTIVE 成员 → 所有权转移给最早加入者，账本数据完整保留；
+     * 没有其他成员 → 物理删除账本及其全部业务数据。
+     */
+    private void settleOwnedLedgers(long userId) {
+        List<LedgerRow> owned = ledgerRepository.findAllByUserId(userId);
+        for (LedgerRow ledger : owned) {
+            List<LedgerMemberRow> others = memberRepository
+                    .findByLedgerIdOrderByCreatedAtAsc(ledger.getId()).stream()
+                    .filter(m -> !m.getUserId().equals(userId))
+                    .filter(m -> LedgerMemberRow.STATUS_ACTIVE.equals(m.getStatus()))
+                    .toList();
+            if (others.isEmpty()) {
+                syncRowRepository.deleteAllByLedger(ledger.getId());
+                ledgerRepository.delete(ledger);
+            } else {
+                LedgerMemberRow successor = others.get(0);
+                ledger.setUserId(successor.getUserId());
+                ledgerRepository.save(ledger);
+                successor.setRole(LedgerMemberRow.ROLE_OWNER);
+                successor.setUpdatedAt(Instant.now());
+                memberRepository.save(successor);
+            }
+        }
+        // 本人剩余的成员关系一并移除
+        for (LedgerMemberRow member : memberRepository.findAllByUserId(userId)) {
+            memberRepository.delete(member);
+        }
     }
 
     // ===== 内部 =====

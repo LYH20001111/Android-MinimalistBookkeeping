@@ -13,6 +13,7 @@ import com.skyanchor.bookkeeping.data.database.DefaultData;
 import com.skyanchor.bookkeeping.data.entity.AccountEntity;
 import com.skyanchor.bookkeeping.data.entity.BudgetEntity;
 import com.skyanchor.bookkeeping.data.entity.CategoryEntity;
+import com.skyanchor.bookkeeping.data.entity.LedgerEntity;
 import com.skyanchor.bookkeeping.data.entity.RecurringTransactionEntity;
 import com.skyanchor.bookkeeping.data.entity.SyncEntityTypes;
 import com.skyanchor.bookkeeping.data.entity.TransactionEntity;
@@ -39,6 +40,7 @@ import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -130,6 +132,7 @@ public class BookkeepingRepository {
             target.version = existing.version;
             target.serverReceivedAt = existing.serverReceivedAt;
             target.isDeleted = existing.isDeleted;
+            target.ledgerId = existing.ledgerId;
         }
     }
 
@@ -141,6 +144,7 @@ public class BookkeepingRepository {
             target.version = existing.version;
             target.serverReceivedAt = existing.serverReceivedAt;
             target.isDeleted = existing.isDeleted;
+            target.ledgerId = existing.ledgerId;
         }
     }
 
@@ -152,7 +156,159 @@ public class BookkeepingRepository {
             target.version = existing.version;
             target.serverReceivedAt = existing.serverReceivedAt;
             target.isDeleted = existing.isDeleted;
+            target.ledgerId = existing.ledgerId;
         }
+    }
+
+    // ------------------------------------------------------------------
+    // V3.2：当前账本与账本管理（基线第 6 章）
+    // ------------------------------------------------------------------
+
+    /** 当前账本本地行 id（仅在 IO 线程调用）；无记录时兜底默认账本。 */
+    public long currentLedgerId() {
+        Long id = database.ledgerDao().getCurrentId();
+        return id != null ? id : 1L;
+    }
+
+    /** 当前账本实体（仅在 IO 线程调用）。 */
+    @Nullable
+    public LedgerEntity currentLedger() {
+        return database.ledgerDao().getCurrent();
+    }
+
+    /** 观察全部有效账本（当前账本排最前），供账本切换器与账本管理页。 */
+    @NonNull
+    public LiveData<List<LedgerEntity>> observeLedgers() {
+        return database.ledgerDao().observeActive();
+    }
+
+    /** 观察当前账本，供首页账本名展示。 */
+    @NonNull
+    public LiveData<LedgerEntity> observeCurrentLedger() {
+        return database.ledgerDao().observeCurrent();
+    }
+
+    /** 观察账本回收站（软删账本）。 */
+    @NonNull
+    public LiveData<List<LedgerEntity>> observeLedgerRecycleBin() {
+        return database.ledgerDao().observeRecycleBin();
+    }
+
+    /**
+     * 新建账本：本地落库（UUID 身份）+ 播种默认分类/账户 + 入队 LEDGER 与种子数据。
+     * 服务端建账后会下发 canonical 种子，与本机种子经 mergedInto 去重（基线第 27 章）。
+     * 创建成功后自动切换为新账本。
+     */
+    public void createLedger(@NonNull String name, @NonNull String description,
+                             @NonNull String currency, @Nullable Callback<Long> callback) {
+        io.execute(() -> {
+            long id = database.runInTransaction(() -> {
+                long now = System.currentTimeMillis();
+                LedgerEntity ledger = new LedgerEntity();
+                ledger.syncId = UUID.randomUUID().toString();
+                ledger.name = name.trim();
+                ledger.description = description == null ? "" : description.trim();
+                ledger.currency = currency == null || currency.trim().isEmpty()
+                        ? "CNY" : currency.trim();
+                ledger.role = LedgerEntity.ROLE_OWNER;
+                ledger.isDefault = false;
+                ledger.createdAt = now;
+                ledger.clientUpdatedAt = now;
+                long ledgerId = database.ledgerDao().insert(ledger);
+                seedDefaultsInto(ledgerId, now);
+                enqueueSync(SyncEntityTypes.LEDGER, ledger.syncId, false);
+                database.ledgerDao().setCurrent(ledgerId);
+                return ledgerId;
+            });
+            if (syncEnqueuer != null) {
+                syncEnqueuer.notifyPendingChanges();
+            }
+            post(callback, id);
+        });
+    }
+
+    /** 向指定账本播种默认分类/账户（新建账本与清空重置共用，基线第 27 章）。 */
+    private void seedDefaultsInto(long ledgerId, long now) {
+        List<CategoryEntity> categories = DefaultData.defaultCategories();
+        for (CategoryEntity category : categories) {
+            category.id = 0;
+            category.ledgerId = ledgerId;
+            SyncPayloadMapper.ensureSyncId(category);
+            category.version = 0;
+            category.serverReceivedAt = 0;
+            category.isDeleted = false;
+            database.categoryDao().insert(category);
+            enqueueSync(SyncEntityTypes.CATEGORY, category.syncId, false);
+        }
+        for (AccountEntity account : DefaultData.defaultAccounts()) {
+            account.id = 0;
+            account.ledgerId = ledgerId;
+            account.createdAt = now;
+            account.updatedAt = now;
+            SyncPayloadMapper.ensureSyncId(account);
+            account.version = 0;
+            account.serverReceivedAt = 0;
+            account.isDeleted = false;
+            database.accountDao().insert(account);
+            enqueueSync(SyncEntityTypes.ACCOUNT, account.syncId, false);
+        }
+    }
+
+    /** 切换账本：翻转 is_current 标志；业务 LiveData 自动重载，无残留（基线第 6.3 章）。 */
+    public void switchLedger(long ledgerId, @Nullable Callback<Boolean> callback) {
+        io.execute(() -> {
+            database.runInTransaction(() -> database.ledgerDao().setCurrent(ledgerId));
+            post(callback, Boolean.TRUE);
+        });
+    }
+
+    /** 重命名账本（账本设置，OWNER/ADMIN；服务端会再校验角色）。 */
+    public void renameLedger(long ledgerId, @NonNull String newName,
+                             @Nullable Callback<Boolean> callback) {
+        io.execute(() -> {
+            database.runInTransaction(() -> {
+                LedgerEntity ledger = database.ledgerDao().getById(ledgerId);
+                if (ledger != null) {
+                    ledger.name = newName.trim();
+                    ledger.clientUpdatedAt = System.currentTimeMillis();
+                    database.ledgerDao().update(ledger);
+                    enqueueSync(SyncEntityTypes.LEDGER, ledger.syncId, ledger.isDeleted);
+                }
+            });
+            post(callback, Boolean.TRUE);
+        });
+    }
+
+    /**
+     * 删除账本（软删墓碑，仅 OWNER；服务端再校验）。删除后自动切到剩余的第一个账本。
+     * 影响所有成员（基线第 12.2 章），确认弹窗由 UI 层负责。
+     */
+    public void deleteLedger(long ledgerId, @Nullable Callback<Boolean> callback) {
+        io.execute(() -> {
+            database.runInTransaction(() -> {
+                long now = System.currentTimeMillis();
+                LedgerEntity ledger = database.ledgerDao().getById(ledgerId);
+                if (ledger != null && !ledger.isDeleted) {
+                    ledger.isDeleted = true;
+                    ledger.deletedAt = now;
+                    ledger.clientUpdatedAt = now;
+                    database.ledgerDao().update(ledger);
+                    enqueueSync(SyncEntityTypes.LEDGER, ledger.syncId, true);
+                }
+                // 若删的是当前账本，切到剩余账本（默认账本优先）
+                Long current = database.ledgerDao().getCurrentId();
+                LedgerEntity currentLedger = current == null
+                        ? null : database.ledgerDao().getById(current);
+                if (currentLedger == null || currentLedger.isDeleted
+                        || LedgerEntity.ROLE_REMOVED.equals(currentLedger.role)) {
+                    List<LedgerEntity> remaining = database.ledgerDao().getActive();
+                    if (!remaining.isEmpty()) {
+                        database.ledgerDao().setCurrent(remaining.get(0).id);
+                    }
+                }
+            });
+            post(callback, Boolean.TRUE);
+        });
     }
 
     // ------------------------------------------------------------------
@@ -372,6 +528,8 @@ public class BookkeepingRepository {
                     entity.version = 0;
                     entity.serverReceivedAt = 0;
                     entity.isDeleted = false;
+                    // V3.2：新交易归属当前账本（基线第 6 章）
+                    entity.ledgerId = currentLedgerId();
                     entity.id = database.transactionDao().insert(entity);
                 } else {
                     TransactionEntity existing = database.transactionDao().getEntityById(entity.id);
@@ -523,12 +681,14 @@ public class BookkeepingRepository {
                                @NonNull List<RecurringTransactionEntity> recurring,
                                @Nullable UserSettingsEntity settings) {
         database.runInTransaction(() -> {
+            // V3.2：本地备份恢复 = 覆盖「当前账本」的数据集，其他账本不受影响
+            long ledgerId = currentLedgerId();
             // 先删交易再删账户 / 分类以满足外键约束，与 clearAllData 同序
-            database.transactionDao().deleteAll();
-            database.recurringTransactionDao().deleteAll();
-            database.budgetDao().deleteAll();
-            database.accountDao().deleteAll();
-            database.categoryDao().deleteAll();
+            database.transactionDao().clearCurrentLedger();
+            database.recurringTransactionDao().clearCurrentLedger();
+            database.budgetDao().clearCurrentLedger();
+            database.accountDao().clearCurrentLedger();
+            database.categoryDao().clearCurrentLedger();
             database.userSettingsDao().deleteAll();
 
             // V3：恢复行保留备份中的 syncId（身份连续，云端 LWW 收敛）；
@@ -538,6 +698,7 @@ public class BookkeepingRepository {
                 account.version = 0;
                 account.serverReceivedAt = 0;
                 account.isDeleted = false;
+                account.ledgerId = ledgerId;
                 database.accountDao().insert(account);
                 enqueueSync(SyncEntityTypes.ACCOUNT, account.syncId, false);
             }
@@ -546,6 +707,7 @@ public class BookkeepingRepository {
                 category.version = 0;
                 category.serverReceivedAt = 0;
                 category.isDeleted = false;
+                category.ledgerId = ledgerId;
                 database.categoryDao().insert(category);
                 enqueueSync(SyncEntityTypes.CATEGORY, category.syncId, false);
             }
@@ -554,6 +716,7 @@ public class BookkeepingRepository {
                 transaction.version = 0;
                 transaction.serverReceivedAt = 0;
                 transaction.isDeleted = false;
+                transaction.ledgerId = ledgerId;
                 database.transactionDao().insert(transaction);
                 enqueueSync(SyncEntityTypes.TRANSACTION, transaction.syncId, false);
             }
@@ -562,6 +725,7 @@ public class BookkeepingRepository {
                 budget.version = 0;
                 budget.serverReceivedAt = 0;
                 budget.isDeleted = false;
+                budget.ledgerId = ledgerId;
                 database.budgetDao().upsert(budget);
                 enqueueSync(SyncEntityTypes.BUDGET, budget.syncId, false);
             }
@@ -570,6 +734,7 @@ public class BookkeepingRepository {
                 item.version = 0;
                 item.serverReceivedAt = 0;
                 item.isDeleted = false;
+                item.ledgerId = ledgerId;
                 database.recurringTransactionDao().insert(item);
                 enqueueSync(SyncEntityTypes.RECURRING, item.syncId, false);
             }
@@ -602,9 +767,12 @@ public class BookkeepingRepository {
         }
         return database.runInTransaction(() -> {
             long now = System.currentTimeMillis();
+            long ledgerId = currentLedgerId();
             Set<Long> affected = new LinkedHashSet<>();
             for (TransactionEntity entity : entities) {
                 entity.id = 0L;
+                // V3.2：导入明确归属当前账本（基线第 26 章，禁止跨账本不明归属）
+                entity.ledgerId = ledgerId;
                 if (entity.createdAt == 0L) {
                     entity.createdAt = now;
                 }
@@ -642,6 +810,7 @@ public class BookkeepingRepository {
                     entity.version = 0;
                     entity.serverReceivedAt = 0;
                     entity.isDeleted = false;
+                    entity.ledgerId = currentLedgerId();
                     long newId = database.accountDao().insert(entity);
                     enqueueSync(SyncEntityTypes.ACCOUNT, entity.syncId, false);
                     return newId;
@@ -750,6 +919,7 @@ public class BookkeepingRepository {
                     entity.version = 0;
                     entity.serverReceivedAt = 0;
                     entity.isDeleted = false;
+                    entity.ledgerId = currentLedgerId();
                     long newId = database.recurringTransactionDao().insert(entity);
                     enqueueSync(SyncEntityTypes.RECURRING, entity.syncId, false);
                     return newId;
@@ -859,6 +1029,7 @@ public class BookkeepingRepository {
             transaction.note = rule.note;
             transaction.createdAt = now;
             transaction.updatedAt = now;
+            transaction.ledgerId = rule.ledgerId;
             SyncPayloadMapper.ensureSyncId(transaction);
             transaction.version = 0;
             transaction.serverReceivedAt = 0;
@@ -950,17 +1121,19 @@ public class BookkeepingRepository {
                     entity.version = 0;
                     entity.serverReceivedAt = 0;
                     entity.isDeleted = false;
+                    entity.ledgerId = currentLedgerId();
                     long newId = database.categoryDao().insert(entity);
                     enqueueSync(SyncEntityTypes.CATEGORY, entity.syncId, false);
                     return newId;
                 }
                 CategoryEntity existing = database.categoryDao().getById(entity.id);
                 if (existing != null) {
-                    // 回填同步元数据（UI 半实体不覆写身份 / 版本）
+                    // 回填同步元数据（UI 半实体不覆写身份 / 版本 / 账本归属）
                     entity.syncId = existing.syncId;
                     entity.version = existing.version;
                     entity.serverReceivedAt = existing.serverReceivedAt;
                     entity.isDeleted = existing.isDeleted;
+                    entity.ledgerId = existing.ledgerId;
                 }
                 database.categoryDao().update(entity);
                 enqueueSync(SyncEntityTypes.CATEGORY, entity.syncId, entity.isDeleted);
@@ -1228,12 +1401,14 @@ public class BookkeepingRepository {
                 entity.version = existing.version;
                 entity.serverReceivedAt = existing.serverReceivedAt;
                 entity.isDeleted = false;
+                entity.ledgerId = existing.ledgerId;
             } else {
                 entity.createdAt = now;
                 SyncPayloadMapper.ensureSyncId(entity);
                 entity.version = 0;
                 entity.serverReceivedAt = 0;
                 entity.isDeleted = false;
+                entity.ledgerId = currentLedgerId();
             }
             database.runInTransaction(() -> {
                 database.budgetDao().upsert(entity);
@@ -1270,36 +1445,24 @@ public class BookkeepingRepository {
     }
 
     /**
-     * 清空所有本地数据（V1 基线第 9 章）。
-     * 先删交易再删账户 / 分类以满足外键约束，随后重置为系统默认分类、默认账户与默认设置。
-     * V2：一并清空周期账单与账户，并重建 6 个默认账户。
-     */
-    /**
-     * 清空所有本地数据（V1 基线第 9 章）。V3：同步队列一并清空——本地清空
-     * 不作为删除事件传播（云端数据保留、其他设备不受影响，见开发计划风险表 #2）；
-     * 重建的默认分类 / 账户不带 syncId，由下次同步的修复通道补齐。
+     * 清空数据（V1 基线第 9 章；V3.2 收紧为「清空当前账本」）。
+     * 只清当前账本的交易 / 账户 / 分类 / 预算 / 周期账单并重播默认数据，
+     * 其他账本与账本身份不受影响；同步队列一并清空——本地清空不作为删除事件传播
+     * （云端数据保留、其他设备不受影响，见开发计划风险表 #2）。
      */
     public void clearAllData(@Nullable Callback<Boolean> callback) {
         io.execute(() -> {
             database.runInTransaction(() -> {
-                database.transactionDao().deleteAll();
-                database.recurringTransactionDao().deleteAll();
-                database.budgetDao().deleteAll();
-                database.accountDao().deleteAll();
-                database.categoryDao().deleteAll();
-                database.userSettingsDao().deleteAll();
+                long ledgerId = currentLedgerId();
+                database.transactionDao().clearCurrentLedger();
+                database.recurringTransactionDao().clearCurrentLedger();
+                database.budgetDao().clearCurrentLedger();
+                database.accountDao().clearCurrentLedger();
+                database.categoryDao().clearCurrentLedger();
                 database.syncChangeQueueDao().clearAll();
 
-                database.categoryDao().insertAll(DefaultData.defaultCategories());
                 long now = System.currentTimeMillis();
-                List<AccountEntity> accounts = DefaultData.defaultAccounts();
-                for (AccountEntity account : accounts) {
-                    account.createdAt = now;
-                    account.updatedAt = now;
-                }
-                database.accountDao().insertAll(accounts);
-                database.userSettingsDao().upsert(DefaultData.defaultSettings(now));
-                ThemeStore.put(appContext, UserSettingsEntity.THEME_LIGHT);
+                seedDefaultsInto(ledgerId, now);
             });
             post(callback, Boolean.TRUE);
         });

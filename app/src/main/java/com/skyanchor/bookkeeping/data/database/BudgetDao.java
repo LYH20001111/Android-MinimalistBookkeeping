@@ -22,37 +22,37 @@ import java.util.List;
 public interface BudgetDao {
 
     /** 观察某月总预算（category_id = 0）；V3 过滤软删行。 */
-    @Query("SELECT * FROM budget WHERE is_deleted = 0 "
+    @Query("SELECT * FROM budget WHERE is_deleted = 0 AND ledger_id = (SELECT id FROM ledger WHERE is_current = 1 LIMIT 1) "
             + "AND year = :year AND month = :month AND category_id = 0")
     LiveData<BudgetEntity> observe(int year, int month);
 
     /** 读取某月总预算（category_id = 0）。 */
-    @Query("SELECT * FROM budget WHERE is_deleted = 0 "
+    @Query("SELECT * FROM budget WHERE is_deleted = 0 AND ledger_id = (SELECT id FROM ledger WHERE is_current = 1 LIMIT 1) "
             + "AND year = :year AND month = :month AND category_id = 0")
     BudgetEntity get(int year, int month);
 
     /** 观察某月总预算 + 全部分类预算。 */
-    @Query("SELECT * FROM budget WHERE is_deleted = 0 AND year = :year AND month = :month "
+    @Query("SELECT * FROM budget WHERE is_deleted = 0 AND ledger_id = (SELECT id FROM ledger WHERE is_current = 1 LIMIT 1) AND year = :year AND month = :month "
             + "ORDER BY category_id ASC")
     LiveData<List<BudgetEntity>> observeAllForMonth(int year, int month);
 
     /** 观察某月全部分类预算（category_id >= 1）。 */
-    @Query("SELECT * FROM budget WHERE is_deleted = 0 "
+    @Query("SELECT * FROM budget WHERE is_deleted = 0 AND ledger_id = (SELECT id FROM ledger WHERE is_current = 1 LIMIT 1) "
             + "AND year = :year AND month = :month AND category_id > 0 "
             + "ORDER BY category_id ASC")
     LiveData<List<BudgetEntity>> observeCategoryBudgets(int year, int month);
 
     /** 观察某月某分类预算；categoryId = 0 时即总预算。V3 过滤软删行。 */
-    @Query("SELECT * FROM budget WHERE is_deleted = 0 "
+    @Query("SELECT * FROM budget WHERE is_deleted = 0 AND ledger_id = (SELECT id FROM ledger WHERE is_current = 1 LIMIT 1) "
             + "AND year = :year AND month = :month AND category_id = :categoryId")
     LiveData<BudgetEntity> observe(int year, int month, int categoryId);
 
     /** 按 (year, month, category) 定位行，**含软删**（复用身份重建预算时用）。 */
-    @Query("SELECT * FROM budget WHERE year = :year AND month = :month AND category_id = :categoryId")
+    @Query("SELECT * FROM budget WHERE ledger_id = (SELECT id FROM ledger WHERE is_current = 1 LIMIT 1) AND year = :year AND month = :month AND category_id = :categoryId")
     BudgetEntity get(int year, int month, int categoryId);
 
     /** 读取有效预算（不含软删），categoryId = 0 时即总预算。 */
-    @Query("SELECT * FROM budget WHERE is_deleted = 0 "
+    @Query("SELECT * FROM budget WHERE is_deleted = 0 AND ledger_id = (SELECT id FROM ledger WHERE is_current = 1 LIMIT 1) "
             + "AND year = :year AND month = :month AND category_id = :categoryId")
     BudgetEntity getActive(int year, int month, int categoryId);
 
@@ -76,11 +76,11 @@ public interface BudgetDao {
     long upsert(BudgetEntity entity);
 
     /** 删除某月总预算（category_id = 0）。 */
-    @Query("DELETE FROM budget WHERE year = :year AND month = :month AND category_id = 0")
+    @Query("DELETE FROM budget WHERE ledger_id = (SELECT id FROM ledger WHERE is_current = 1 LIMIT 1) AND year = :year AND month = :month AND category_id = 0")
     void delete(int year, int month);
 
     /** 删除某月某分类预算。 */
-    @Query("DELETE FROM budget WHERE year = :year AND month = :month AND category_id = :categoryId")
+    @Query("DELETE FROM budget WHERE ledger_id = (SELECT id FROM ledger WHERE is_current = 1 LIMIT 1) AND year = :year AND month = :month AND category_id = :categoryId")
     void delete(int year, int month, int categoryId);
 
     /**
@@ -88,28 +88,36 @@ public interface BudgetDao {
      * 其预算同样软删并作为可同步事件传播（开发计划备注 9）。
      */
     @Query("UPDATE budget SET is_deleted = 1, updated_at = :updatedAt "
-            + "WHERE is_deleted = 0 AND category_id = :categoryId")
+            + "WHERE is_deleted = 0 AND ledger_id = (SELECT id FROM ledger WHERE is_current = 1 LIMIT 1) AND category_id = :categoryId")
     int softDeleteByCategoryId(long categoryId, long updatedAt);
 
     /** 某分类的有效预算行（软删传播时逐行入队用）。 */
-    @Query("SELECT * FROM budget WHERE is_deleted = 0 AND category_id = :categoryId")
+    @Query("SELECT * FROM budget WHERE is_deleted = 0 AND ledger_id = (SELECT id FROM ledger WHERE is_current = 1 LIMIT 1) AND category_id = :categoryId")
     List<BudgetEntity> getActiveByCategoryId(long categoryId);
 
     @Query("DELETE FROM budget")
     void deleteAll();
 
-    @Query("SELECT COUNT(*) FROM budget WHERE is_deleted = 0")
+    @Query("SELECT COUNT(*) FROM budget WHERE is_deleted = 0 AND ledger_id = (SELECT id FROM ledger WHERE is_current = 1 LIMIT 1)")
     LiveData<Integer> observeCount();
 
-    @Query("SELECT COUNT(*) FROM budget WHERE is_deleted = 0")
+    @Query("SELECT COUNT(*) FROM budget WHERE is_deleted = 0 AND ledger_id = (SELECT id FROM ledger WHERE is_current = 1 LIMIT 1)")
     int countAll();
 
     /** 有效预算（供备份序列化）。 */
-    @Query("SELECT * FROM budget WHERE is_deleted = 0 "
+    @Query("SELECT * FROM budget WHERE is_deleted = 0 AND ledger_id = (SELECT id FROM ledger WHERE is_current = 1 LIMIT 1) "
             + "ORDER BY year ASC, month ASC, category_id ASC")
     List<BudgetEntity> getAll();
 
     /** 全量预算（含软删），供首次同步统计与全量推送。仅在 IO 线程调用。 */
     @Query("SELECT * FROM budget ORDER BY year ASC, month ASC, category_id ASC")
     List<BudgetEntity> getAllIncludingDeleted();
+
+    /** V3.2：仅清空当前账本的业务数据（「清空数据」按账本作用域，其他账本不受影响）。 */
+    @Query("DELETE FROM budget WHERE ledger_id = (SELECT id FROM ledger WHERE is_current = 1 LIMIT 1)")
+    void clearCurrentLedger();
+
+    /** V3.2：默认账本 claim 合并后，把本账本全部业务行迁移到合并目标账本。 */
+    @Query("UPDATE budget SET ledger_id = :toLedgerId WHERE ledger_id = :fromLedgerId")
+    int repointLedger(long fromLedgerId, long toLedgerId);
 }

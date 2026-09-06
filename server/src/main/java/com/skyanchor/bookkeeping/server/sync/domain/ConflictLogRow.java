@@ -24,6 +24,10 @@ public class ConflictLogRow {
     @Column(name = "user_id", nullable = false)
     private Long userId;
 
+    /** 冲突所属账本（V3.2）；v1 备份恢复的旧行允许为空。 */
+    @Column(name = "ledger_id")
+    private Long ledgerId;
+
     @Column(name = "entity_type", nullable = false)
     private String entityType;
 
@@ -61,6 +65,14 @@ public class ConflictLogRow {
 
     public void setUserId(Long userId) {
         this.userId = userId;
+    }
+
+    public Long getLedgerId() {
+        return ledgerId;
+    }
+
+    public void setLedgerId(Long ledgerId) {
+        this.ledgerId = ledgerId;
     }
 
     public String getEntityType() {

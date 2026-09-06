@@ -13,17 +13,16 @@ import com.skyanchor.bookkeeping.server.backup.BackupDtos.RestoreReport;
 import com.skyanchor.bookkeeping.server.common.ApiException;
 import com.skyanchor.bookkeeping.server.common.ServerMeta;
 import com.skyanchor.bookkeeping.server.common.ServerMetaRepository;
+import com.skyanchor.bookkeeping.server.ledger.repo.LedgerMemberRowRepository;
+import com.skyanchor.bookkeeping.server.ledger.repo.LedgerRowRepository;
 import com.skyanchor.bookkeeping.server.sync.SyncPayload;
 import com.skyanchor.bookkeeping.server.sync.SyncService;
 import com.skyanchor.bookkeeping.server.sync.domain.CategoryRow;
-import com.skyanchor.bookkeeping.server.sync.domain.SyncChangeRow;
 import com.skyanchor.bookkeeping.server.sync.dto.SyncDtos.PullRequest;
 import com.skyanchor.bookkeeping.server.sync.dto.SyncDtos.PullResponse;
 import com.skyanchor.bookkeeping.server.sync.dto.SyncDtos.PushItem;
 import com.skyanchor.bookkeeping.server.sync.dto.SyncDtos.PushRequest;
-import com.skyanchor.bookkeeping.server.sync.repo.AccountRowRepository;
 import com.skyanchor.bookkeeping.server.sync.repo.CategoryRowRepository;
-import com.skyanchor.bookkeeping.server.sync.repo.ConflictLogRepository;
 import com.skyanchor.bookkeeping.server.sync.repo.SyncChangeRepository;
 import com.skyanchor.bookkeeping.server.sync.repo.TransactionRowRepository;
 import org.junit.jupiter.api.AfterAll;
@@ -54,7 +53,7 @@ import static org.mockito.Mockito.times;
 /**
  * 备份 / 恢复全链路集成测试（H2 兼容 PostgreSQL）：导出 → 继续写入 → 恢复 →
  * 数据回到备份点、recovery_epoch 递增、sync_changes 重建、令牌全部失效。
- * V3.1 决策 2：恢复不回滚客户端游标，而是让客户端识别 epoch 变化后重置重新收敛。
+ * V3.2：备份包含 ledgers / ledger_members；恢复后账本与成员关系完整。
  */
 @SpringBootTest(properties = "app.backup.dir=build/test-backups")
 @Transactional
@@ -74,15 +73,15 @@ class BackupRestoreIntegrationTest {
     @Autowired
     AdminGuard adminGuard;
     @Autowired
-    CategoryRowRepository categoryRepository;
+    LedgerRowRepository ledgerRepository;
     @Autowired
-    AccountRowRepository accountRepository;
+    LedgerMemberRowRepository memberRepository;
+    @Autowired
+    CategoryRowRepository categoryRepository;
     @Autowired
     TransactionRowRepository transactionRepository;
     @Autowired
     SyncChangeRepository changeRepository;
-    @Autowired
-    ConflictLogRepository conflictRepository;
     @Autowired
     RefreshTokenRepository refreshTokenRepository;
     @Autowired
@@ -95,6 +94,7 @@ class BackupRestoreIntegrationTest {
 
     private static final String EMAIL = "backup-test@example.com";
     private static final String PASSWORD = "password-123";
+    private static final String LEDGER_SYNC_ID = "aaaaaaaa-0000-0000-0000-000000000003";
     private static final String CATEGORY_SYNC_ID = "aaaaaaaa-1111-1111-1111-111111111111";
     private static final String TRANSACTION_SYNC_ID = "aaaaaaaa-2222-2222-2222-222222222222";
 
@@ -127,6 +127,20 @@ class BackupRestoreIntegrationTest {
         return new AuthUser(userId, EMAIL, "device-A", 1L);
     }
 
+    /** V3.2：先 claim 默认账本（服务端创建账本 + OWNER + 种子默认数据）。 */
+    private AuthUser verifiedUserWithLedger() {
+        AuthUser user = verifiedUser();
+        SyncPayload ledger = new SyncPayload();
+        ledger.name = "我的账本";
+        ledger.currency = "CNY";
+        ledger.isDefault = true;
+        var result = asUser(user, () -> syncService.push(user, new PushRequest(List.of(
+                new PushItem("LEDGER", LEDGER_SYNC_ID, "UPSERT", 0, LEDGER_SYNC_ID, ledger)))))
+                .results().get(0);
+        assertTrue(result.accepted(), () -> "claim ledger 失败: " + result.errorCode());
+        return user;
+    }
+
     private <T> T asUser(AuthUser user, java.util.function.Supplier<T> action) {
         CurrentUserHolder.set(user);
         try {
@@ -147,13 +161,13 @@ class BackupRestoreIntegrationTest {
 
     @Test
     void backup_and_restore_roundtrip_recovers_data_and_bumps_epoch() {
-        AuthUser user = verifiedUser();
+        AuthUser user = verifiedUserWithLedger();
         long epochBefore = recoveryEpoch();
 
-        // 1. 备份点：1 个分类 + 1 笔交易
+        // 1. 备份点：种子默认数据 + 1 个分类 + 1 笔交易
         asUser(user, () -> syncService.push(user, new PushRequest(List.of(
-                new PushItem("CATEGORY", CATEGORY_SYNC_ID, "UPSERT", 0,
-                        categoryPayload("餐饮"))))));
+                new PushItem("CATEGORY", CATEGORY_SYNC_ID, "UPSERT", 0, LEDGER_SYNC_ID,
+                        categoryPayload("备份分类"))))));
         SyncPayload tx = new SyncPayload();
         tx.type = 1;
         tx.amount = 3500L;
@@ -162,19 +176,24 @@ class BackupRestoreIntegrationTest {
         tx.categorySyncId = CATEGORY_SYNC_ID;
         tx.clientUpdatedAt = 1_700_000_000_000L;
         asUser(user, () -> syncService.push(user, new PushRequest(List.of(
-                new PushItem("TRANSACTION", TRANSACTION_SYNC_ID, "UPSERT", 0, tx)))));
+                new PushItem("TRANSACTION", TRANSACTION_SYNC_ID, "UPSERT", 0, LEDGER_SYNC_ID,
+                        tx)))));
 
         BackupMeta meta = backupService.createBackup(BackupDtos.TRIGGER_API);
         assertNotNull(meta.name());
-        assertEquals(1, meta.counts().categories());
+        assertEquals(1, meta.counts().ledgers());
+        assertEquals(1, meta.counts().ledgerMembers());
+        // 16 个种子默认分类 + 本次推送 1 个
+        assertEquals(17, meta.counts().categories());
         assertEquals(1, meta.counts().transactions());
         assertTrue(backupService.backupFileExists(meta.name()));
 
         // 2. 备份之后继续写入：改名 + 新增交易 + 软删原交易
-        SyncPayload renamed = categoryPayload("餐饮-改");
+        SyncPayload renamed = categoryPayload("备份分类-改");
         renamed.clientUpdatedAt = 1_700_000_100_000L;
         asUser(user, () -> syncService.push(user, new PushRequest(List.of(
-                new PushItem("CATEGORY", CATEGORY_SYNC_ID, "UPSERT", 1, renamed)))));
+                new PushItem("CATEGORY", CATEGORY_SYNC_ID, "UPSERT", 1, LEDGER_SYNC_ID,
+                        renamed)))));
         SyncPayload tx2 = new SyncPayload();
         tx2.type = 1;
         tx2.amount = 9900L;
@@ -183,9 +202,10 @@ class BackupRestoreIntegrationTest {
         tx2.clientUpdatedAt = 1_700_100_000_000L;
         asUser(user, () -> syncService.push(user, new PushRequest(List.of(
                 new PushItem("TRANSACTION", "aaaaaaaa-3333-3333-3333-333333333333",
-                        "UPSERT", 0, tx2)))));
+                        "UPSERT", 0, LEDGER_SYNC_ID, tx2)))));
         asUser(user, () -> syncService.push(user, new PushRequest(List.of(
-                new PushItem("TRANSACTION", TRANSACTION_SYNC_ID, "DELETE", 1, null)))));
+                new PushItem("TRANSACTION", TRANSACTION_SYNC_ID, "DELETE", 1, LEDGER_SYNC_ID,
+                        null)))));
         assertEquals(2, transactionRepository.count());
 
         // 3. 恢复
@@ -194,10 +214,16 @@ class BackupRestoreIntegrationTest {
         assertEquals(epochBefore + 1, report.newRecoveryEpoch());
         assertEquals(epochBefore + 1, recoveryEpoch());
 
-        // 4. 数据回到备份点：分类名/版本复原，多出的交易消失，被删交易复活
-        assertEquals(1, categoryRepository.count());
-        CategoryRow category = categoryRepository.findAll().get(0);
-        assertEquals("餐饮", category.getName());
+        // 4. 数据回到备份点：账本与成员关系完整、分类名/版本复原、被删交易复活
+        assertEquals(1, ledgerRepository.count());
+        assertEquals(1, memberRepository.count());
+        assertTrue(ledgerRepository.findBySyncId(LEDGER_SYNC_ID).orElseThrow()
+                .isDefaultLedger());
+        assertEquals(17, categoryRepository.count());
+        CategoryRow category = categoryRepository.findByLedgerIdAndSyncId(
+                ledgerRepository.findBySyncId(LEDGER_SYNC_ID).orElseThrow().getId(),
+                CATEGORY_SYNC_ID).orElseThrow();
+        assertEquals("备份分类", category.getName());
         assertEquals(1, category.getVersion());
         assertFalse(category.isDeleted());
 
@@ -205,15 +231,15 @@ class BackupRestoreIntegrationTest {
         assertFalse(transactionRepository.findAll().get(0).isDeleted());
         assertEquals(3500L, transactionRepository.findAll().get(0).getAmount());
 
-        // 5. sync_changes 按业务行重建：每行一条最新变更，游标可从 0 全量重拉
-        assertEquals(2, changeRepository.count());
+        // 5. sync_changes 按业务行重建：每行一条最新变更 + 每本账本一条，游标可从 0 全量重拉
+        assertEquals(1 + 17 + 6 + 1, changeRepository.count());
         // 恢复重建了用户（自增 id 改变），客户端侧等价于重新登录后以新身份收敛
         long newUserId = userRepository.findAll().get(0).getId();
         AuthUser newUser = new AuthUser(newUserId, user.email(), user.deviceId(),
                 user.deviceRowId());
         PullResponse pull = asUser(newUser, () -> syncService.pull(newUser,
-                new PullRequest(0, 100)));
-        assertEquals(2, pull.changes().size());
+                new PullRequest(LEDGER_SYNC_ID, 0, 100)));
+        assertEquals(1 + 17 + 6 + 1, pull.changes().size());
 
         // 6. 备份列表可读
         List<BackupMeta> backups = backupService.listBackups();

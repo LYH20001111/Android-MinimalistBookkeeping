@@ -14,6 +14,8 @@ import com.skyanchor.bookkeeping.server.backup.BackupDtos.BudgetEntry;
 import com.skyanchor.bookkeeping.server.backup.BackupDtos.CategoryEntry;
 import com.skyanchor.bookkeeping.server.backup.BackupDtos.ConflictEntry;
 import com.skyanchor.bookkeeping.server.backup.BackupDtos.DeviceEntry;
+import com.skyanchor.bookkeeping.server.backup.BackupDtos.LedgerEntry;
+import com.skyanchor.bookkeeping.server.backup.BackupDtos.LedgerMemberEntry;
 import com.skyanchor.bookkeeping.server.backup.BackupDtos.RestoreReport;
 import com.skyanchor.bookkeeping.server.backup.BackupDtos.RecurringEntry;
 import com.skyanchor.bookkeeping.server.backup.BackupDtos.TransactionEntry;
@@ -21,6 +23,10 @@ import com.skyanchor.bookkeeping.server.backup.BackupDtos.UserEntry;
 import com.skyanchor.bookkeeping.server.common.ApiException;
 import com.skyanchor.bookkeeping.server.common.ServerMeta;
 import com.skyanchor.bookkeeping.server.common.ServerMetaRepository;
+import com.skyanchor.bookkeeping.server.ledger.domain.LedgerMemberRow;
+import com.skyanchor.bookkeeping.server.ledger.domain.LedgerRow;
+import com.skyanchor.bookkeeping.server.ledger.repo.LedgerMemberRowRepository;
+import com.skyanchor.bookkeeping.server.ledger.repo.LedgerRowRepository;
 import com.skyanchor.bookkeeping.server.sync.domain.AccountRow;
 import com.skyanchor.bookkeeping.server.sync.domain.BudgetRow;
 import com.skyanchor.bookkeeping.server.sync.domain.CategoryRow;
@@ -50,9 +56,13 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 服务器恢复（V3.1 基线第 15/16 章）。流程：
- * 校验文件 → 清空全部数据 → 按依赖顺序重建（users → devices → 业务表 → 冲突日志）
+ * 服务器恢复（V3.1 基线第 15/16 章；V3.2 升级为格式 v2）。流程：
+ * 校验文件 → 清空全部数据 → 按依赖顺序重建
+ * （users → ledgers/members → 业务表 → 冲突日志）
  * → 从业务行重建 sync_changes（每行一条最新变更）→ recovery_epoch +1。
+ *
+ * <p>格式兼容：v1 备份（无 ledgers 段）恢复时按用户补建默认账本（确定性 syncId，
+ * 与 Flyway V4 回填一致）并回填 ledger_id，保证“V3.1 备份 → V3.2 服务器”路径可用。
  *
  * <p>安全策略（基线第 14 章）：refresh_tokens / email_verification_tokens 不备份、
  * 不恢复——恢复后所有设备必须重新登录。调用方负责先取同步写屏障写锁，
@@ -68,6 +78,8 @@ public class BackupRestoreService {
     private final DeviceRepository deviceRepository;
     private final RefreshTokenRepository refreshTokenRepository;
     private final EmailVerificationTokenRepository emailVerificationTokenRepository;
+    private final LedgerRowRepository ledgerRepository;
+    private final LedgerMemberRowRepository memberRepository;
     private final CategoryRowRepository categoryRepository;
     private final AccountRowRepository accountRepository;
     private final TransactionRowRepository transactionRepository;
@@ -83,6 +95,8 @@ public class BackupRestoreService {
                                 DeviceRepository deviceRepository,
                                 RefreshTokenRepository refreshTokenRepository,
                                 EmailVerificationTokenRepository emailVerificationTokenRepository,
+                                LedgerRowRepository ledgerRepository,
+                                LedgerMemberRowRepository memberRepository,
                                 CategoryRowRepository categoryRepository,
                                 AccountRowRepository accountRepository,
                                 TransactionRowRepository transactionRepository,
@@ -97,6 +111,8 @@ public class BackupRestoreService {
         this.deviceRepository = deviceRepository;
         this.refreshTokenRepository = refreshTokenRepository;
         this.emailVerificationTokenRepository = emailVerificationTokenRepository;
+        this.ledgerRepository = ledgerRepository;
+        this.memberRepository = memberRepository;
         this.categoryRepository = categoryRepository;
         this.accountRepository = accountRepository;
         this.transactionRepository = transactionRepository;
@@ -116,18 +132,30 @@ public class BackupRestoreService {
 
         Map<Long, UserEntity> userMap = insertUsers(file.users());
         insertDevices(file.devices(), userMap);
+        // v2 备份直接恢复账本与成员；v1 备份按用户补建默认账本（与 V4 回填语义一致）
+        boolean v2 = file.formatVersion() >= 2;
+        Map<Long, LedgerRow> ledgerByRef = v2
+                ? insertLedgers(file.ledgers(), userMap) : createDefaultLedgers(userMap);
+        if (v2) {
+            insertLedgerMembers(file.ledgerMembers(), ledgerByRef, userMap);
+        } else {
+            insertOwnerMemberships(ledgerByRef);
+        }
+        LedgerResolver ledgerResolver = new LedgerResolver(ledgerByRef);
         List<SyncRow> allRows = new ArrayList<>();
-        allRows.addAll(insertCategories(file.categories(), userMap));
-        allRows.addAll(insertAccounts(file.accounts(), userMap));
-        allRows.addAll(insertTransactions(file.transactions(), userMap));
-        allRows.addAll(insertBudgets(file.budgets(), userMap));
-        allRows.addAll(insertRecurring(file.recurring(), userMap));
-        insertConflictLogs(file.conflictLogs(), userMap);
-        rebuildSyncChanges(allRows);
+        allRows.addAll(insertCategories(file.categories(), userMap, ledgerResolver));
+        allRows.addAll(insertAccounts(file.accounts(), userMap, ledgerResolver));
+        allRows.addAll(insertTransactions(file.transactions(), userMap, ledgerResolver));
+        allRows.addAll(insertBudgets(file.budgets(), userMap, ledgerResolver));
+        allRows.addAll(insertRecurring(file.recurring(), userMap, ledgerResolver));
+        insertConflictLogs(file.conflictLogs(), userMap, ledgerResolver);
+        rebuildSyncChanges(allRows, ledgerByRef);
 
         long newEpoch = incrementRecoveryEpoch();
         BackupCounts counts = new BackupCounts(userMap.size(),
                 file.devices() == null ? 0 : file.devices().size(),
+                ledgerByRef.size(),
+                file.ledgerMembers() == null ? 0 : file.ledgerMembers().size(),
                 file.categories() == null ? 0 : file.categories().size(),
                 file.accounts() == null ? 0 : file.accounts().size(),
                 file.transactions() == null ? 0 : file.transactions().size(),
@@ -148,13 +176,13 @@ public class BackupRestoreService {
             throw ApiException.badRequest("备份文件损坏，无法解析");
         }
         if (file == null || !BackupDtos.FORMAT.equals(file.format())
-                || file.formatVersion() != BackupDtos.FORMAT_VERSION) {
+                || file.formatVersion() < 1 || file.formatVersion() > BackupDtos.FORMAT_VERSION) {
             throw ApiException.badRequest("备份文件格式不受支持");
         }
         return file;
     }
 
-    /** 清库：先令牌类，再日志类，再业务表，最后设备与用户（FK 均级联）。 */
+    /** 清库：先令牌类，再日志类，再业务表，然后账本，最后设备与用户（FK 均级联）。 */
     private void wipeAll() {
         refreshTokenRepository.deleteAllInBatch();
         emailVerificationTokenRepository.deleteAllInBatch();
@@ -165,6 +193,8 @@ public class BackupRestoreService {
         transactionRepository.deleteAllInBatch();
         budgetRepository.deleteAllInBatch();
         recurringRepository.deleteAllInBatch();
+        memberRepository.deleteAllInBatch();
+        ledgerRepository.deleteAllInBatch();
         deviceRepository.deleteAllInBatch();
         userRepository.deleteAllInBatch();
     }
@@ -180,6 +210,8 @@ public class BackupRestoreService {
             user.setEmail(entry.email());
             user.setPasswordHash(entry.passwordHash());
             user.setEmailVerified(entry.emailVerified());
+            user.setStatus(entry.status() == null
+                    ? UserEntity.Status.ACTIVE.name() : entry.status());
             user.setCreatedAt(Instant.ofEpochMilli(entry.createdAt()));
             user.setUpdatedAt(Instant.ofEpochMilli(entry.updatedAt()));
             user.setDeletedAt(entry.deletedAt() == null
@@ -215,8 +247,127 @@ public class BackupRestoreService {
         deviceRepository.flush();
     }
 
+    /** 备份内 ledgerRefId → 恢复后账本的解析器；v1 备份无引用时回退到用户默认账本。 */
+    private record LedgerResolver(Map<Long, LedgerRow> ledgerByRef) {
+        LedgerRow resolve(Long ledgerRefId, UserEntity user) {
+            if (ledgerRefId != null) {
+                LedgerRow ledger = ledgerByRef.get(ledgerRefId);
+                if (ledger == null) {
+                    throw ApiException.badRequest("备份文件损坏：引用了不存在的账本");
+                }
+                return ledger;
+            }
+            return ledgerByRef.values().stream()
+                    .filter(l -> l.getUserId().equals(user.getId()) && l.isDefaultLedger())
+                    .findFirst()
+                    .orElseThrow(() -> ApiException.badRequest("备份文件损坏：缺少用户默认账本"));
+        }
+    }
+
+    private Map<Long, LedgerRow> insertLedgers(List<LedgerEntry> entries,
+                                               Map<Long, UserEntity> userMap) {
+        Map<Long, LedgerRow> byRef = new HashMap<>();
+        if (entries == null) {
+            return byRef;
+        }
+        List<LedgerRow> ledgers = new ArrayList<>();
+        for (LedgerEntry entry : entries) {
+            LedgerRow ledger = new LedgerRow();
+            ledger.setUserId(requireUser(userMap, entry.ownerUserRefId()).getId());
+            ledger.setSyncId(entry.syncId());
+            ledger.setName(entry.name());
+            ledger.setDescription(orEmpty(entry.description()));
+            ledger.setCurrency(orEmpty(entry.currency()));
+            ledger.setDefaultLedger(entry.isDefault());
+            ledger.setArchived(entry.isArchived());
+            ledger.setVersion(entry.version());
+            ledger.setServerReceivedAt(Instant.ofEpochMilli(entry.serverReceivedAt()));
+            ledger.setDeleted(entry.isDeleted());
+            ledger.setDeletedAt(entry.deletedAt());
+            ledger.setCreatedAt(Instant.ofEpochMilli(entry.createdAt()));
+            ledger.setClientUpdatedAt(entry.clientUpdatedAt());
+            ledgers.add(ledger);
+            byRef.put(entry.refId(), ledger);
+        }
+        ledgerRepository.saveAll(ledgers);
+        ledgerRepository.flush();
+        return byRef;
+    }
+
+    private void insertLedgerMembers(List<LedgerMemberEntry> entries,
+                                     Map<Long, LedgerRow> ledgerByRef,
+                                     Map<Long, UserEntity> userMap) {
+        if (entries == null) {
+            return;
+        }
+        List<LedgerMemberRow> members = new ArrayList<>();
+        for (LedgerMemberEntry entry : entries) {
+            LedgerRow ledger = ledgerByRef.get(entry.ledgerRefId());
+            if (ledger == null) {
+                throw ApiException.badRequest("备份文件损坏：成员引用了不存在的账本");
+            }
+            LedgerMemberRow member = new LedgerMemberRow();
+            member.setLedgerId(ledger.getId());
+            member.setUserId(requireUser(userMap, entry.userRefId()).getId());
+            member.setRole(entry.role());
+            member.setStatus(orEmpty(entry.status()).isBlank()
+                    ? LedgerMemberRow.STATUS_ACTIVE : entry.status());
+            member.setInvitedBy(entry.invitedByRefId() == null ? null
+                    : requireUser(userMap, entry.invitedByRefId()).getId());
+            member.setInvitedAt(entry.invitedAt() == null
+                    ? null : Instant.ofEpochMilli(entry.invitedAt()));
+            member.setAcceptedAt(entry.acceptedAt() == null
+                    ? null : Instant.ofEpochMilli(entry.acceptedAt()));
+            member.setCreatedAt(Instant.ofEpochMilli(entry.createdAt()));
+            member.setUpdatedAt(Instant.ofEpochMilli(entry.updatedAt()));
+            members.add(member);
+        }
+        memberRepository.saveAll(members);
+        memberRepository.flush();
+    }
+
+    /** v1 备份补建路径：按用户建默认账本（确定性 syncId，与 Flyway V4 回填一致）。 */
+    private Map<Long, LedgerRow> createDefaultLedgers(Map<Long, UserEntity> userMap) {
+        Map<Long, LedgerRow> byRef = new HashMap<>();
+        Instant now = Instant.now();
+        for (UserEntity user : userMap.values()) {
+            LedgerRow ledger = new LedgerRow();
+            ledger.setUserId(user.getId());
+            ledger.setSyncId("ledger-" + user.getId() + "-default");
+            ledger.setName("我的账本");
+            ledger.setCurrency("CNY");
+            ledger.setDefaultLedger(true);
+            ledger.setVersion(1);
+            ledger.setServerReceivedAt(now);
+            ledger.setCreatedAt(now);
+            ledgerRepository.save(ledger);
+            byRef.put(user.getId(), ledger);
+        }
+        ledgerRepository.flush();
+        return byRef;
+    }
+
+    private void insertOwnerMemberships(Map<Long, LedgerRow> ledgerByRef) {
+        Instant now = Instant.now();
+        List<LedgerMemberRow> members = new ArrayList<>();
+        for (LedgerRow ledger : ledgerByRef.values()) {
+            LedgerMemberRow member = new LedgerMemberRow();
+            member.setLedgerId(ledger.getId());
+            member.setUserId(ledger.getUserId());
+            member.setRole(LedgerMemberRow.ROLE_OWNER);
+            member.setStatus(LedgerMemberRow.STATUS_ACTIVE);
+            member.setAcceptedAt(now);
+            member.setCreatedAt(now);
+            member.setUpdatedAt(now);
+            members.add(member);
+        }
+        memberRepository.saveAll(members);
+        memberRepository.flush();
+    }
+
     private List<SyncRow> insertCategories(List<CategoryEntry> entries,
-                                           Map<Long, UserEntity> userMap) {
+                                           Map<Long, UserEntity> userMap,
+                                           LedgerResolver ledgers) {
         List<SyncRow> rows = new ArrayList<>();
         if (entries == null) {
             return rows;
@@ -224,9 +375,10 @@ public class BackupRestoreService {
         List<CategoryRow> saved = new ArrayList<>();
         for (CategoryEntry entry : entries) {
             CategoryRow row = new CategoryRow();
-            applySyncMeta(row, userMap, entry.userRefId(), entry.syncId(), entry.version(),
-                    entry.serverReceivedAt(), entry.clientUpdatedAt(), entry.deleted(),
-                    entry.deletedAt(), entry.createdAt());
+            applySyncMeta(row, userMap, ledgers, entry.userRefId(), entry.ledgerRefId(),
+                    entry.syncId(), entry.version(), entry.serverReceivedAt(),
+                    entry.clientUpdatedAt(), entry.deleted(), entry.deletedAt(),
+                    entry.createdAt());
             row.setName(entry.name());
             row.setIcon(orEmpty(entry.icon()));
             row.setType(entry.type());
@@ -241,7 +393,8 @@ public class BackupRestoreService {
     }
 
     private List<SyncRow> insertAccounts(List<AccountEntry> entries,
-                                         Map<Long, UserEntity> userMap) {
+                                         Map<Long, UserEntity> userMap,
+                                         LedgerResolver ledgers) {
         List<SyncRow> rows = new ArrayList<>();
         if (entries == null) {
             return rows;
@@ -249,9 +402,10 @@ public class BackupRestoreService {
         List<AccountRow> saved = new ArrayList<>();
         for (AccountEntry entry : entries) {
             AccountRow row = new AccountRow();
-            applySyncMeta(row, userMap, entry.userRefId(), entry.syncId(), entry.version(),
-                    entry.serverReceivedAt(), entry.clientUpdatedAt(), entry.deleted(),
-                    entry.deletedAt(), entry.createdAt());
+            applySyncMeta(row, userMap, ledgers, entry.userRefId(), entry.ledgerRefId(),
+                    entry.syncId(), entry.version(), entry.serverReceivedAt(),
+                    entry.clientUpdatedAt(), entry.deleted(), entry.deletedAt(),
+                    entry.createdAt());
             row.setName(entry.name());
             row.setType(entry.type());
             row.setInitialBalance(entry.initialBalance());
@@ -268,7 +422,8 @@ public class BackupRestoreService {
     }
 
     private List<SyncRow> insertTransactions(List<TransactionEntry> entries,
-                                             Map<Long, UserEntity> userMap) {
+                                             Map<Long, UserEntity> userMap,
+                                             LedgerResolver ledgers) {
         List<SyncRow> rows = new ArrayList<>();
         if (entries == null) {
             return rows;
@@ -276,9 +431,10 @@ public class BackupRestoreService {
         List<TransactionRow> saved = new ArrayList<>();
         for (TransactionEntry entry : entries) {
             TransactionRow row = new TransactionRow();
-            applySyncMeta(row, userMap, entry.userRefId(), entry.syncId(), entry.version(),
-                    entry.serverReceivedAt(), entry.clientUpdatedAt(), entry.deleted(),
-                    entry.deletedAt(), entry.createdAt());
+            applySyncMeta(row, userMap, ledgers, entry.userRefId(), entry.ledgerRefId(),
+                    entry.syncId(), entry.version(), entry.serverReceivedAt(),
+                    entry.clientUpdatedAt(), entry.deleted(), entry.deletedAt(),
+                    entry.createdAt());
             row.setType(entry.type());
             row.setAmount(entry.amount());
             row.setDate(entry.date());
@@ -297,7 +453,8 @@ public class BackupRestoreService {
     }
 
     private List<SyncRow> insertBudgets(List<BudgetEntry> entries,
-                                        Map<Long, UserEntity> userMap) {
+                                        Map<Long, UserEntity> userMap,
+                                        LedgerResolver ledgers) {
         List<SyncRow> rows = new ArrayList<>();
         if (entries == null) {
             return rows;
@@ -305,9 +462,10 @@ public class BackupRestoreService {
         List<BudgetRow> saved = new ArrayList<>();
         for (BudgetEntry entry : entries) {
             BudgetRow row = new BudgetRow();
-            applySyncMeta(row, userMap, entry.userRefId(), entry.syncId(), entry.version(),
-                    entry.serverReceivedAt(), entry.clientUpdatedAt(), entry.deleted(),
-                    entry.deletedAt(), entry.createdAt());
+            applySyncMeta(row, userMap, ledgers, entry.userRefId(), entry.ledgerRefId(),
+                    entry.syncId(), entry.version(), entry.serverReceivedAt(),
+                    entry.clientUpdatedAt(), entry.deleted(), entry.deletedAt(),
+                    entry.createdAt());
             row.setYear(entry.year());
             row.setMonth(entry.month());
             row.setCategorySyncId(entry.categorySyncId() == null ? "" : entry.categorySyncId());
@@ -321,7 +479,8 @@ public class BackupRestoreService {
     }
 
     private List<SyncRow> insertRecurring(List<RecurringEntry> entries,
-                                          Map<Long, UserEntity> userMap) {
+                                          Map<Long, UserEntity> userMap,
+                                          LedgerResolver ledgers) {
         List<SyncRow> rows = new ArrayList<>();
         if (entries == null) {
             return rows;
@@ -329,9 +488,10 @@ public class BackupRestoreService {
         List<RecurringRow> saved = new ArrayList<>();
         for (RecurringEntry entry : entries) {
             RecurringRow row = new RecurringRow();
-            applySyncMeta(row, userMap, entry.userRefId(), entry.syncId(), entry.version(),
-                    entry.serverReceivedAt(), entry.clientUpdatedAt(), entry.deleted(),
-                    entry.deletedAt(), entry.createdAt());
+            applySyncMeta(row, userMap, ledgers, entry.userRefId(), entry.ledgerRefId(),
+                    entry.syncId(), entry.version(), entry.serverReceivedAt(),
+                    entry.clientUpdatedAt(), entry.deleted(), entry.deletedAt(),
+                    entry.createdAt());
             row.setName(entry.name());
             row.setType(entry.type());
             row.setAmount(entry.amount());
@@ -354,14 +514,17 @@ public class BackupRestoreService {
     }
 
     private void insertConflictLogs(List<ConflictEntry> entries,
-                                    Map<Long, UserEntity> userMap) {
+                                    Map<Long, UserEntity> userMap,
+                                    LedgerResolver ledgers) {
         if (entries == null) {
             return;
         }
         List<ConflictLogRow> logs = new ArrayList<>();
         for (ConflictEntry entry : entries) {
+            UserEntity user = requireUser(userMap, entry.userRefId());
             ConflictLogRow row = new ConflictLogRow();
-            row.setUserId(requireUser(userMap, entry.userRefId()).getId());
+            row.setUserId(user.getId());
+            row.setLedgerId(ledgers.resolve(null, user).getId());
             row.setEntityType(entry.entityType());
             row.setSyncId(entry.syncId());
             row.setClientDeviceId(orEmpty(entry.clientDeviceId()));
@@ -378,13 +541,18 @@ public class BackupRestoreService {
     }
 
     /**
-     * 从业务行重建变更日志：每行一条“最新状态”变更（软删行记 DELETE）。
+     * 从业务行重建变更日志：每行一条“最新状态”变更（软删行记 DELETE），
+     * 并为每本账本补一条 LEDGER 变更（客户端据以对齐账本状态）。
      * 客户端游标经 recovery_epoch 重置为 0 后全量拉取，即收敛到服务器当前状态。
      */
-    private void rebuildSyncChanges(List<SyncRow> rows) {
+    private void rebuildSyncChanges(List<SyncRow> rows, Map<Long, LedgerRow> ledgerByRef) {
         List<SyncChangeRow> changes = new ArrayList<>();
+        for (LedgerRow ledger : ledgerByRef.values()) {
+            changes.add(ledgerChange(ledger));
+        }
         for (SyncRow row : rows) {
             SyncChangeRow change = new SyncChangeRow();
+            change.setLedgerId(row.getLedgerId());
             change.setUserId(row.getUserId());
             change.setEntityType(entityTypeOf(row));
             change.setSyncId(row.getSyncId());
@@ -396,6 +564,19 @@ public class BackupRestoreService {
         }
         changeRepository.saveAll(changes);
         changeRepository.flush();
+    }
+
+    private SyncChangeRow ledgerChange(LedgerRow ledger) {
+        SyncChangeRow change = new SyncChangeRow();
+        change.setLedgerId(ledger.getId());
+        change.setUserId(ledger.getUserId());
+        change.setEntityType("LEDGER");
+        change.setSyncId(ledger.getSyncId());
+        change.setVersion(ledger.getVersion());
+        change.setOperation(ledger.isDeleted()
+                ? SyncChangeRow.OP_DELETE : SyncChangeRow.OP_UPSERT);
+        change.setServerReceivedAt(ledger.getServerReceivedAt());
+        return change;
     }
 
     private String entityTypeOf(SyncRow row) {
@@ -417,11 +598,14 @@ public class BackupRestoreService {
         throw new IllegalStateException("unknown row type: " + row.getClass());
     }
 
-    private void applySyncMeta(SyncRow row, Map<Long, UserEntity> userMap, long userRefId,
+    private void applySyncMeta(SyncRow row, Map<Long, UserEntity> userMap, LedgerResolver ledgers,
+                               long userRefId, Long ledgerRefId,
                                String syncId, long version, long serverReceivedAt,
                                long clientUpdatedAt, boolean deleted, Long deletedAt,
                                long createdAt) {
-        row.setUserId(requireUser(userMap, userRefId).getId());
+        UserEntity user = requireUser(userMap, userRefId);
+        row.setUserId(user.getId());
+        row.setLedgerId(ledgers.resolve(ledgerRefId, user).getId());
         row.setSyncId(syncId);
         row.setVersion(version);
         row.setServerReceivedAt(Instant.ofEpochMilli(serverReceivedAt));

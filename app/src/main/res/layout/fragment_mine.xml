@@ -134,6 +134,38 @@
 
         </com.google.android.material.card.MaterialCardView>
 
+        <!-- ===== 账本（V3.2：多账本与共享） ===== -->
+        <TextView
+            style="@style/AppGroupLabel"
+            android:text="@string/mine_section_ledger" />
+
+        <com.google.android.material.card.MaterialCardView
+            style="@style/Widget.App.Card"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:contentPadding="@dimen/spacing_none">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <include
+                    android:id="@+id/menuLedgers"
+                    layout="@layout/item_menu_row" />
+
+                <View
+                    style="@style/AppDivider"
+                    android:layout_marginStart="@dimen/menu_divider_indent" />
+
+                <include
+                    android:id="@+id/menuInvitations"
+                    layout="@layout/item_menu_row" />
+
+            </LinearLayout>
+
+        </com.google.android.material.card.MaterialCardView>
+
         <!-- ===== 同步与云服务 ===== -->
         <TextView
             style="@style/AppGroupLabel"

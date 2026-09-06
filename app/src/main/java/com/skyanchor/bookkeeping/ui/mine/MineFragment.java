@@ -25,6 +25,8 @@ import com.skyanchor.bookkeeping.ui.importexport.BackupActivity;
 import com.skyanchor.bookkeeping.ui.importexport.DataExportActivity;
 import com.skyanchor.bookkeeping.ui.importexport.DataImportActivity;
 import com.skyanchor.bookkeeping.ui.importexport.RestoreActivity;
+import com.skyanchor.bookkeeping.ui.ledger.InvitationActivity;
+import com.skyanchor.bookkeeping.ui.ledger.LedgerManageActivity;
 import com.skyanchor.bookkeeping.ui.recurring.RecurringManageActivity;
 import com.skyanchor.bookkeeping.ui.settings.AboutActivity;
 import com.skyanchor.bookkeeping.ui.settings.AppearanceActivity;
@@ -82,6 +84,15 @@ public class MineFragment extends Fragment {
         bindRow(binding.menuBudget, R.drawable.ic_budget,
                 R.string.mine_budget, R.string.mine_budget_subtitle,
                 v -> startActivity(BudgetSettingActivity.newIntent(requireContext())));
+
+        // ===== 账本（V3.2：多账本与家庭共享） =====
+        bindRow(binding.menuLedgers, R.drawable.ic_database,
+                R.string.mine_ledgers, R.string.mine_ledgers_subtitle,
+                v -> startActivity(new Intent(requireContext(), LedgerManageActivity.class)));
+
+        bindRow(binding.menuInvitations, R.drawable.ic_device,
+                R.string.mine_invitations, R.string.mine_invitations_subtitle,
+                v -> startActivity(new Intent(requireContext(), InvitationActivity.class)));
 
         // ===== 同步与云服务：开关在同步中心内，这里只做入口。 =====
         // 与同步中心共享同一 ViewModel 实例，状态摘要随同步状态实时刷新。

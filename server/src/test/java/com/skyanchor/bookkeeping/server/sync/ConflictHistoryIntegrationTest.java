@@ -50,6 +50,7 @@ class ConflictHistoryIntegrationTest {
 
     private static final String EMAIL = "conflict-history@example.com";
     private static final String PASSWORD = "password-123";
+    private static final String LEDGER_SYNC_ID = "aaaaaaaa-0000-0000-0000-000000000002";
 
     private AuthUser verifiedUser(String email) {
         authService.register(new RegisterRequest(email, PASSWORD));
@@ -81,22 +82,29 @@ class ConflictHistoryIntegrationTest {
     @Test
     void conflicts_are_listed_after_lww_resolution() {
         AuthUser user = verifiedUser(EMAIL);
+        SyncPayload ledger = new SyncPayload();
+        ledger.name = "我的账本";
+        ledger.currency = "CNY";
+        ledger.isDefault = true;
+        asUser(user, () -> syncController.push(new PushRequest(List.of(
+                new PushItem("LEDGER", LEDGER_SYNC_ID, "UPSERT", 0, LEDGER_SYNC_ID, ledger)))));
         String syncId = "bbbbbbbb-1111-1111-1111-111111111111";
 
         asUser(user, () -> syncController.push(new PushRequest(List.of(
-                new PushItem("CATEGORY", syncId, "UPSERT", 0, categoryPayload("交通"))))));
+                new PushItem("CATEGORY", syncId, "UPSERT", 0, LEDGER_SYNC_ID,
+                        categoryPayload("冲突历史分类"))))));
 
         // 设备 A 基于 v1 修改并推送（版本 2）
-        SyncPayload v2 = categoryPayload("交通-改");
+        SyncPayload v2 = categoryPayload("冲突历史分类-改");
         v2.clientUpdatedAt = 1_700_000_100_000L;
         asUser(user, () -> syncController.push(new PushRequest(List.of(
-                new PushItem("CATEGORY", syncId, "UPSERT", 1, v2)))));
+                new PushItem("CATEGORY", syncId, "UPSERT", 1, LEDGER_SYNC_ID, v2)))));
 
         // 设备 B 仍基于 v1 → 冲突 → LWW 后到者胜（B），审计落库
-        SyncPayload v3 = categoryPayload("交通-B设备");
+        SyncPayload v3 = categoryPayload("冲突历史分类-B设备");
         v3.clientUpdatedAt = 1_700_000_050_000L;
         PushResponse third = asUser(user, () -> syncController.push(new PushRequest(List.of(
-                new PushItem("CATEGORY", syncId, "UPSERT", 1, v3)))));
+                new PushItem("CATEGORY", syncId, "UPSERT", 1, LEDGER_SYNC_ID, v3)))));
         assertTrue(third.results().get(0).conflicted());
         assertEquals(1, conflictRepository.count());
 

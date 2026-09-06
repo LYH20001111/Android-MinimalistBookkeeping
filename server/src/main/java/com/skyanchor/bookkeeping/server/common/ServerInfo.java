@@ -7,7 +7,7 @@ package com.skyanchor.bookkeeping.server.common;
  */
 public final class ServerInfo {
 
-    public static final String SERVER_VERSION = "3.1.0";
+    public static final String SERVER_VERSION = "3.2.0";
 
     private ServerInfo() {
     }

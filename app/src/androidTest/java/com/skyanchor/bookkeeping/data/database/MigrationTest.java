@@ -112,9 +112,39 @@ public class MigrationTest {
     private AppDatabase openLatest() {
         return Room.databaseBuilder(context, AppDatabase.class, DB_NAME)
                 .addMigrations(AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4,
-                        AppDatabase.MIGRATION_4_5, AppDatabase.MIGRATION_5_6)
+                        AppDatabase.MIGRATION_4_5, AppDatabase.MIGRATION_5_6,
+                        AppDatabase.MIGRATION_6_7)
                 .allowMainThreadQueries()
                 .build();
+    }
+
+    /** V3.1 的 schema（MIGRATION_5_6 的产物）：deleted_at + 诊断列 + sync_events。 */
+    private SQLiteDatabase createV6Database() {
+        SQLiteDatabase db = createV5Database();
+        for (String table : new String[]{
+                "transactions", "category", "account", "budget", "recurring_transaction"}) {
+            db.execSQL("ALTER TABLE " + table + " ADD COLUMN deleted_at INTEGER");
+        }
+        db.execSQL("ALTER TABLE sync_state ADD COLUMN last_push_at INTEGER NOT NULL DEFAULT 0");
+        db.execSQL("ALTER TABLE sync_state ADD COLUMN last_pull_at INTEGER NOT NULL DEFAULT 0");
+        db.execSQL("ALTER TABLE sync_state ADD COLUMN last_push_count INTEGER NOT NULL DEFAULT 0");
+        db.execSQL("ALTER TABLE sync_state ADD COLUMN last_pull_count INTEGER NOT NULL DEFAULT 0");
+        db.execSQL("ALTER TABLE sync_state ADD COLUMN last_duration_ms INTEGER NOT NULL DEFAULT 0");
+        db.execSQL("ALTER TABLE sync_state ADD COLUMN recovery_epoch INTEGER NOT NULL DEFAULT 0");
+        db.execSQL("ALTER TABLE sync_state ADD COLUMN bound_account_email TEXT");
+        db.execSQL("ALTER TABLE sync_state ADD COLUMN recovered_at INTEGER NOT NULL DEFAULT 0");
+        db.execSQL("CREATE TABLE IF NOT EXISTS sync_events ("
+                + "id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, "
+                + "started_at INTEGER NOT NULL, "
+                + "finished_at INTEGER NOT NULL, "
+                + "result TEXT NOT NULL, "
+                + "push_count INTEGER NOT NULL, "
+                + "pull_count INTEGER NOT NULL, "
+                + "conflict_count INTEGER NOT NULL, "
+                + "duration_ms INTEGER NOT NULL, "
+                + "error_message TEXT)");
+        db.setVersion(6);
+        return db;
     }
 
     /** V3 的 schema（MIGRATION_4_5 的产物）：5 张业务表带同步元数据 + 三张同步支撑表。 */
@@ -565,12 +595,13 @@ public class MigrationTest {
         db.syncChangeQueueDao().clearAll();
         assertEquals(0, db.syncChangeQueueDao().pendingCount());
         com.skyanchor.bookkeeping.data.entity.SyncCursorEntity cursor =
-                new com.skyanchor.bookkeeping.data.entity.SyncCursorEntity();
-        cursor.accountEmail = "test@example.com";
+                new com.skyanchor.bookkeeping.data.entity.SyncCursorEntity(
+                        "test@example.com", "");
         cursor.lastChangeId = 42;
         cursor.updatedAt = 1L;
         db.syncCursorDao().upsert(cursor);
-        assertEquals(42L, db.syncCursorDao().find("test@example.com").lastChangeId);
+        assertEquals(42L,
+                db.syncCursorDao().find("test@example.com", "").lastChangeId);
         com.skyanchor.bookkeeping.data.entity.SyncStateEntity state =
                 new com.skyanchor.bookkeeping.data.entity.SyncStateEntity();
         state.syncEnabled = true;
@@ -693,6 +724,73 @@ public class MigrationTest {
             db.syncEventDao().insert(event);
         }
         assertEquals(50, db.syncEventDao().count());
+        db.close();
+    }
+
+    // ------------------------------------------------------------------
+    // V3.2：6 → 7（ledger 根节点 / ledger_id 回填 / budget 唯一键 / 游标复合主键）
+    // ------------------------------------------------------------------
+
+    @Test
+    public void migrate_v6_addsLedgerRootAndBackfillsLedgerId() {
+        SQLiteDatabase v6 = createV6Database();
+        Cursor accountRow = v6.rawQuery("SELECT id FROM account LIMIT 1", new String[0]);
+        assertTrue(accountRow.moveToFirst());
+        long accountId = accountRow.getLong(0);
+        accountRow.close();
+        // 两笔交易 + 一个预算 + 旧版（账号级）游标
+        insert(v6, "transactions", row(
+                "type", 1, "amount", 3500L, "category_id", null,
+                "account_id", accountId, "transfer_account_id", null,
+                "date", 1_700_000_000_000L, "time", "12:30",
+                "created_at", 1_700_000_000_000L, "updated_at", 1_700_000_000_000L));
+        insert(v6, "transactions", row(
+                "type", 2, "amount", 8000L, "category_id", null,
+                "account_id", accountId, "transfer_account_id", null,
+                "date", 1_700_100_000_000L, "time", "19:00",
+                "created_at", 1_700_100_000_000L, "updated_at", 1_700_100_000_000L));
+        insert(v6, "budget", row(
+                "year", 2026, "month", 9, "category_id", 0, "amount", 300000L,
+                "created_at", 1_700_000_000_000L, "updated_at", 1_700_000_000_000L));
+        insert(v6, "sync_cursor", row(
+                "account_email", "migrate@example.com",
+                "last_change_id", 42L, "updated_at", 1_700_000_000_000L));
+        v6.close();
+
+        AppDatabase db = openLatest();
+        // 1) 默认账本已建立：id=1、默认、当前、OWNER 角色
+        Cursor ledger = db.getOpenHelper().getWritableDatabase().query(
+                "SELECT id, name, is_default, is_current, role FROM ledger");
+        assertEquals(1, ledger.getCount());
+        assertTrue(ledger.moveToFirst());
+        assertEquals(1L, ledger.getLong(0));
+        assertEquals("我的账本", ledger.getString(1));
+        assertEquals(1L, ledger.getLong(2));
+        assertEquals(1L, ledger.getLong(3));
+        assertEquals("OWNER", ledger.getString(4));
+        ledger.close();
+        // 2) 存量业务数据全部回填到默认账本，数据零丢失
+        Cursor tx = db.getOpenHelper().getWritableDatabase().query(
+                "SELECT COUNT(*) FROM transactions WHERE ledger_id = 1");
+        assertTrue(tx.moveToFirst());
+        assertEquals(2, tx.getInt(0));
+        tx.close();
+        Cursor budget = db.getOpenHelper().getWritableDatabase().query(
+                "SELECT COUNT(*) FROM budget WHERE ledger_id = 1");
+        assertTrue(budget.moveToFirst());
+        assertEquals(1, budget.getInt(0));
+        budget.close();
+        // 3) budget 唯一键已升级为 (ledger_id, year, month, category_id)
+        Cursor index = db.getOpenHelper().getWritableDatabase().query(
+                "SELECT name FROM sqlite_master WHERE type = 'index' AND name = "
+                        + "'index_budget_ledger_id_year_month_category_id'");
+        assertEquals(1, index.getCount());
+        index.close();
+        // 4) 游标表升级为 (account_email, ledger_sync_id) 复合主键，存量游标挂空键
+        com.skyanchor.bookkeeping.data.entity.SyncCursorEntity cursor =
+                db.syncCursorDao().find("migrate@example.com", "");
+        assertNotNull(cursor);
+        assertEquals(42L, cursor.lastChangeId);
         db.close();
     }
 }

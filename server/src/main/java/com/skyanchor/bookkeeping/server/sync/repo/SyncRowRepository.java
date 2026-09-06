@@ -48,6 +48,17 @@ public class SyncRowRepository {
         conflictRepository.deleteAllByUserId(userId);
     }
 
+    /** 账本级联清理（注销账号时该用户独占账本的物理删除）：业务行 + 变更日志。 */
+    @Transactional(propagation = Propagation.REQUIRED)
+    public void deleteAllByLedger(Long ledgerId) {
+        categoryRepository.deleteAllByLedgerId(ledgerId);
+        accountRepository.deleteAllByLedgerId(ledgerId);
+        transactionRepository.deleteAllByLedgerId(ledgerId);
+        budgetRepository.deleteAllByLedgerId(ledgerId);
+        recurringRepository.deleteAllByLedgerId(ledgerId);
+        changeRepository.deleteAllByLedgerId(ledgerId);
+    }
+
     /** bootstrap/summary：云端各实体有效（未软删）行数。 */
     public Counts counts(Long userId) {
         return new Counts(
