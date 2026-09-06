@@ -274,7 +274,7 @@
     <string name="search_max_amount">最高金额</string>
     <string name="search_reset">清空筛选</string>
     <!-- 顶部合计：笔数含转账，支出 / 收入不含转账（与列表同源） -->
-    <string name="search_summary_format">共 %1$d 笔 · 支出 %2$s · 收入 %3$s</string>
+    <string name="search_summary_format">共 %1$d 笔\n支出 %2$s · 收入 %3$s</string>
     <string name="search_empty">没有匹配的账单</string>
     <string name="search_empty_hint">换个关键词或放宽筛选条件试试</string>
 

@@ -39,6 +39,11 @@ public class SyncCenterActivity extends AppCompatActivity {
     protected void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         binding = ActivitySyncCenterBinding.inflate(getLayoutInflater());
+        // XML 初始文本是带 %1$s/%1$d 占位符的格式串，先填入默认值，避免 Room 异步发射前显示原始占位符
+        binding.lastSyncText.setText(getString(R.string.sync_last_format,
+                getString(R.string.sync_never)));
+        binding.pendingText.setText(getString(R.string.sync_pending_format, 0));
+        binding.conflictText.setText(getString(R.string.sync_conflict_format, 0));
         setContentView(binding.getRoot());
         InsetsUtil.applyTopAndHorizontalPadding(binding.syncRoot);
         InsetsUtil.syncSystemBarAppearance(this);
@@ -70,7 +75,11 @@ public class SyncCenterActivity extends AppCompatActivity {
                         count == null ? 0 : count)));
         viewModel.syncState().observe(this, state -> {
             if (state == null) {
-                // 无持久化同步状态（如首次安装尚未触发同步）：根据服务器地址配置显示状态
+                // 无持久化同步状态（如首次安装尚未触发同步）：根据服务器地址配置显示状态，
+                // 并补齐最近同步/最近冲突默认文案，否则布局里的 %1$s 占位符会一直显示
+                binding.lastSyncText.setText(getString(R.string.sync_last_format,
+                        getString(R.string.sync_never)));
+                binding.conflictText.setText(getString(R.string.sync_conflict_format, 0));
                 binding.serverStateText.setText(serverStateText(null));
                 return;
             }
