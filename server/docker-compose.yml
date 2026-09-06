@@ -36,9 +36,14 @@ services:
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       APP_BASE_URL: ${APP_BASE_URL:-http://localhost:8080}
+      APP_ADMIN_EMAILS: ${APP_ADMIN_EMAILS:-}
+      BACKUP_DIR: /data/backups
+    volumes:
+      - backups:/data/backups
     ports:
       # 家庭局域网直连入口；公网部署请改用 docker-compose.https.yml（Caddy 终结 HTTPS）
       - "8080:8080"
 
 volumes:
   pgdata:
+  backups:

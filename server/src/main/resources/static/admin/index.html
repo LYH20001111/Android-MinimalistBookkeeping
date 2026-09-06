@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>极简记账家庭服务器 · 管理</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: system-ui, sans-serif; max-width: 42rem; margin: 2rem auto; padding: 0 1rem; line-height: 1.6; }
+  h1 { font-size: 1.3rem; } h2 { font-size: 1.05rem; margin-top: 1.8rem; }
+  .card { border: 1px solid #d0d0d0; border-radius: 10px; padding: 0.9rem 1.1rem; margin: 0.8rem 0; }
+  .row { display: flex; justify-content: space-between; gap: 1rem; border-bottom: 1px dashed #e3e3e3; padding: 0.25rem 0; }
+  .row:last-child { border-bottom: none; }
+  .muted { color: #888; font-size: 0.9rem; }
+  .ok { color: #1a7f37; font-weight: 600; } .warn { color: #b58105; font-weight: 600; } .bad { color: #c62828; font-weight: 600; }
+  button { padding: 0.45rem 1rem; border-radius: 8px; border: 1px solid #bbb; background: #f6f6f6; cursor: pointer; font-size: 0.95rem; }
+  button.primary { background: #2d6cdf; border-color: #2d6cdf; color: #fff; }
+  button.danger { background: #c62828; border-color: #c62828; color: #fff; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  input { padding: 0.45rem 0.6rem; border: 1px solid #bbb; border-radius: 8px; width: 100%; box-sizing: border-box; margin: 0.2rem 0 0.6rem; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+  th, td { text-align: left; padding: 0.35rem 0.4rem; border-bottom: 1px solid #e6e6e6; vertical-align: top; }
+  #message:empty { display: none; }
+  #message { padding: 0.6rem 0.9rem; border-radius: 8px; margin: 0.8rem 0; background: #fff4ce; color: #6b5900; white-space: pre-wrap; }
+  .hidden { display: none; }
+  code { background: rgba(127,127,127,.15); padding: 0 0.3rem; border-radius: 4px; }
+</style>
+</head>
+<body>
+<h1>极简记账家庭服务器</h1>
+<p class="muted">可看、可管、可救 —— 服务器状态与备份恢复管理（V3.1）。数据操作仅限服务器管理员。</p>
+<div id="message"></div>
+
+<!-- 登录区 -->
+<section id="login-section" class="card">
+  <h2>管理员登录</h2>
+  <p class="muted">使用 App 的注册账号登录。未配置 <code>APP_ADMIN_EMAILS</code> 时，最早注册的账号即为管理员。</p>
+  <label>邮箱<input id="email" type="email" autocomplete="username"></label>
+  <label>密码<input id="password" type="password" autocomplete="current-password"></label>
+  <button class="primary" id="login-btn">登录</button>
+</section>
+
+<!-- 管理区 -->
+<section id="admin-section" class="hidden">
+  <div class="card" id="health-card"><h2>运行状态</h2><div id="health-body" class="muted">加载中…</div></div>
+  <div class="card" id="stats-card"><h2>数据概览</h2><div id="stats-body" class="muted">加载中…</div></div>
+
+  <h2>备份</h2>
+  <p class="muted">每日自动备份默认 03:00 执行；保留最近 7 天每日一份、4 周每周一份、12 个月每月一份。备份文件保存在服务器 <code>backups/</code> 目录，包含全部账号数据（不含登录令牌）。</p>
+  <button class="primary" id="backup-btn">立即备份</button>
+  <table id="backup-table" style="margin-top:0.8rem">
+    <thead><tr><th>备份时间</th><th>大小</th><th>数据量</th><th>操作</th></tr></thead>
+    <tbody id="backup-body"><tr><td colspan="4" class="muted">加载中…</td></tr></tbody>
+  </table>
+
+  <h2>恢复</h2>
+  <div class="card" style="border-color:#c62828">
+    <p><strong class="bad">恢复会覆盖服务器当前全部数据，并影响所有设备。</strong></p>
+    <ul class="muted">
+      <li>恢复期间所有设备的同步将暂时中断；</li>
+      <li>恢复后所有设备必须重新登录（登录令牌不会恢复）；</li>
+      <li>恢复后 App 会自动重置同步游标并重新收敛数据。</li>
+    </ul>
+  </div>
+  <button class="danger" id="logout-btn">退出登录</button>
+</section>
+
+<script>
+const API = '/api/v1';
+const HEADERS = { 'Content-Type': 'application/json', 'X-Api-Version': '1', 'X-Sync-Protocol-Version': '1' };
+let token = sessionStorage.getItem('admin_token') || '';
+
+function $(id) { return document.getElementById(id); }
+function setMessage(text) { $('message').textContent = text || ''; }
+function fmtBytes(n) { if (!n) return '-'; const u = ['B','KB','MB','GB','TB']; let i = 0; while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; } return n.toFixed(n >= 100 || i === 0 ? 0 : 1) + ' ' + u[i]; }
+function fmtTime(ms) { if (!ms) return '从未'; return new Date(ms).toLocaleString(); }
+
+async function api(path, options = {}) {
+  const headers = { ...HEADERS, ...(options.headers || {}) };
+  if (token) headers['Authorization'] = 'Bearer ' + token;
+  const resp = await fetch(API + path, { ...options, headers });
+  const body = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    const code = body && body.error ? body.error.code : ('HTTP ' + resp.status);
+    const msg = body && body.error ? body.error.message : '请求失败';
+    const err = new Error(msg); err.code = code; err.status = resp.status; throw err;
+  }
+  return body;
+}
+
+async function login() {
+  setMessage('');
+  try {
+    const body = await api('/auth/login', { method: 'POST', body: JSON.stringify({ email: $('email').value.trim(), password: $('password').value }) });
+    token = body.accessToken; sessionStorage.setItem('admin_token', token);
+    enterAdmin();
+  } catch (e) { setMessage('登录失败：' + e.message); }
+}
+
+function enterAdmin() {
+  $('login-section').classList.add('hidden');
+  $('admin-section').classList.remove('hidden');
+  refreshAll();
+}
+
+async function refreshAll() {
+  loadHealth(); loadStats(); loadBackups();
+}
+
+async function loadHealth() {
+  try {
+    const h = await api('/server/health');
+    const disk = h.storage && h.storage.totalBytes > 0
+      ? fmtBytes(h.storage.freeBytes) + ' / ' + fmtBytes(h.storage.totalBytes)
+      : '未知';
+    const cls = h.status === 'UP' ? 'ok' : (h.status === 'DEGRADED' ? 'warn' : 'bad');
+    $('health-body').innerHTML =
+      row('状态', `<span class="${cls}">${h.status === 'UP' ? '● 正常运行' : (h.status === 'DEGRADED' ? '● 带病运行' : '● 异常')}</span>`) +
+      row('服务器版本', h.serverVersion) +
+      row('API / 同步协议', 'v' + h.apiVersion + ' / v' + h.syncProtocolVersion) +
+      row('数据库', h.database === 'UP' ? '<span class="ok">正常</span>' : '<span class="bad">异常</span>') +
+      row('磁盘剩余', disk) +
+      row('恢复代际', '#' + h.recoveryEpoch) +
+      row('最近备份', fmtTime(h.lastBackupAt)) +
+      row('服务器时间', new Date(h.serverTime).toLocaleString());
+  } catch (e) { $('health-body').textContent = '加载失败：' + e.message; }
+}
+
+function row(k, v) { return `<div class="row"><span class="muted">${k}</span><span>${v}</span></div>`; }
+
+async function loadStats() {
+  try {
+    const s = await api('/server/stats');
+    $('stats-body').innerHTML =
+      row('用户', s.users) + row('设备', s.devices) +
+      row('交易记录', s.transactionRows.toLocaleString()) +
+      row('备份目录剩余空间', fmtBytes(s.storage ? s.storage.freeBytes : 0));
+  } catch (e) { $('stats-body').textContent = '加载失败：' + e.message; }
+}
+
+async function loadBackups() {
+  try {
+    const list = await api('/server/backup');
+    const body = $('backup-body');
+    if (!list.length) { body.innerHTML = '<tr><td colspan="4" class="muted">暂无备份，点击“立即备份”创建第一份。</td></tr>'; return; }
+    body.innerHTML = list.map(b => {
+      const counts = b.counts;
+      const volume = counts ? `${counts.users} 用户 / ${counts.transactions.toLocaleString()} 交易` : '-';
+      return `<tr><td>${fmtTime(b.createdAt)}<br><span class="muted">${b.name}</span></td>` +
+        `<td>${fmtBytes(b.sizeBytes)}</td><td>${volume}</td>` +
+        `<td><button data-name="${b.name}" class="restore-btn danger">恢复此备份</button></td></tr>`;
+    }).join('');
+    document.querySelectorAll('.restore-btn').forEach(btn =>
+      btn.addEventListener('click', () => restore(btn.dataset.name)));
+  } catch (e) { handleAuthError(e); $('backup-body').innerHTML = `<tr><td colspan="4" class="muted">加载失败：${e.message}</td></tr>`; }
+}
+
+async function createBackup() {
+  setMessage('正在备份…'); $('backup-btn').disabled = true;
+  try {
+    const meta = await api('/server/backup', { method: 'POST' });
+    setMessage('备份完成：' + meta.name);
+    loadBackups(); loadHealth();
+  } catch (e) { handleAuthError(e); setMessage('备份失败：' + e.message); }
+  $('backup-btn').disabled = false;
+}
+
+async function restore(name) {
+  if (!confirm('确定要恢复这份备份吗？\n\n服务器当前全部数据将被覆盖，所有设备都会受到影响，恢复后设备需要重新登录。')) return;
+  if (!confirm('再次确认：这是不可逆操作。\n\n将从「' + name + '」恢复服务器数据。')) return;
+  setMessage('正在恢复，期间同步会短暂中断…');
+  try {
+    const report = await api('/server/backup/' + encodeURIComponent(name) + '/restore', { method: 'POST' });
+    setMessage('恢复完成。\n\n来源：' + report.restoredFrom +
+      '\n恢复代际：#' + report.newRecoveryEpoch +
+      '\n各设备下次同步时会自动重置游标并重新收敛数据。');
+    refreshAll();
+  } catch (e) { handleAuthError(e); setMessage('恢复失败：' + e.message); }
+}
+
+function handleAuthError(e) {
+  if (e.status === 401 || e.code === 'AUTH_REQUIRED') { token = ''; sessionStorage.removeItem('admin_token'); location.reload(); }
+  else if (e.code === 'NOT_ADMIN') setMessage('当前账号不是服务器管理员。');
+}
+
+$('login-btn').addEventListener('click', login);
+$('backup-btn').addEventListener('click', createBackup);
+$('logout-btn').addEventListener('click', () => { token = ''; sessionStorage.removeItem('admin_token'); location.reload(); });
+$('password').addEventListener('keydown', ev => { if (ev.key === 'Enter') login(); });
+
+if (token) { enterAdmin(); } else { $('email').focus(); }
+</script>
+</body>
+</html>

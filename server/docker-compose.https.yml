@@ -37,6 +37,10 @@ services:
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       APP_BASE_URL: https://${DOMAIN:?请在 .env 设置 DOMAIN}
+      APP_ADMIN_EMAILS: ${APP_ADMIN_EMAILS:-}
+      BACKUP_DIR: /data/backups
+    volumes:
+      - backups:/data/backups
 
   caddy:
     image: caddy:2-alpine
@@ -55,5 +59,6 @@ services:
 
 volumes:
   pgdata:
+  backups:
   caddydata:
   caddyconfig:

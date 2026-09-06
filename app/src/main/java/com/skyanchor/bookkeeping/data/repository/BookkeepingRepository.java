@@ -415,6 +415,7 @@ public class BookkeepingRepository {
                     collectAccount(affected, existing.accountId);
                     collectAccount(affected, existing.transferAccountId);
                     existing.isDeleted = true;
+                    existing.deletedAt = now; // V3.1 回收站展示时间，随载荷传播
                     existing.updatedAt = now;
                     database.transactionDao().update(existing);
                     enqueueSync(SyncEntityTypes.TRANSACTION, existing.syncId, true);
@@ -691,8 +692,10 @@ public class BookkeepingRepository {
             database.runInTransaction(() -> {
                 AccountEntity entity = database.accountDao().getById(id);
                 if (entity != null) {
+                    long now = System.currentTimeMillis();
                     entity.isDeleted = true;
-                    entity.updatedAt = System.currentTimeMillis();
+                    entity.deletedAt = now;
+                    entity.updatedAt = now;
                     database.accountDao().update(entity);
                     enqueueSync(SyncEntityTypes.ACCOUNT, entity.syncId, true);
                 }
@@ -779,9 +782,11 @@ public class BookkeepingRepository {
                 RecurringTransactionEntity entity =
                         database.recurringTransactionDao().getById(id);
                 if (entity != null) {
+                    long now = System.currentTimeMillis();
                     entity.isDeleted = true;
+                    entity.deletedAt = now;
                     entity.isEnabled = false;
-                    entity.updatedAt = System.currentTimeMillis();
+                    entity.updatedAt = now;
                     database.recurringTransactionDao().update(entity);
                     enqueueSync(SyncEntityTypes.RECURRING, entity.syncId, true);
                 }
@@ -985,21 +990,140 @@ public class BookkeepingRepository {
                 return;
             }
             database.runInTransaction(() -> {
+                long now = System.currentTimeMillis();
                 CategoryEntity entity = database.categoryDao().getById(id);
                 if (entity != null) {
                     entity.isDeleted = true;
+                    entity.deletedAt = now;
                     database.categoryDao().update(entity);
                     enqueueSync(SyncEntityTypes.CATEGORY, entity.syncId, true);
                 }
-                long now = System.currentTimeMillis();
                 for (BudgetEntity budget : database.budgetDao().getActiveByCategoryId(id)) {
                     budget.isDeleted = true;
+                    budget.deletedAt = now;
                     budget.updatedAt = now;
                     database.budgetDao().upsert(budget);
                     enqueueSync(SyncEntityTypes.BUDGET, budget.syncId, true);
                 }
             });
             post(callback, DeleteCategoryResult.ok());
+        });
+    }
+
+    // ------------------------------------------------------------------
+    // 回收站（V3.1 基线第 17-21 章）
+    //
+    // 恢复不是本地临时操作：is_deleted 反转 + deleted_at 清空后按 UPSERT 重新入队，
+    // 作为一条新的同步写操作传播（基线第 20 章），其他设备最终一致。
+    // 保留策略：永久保留，不提供自动清理与彻底删除（V3.1 决策 3）。
+    // ------------------------------------------------------------------
+
+    /** 回收站：软删交易（删除时间新→旧）。 */
+    @NonNull
+    public LiveData<List<TransactionEntity>> observeRecycleBinTransactions() {
+        return database.transactionDao().observeRecycleBin();
+    }
+
+    /** 回收站：软删分类。 */
+    @NonNull
+    public LiveData<List<CategoryEntity>> observeRecycleBinCategories() {
+        return database.categoryDao().observeRecycleBin();
+    }
+
+    /** 回收站：软删账户。 */
+    @NonNull
+    public LiveData<List<AccountEntity>> observeRecycleBinAccounts() {
+        return database.accountDao().observeRecycleBin();
+    }
+
+    /** 回收站：软删周期账单。 */
+    @NonNull
+    public LiveData<List<RecurringTransactionEntity>> observeRecycleBinRecurring() {
+        return database.recurringTransactionDao().observeRecycleBin();
+    }
+
+    /** 恢复软删交易：反转软删位、清空删除时间并入队 UPSERT，重算受影响账户余额。 */
+    public void restoreTransaction(long id, @Nullable Callback<Boolean> callback) {
+        io.execute(() -> {
+            Boolean result = database.runInTransaction(() -> {
+                long now = System.currentTimeMillis();
+                TransactionEntity existing = database.transactionDao().getEntityById(id);
+                if (existing == null || !existing.isDeleted) {
+                    return Boolean.FALSE;
+                }
+                Set<Long> affected = new LinkedHashSet<>();
+                collectAccount(affected, existing.accountId);
+                collectAccount(affected, existing.transferAccountId);
+                existing.isDeleted = false;
+                existing.deletedAt = null;
+                existing.updatedAt = now;
+                database.transactionDao().update(existing);
+                enqueueSync(SyncEntityTypes.TRANSACTION, existing.syncId, false);
+                recalcAccounts(affected, now);
+                return Boolean.TRUE;
+            });
+            post(callback, result);
+        });
+    }
+
+    /** 恢复软删分类：分类删除前被禁止有账单引用，直接反转即可安全恢复。 */
+    public void restoreCategory(long id, @Nullable Callback<Boolean> callback) {
+        io.execute(() -> {
+            Boolean result = database.runInTransaction(() -> {
+                long now = System.currentTimeMillis();
+                CategoryEntity entity = database.categoryDao().getById(id);
+                if (entity == null || !entity.isDeleted) {
+                    return Boolean.FALSE;
+                }
+                entity.isDeleted = false;
+                entity.deletedAt = null;
+                database.categoryDao().update(entity);
+                enqueueSync(SyncEntityTypes.CATEGORY, entity.syncId, false);
+                return Boolean.TRUE;
+            });
+            post(callback, result);
+        });
+    }
+
+    /** 恢复软删账户：余额缓存不受影响（其下交易在删除期间未被改动）。 */
+    public void restoreAccount(long id, @Nullable Callback<Boolean> callback) {
+        io.execute(() -> {
+            Boolean result = database.runInTransaction(() -> {
+                long now = System.currentTimeMillis();
+                AccountEntity entity = database.accountDao().getById(id);
+                if (entity == null || !entity.isDeleted) {
+                    return Boolean.FALSE;
+                }
+                entity.isDeleted = false;
+                entity.deletedAt = null;
+                entity.updatedAt = now;
+                database.accountDao().update(entity);
+                enqueueSync(SyncEntityTypes.ACCOUNT, entity.syncId, false);
+                return Boolean.TRUE;
+            });
+            post(callback, result);
+        });
+    }
+
+    /** 恢复软删周期账单：删除时顺带的停用（isEnabled=false）一并撤销。 */
+    public void restoreRecurring(long id, @Nullable Callback<Boolean> callback) {
+        io.execute(() -> {
+            Boolean result = database.runInTransaction(() -> {
+                long now = System.currentTimeMillis();
+                RecurringTransactionEntity entity =
+                        database.recurringTransactionDao().getById(id);
+                if (entity == null || !entity.isDeleted) {
+                    return Boolean.FALSE;
+                }
+                entity.isDeleted = false;
+                entity.deletedAt = null;
+                entity.isEnabled = true;
+                entity.updatedAt = now;
+                database.recurringTransactionDao().update(entity);
+                enqueueSync(SyncEntityTypes.RECURRING, entity.syncId, false);
+                return Boolean.TRUE;
+            });
+            post(callback, result);
         });
     }
 

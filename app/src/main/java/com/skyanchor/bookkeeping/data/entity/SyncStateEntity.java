@@ -35,4 +35,38 @@ public class SyncStateEntity {
     /** 最近一次同步发生的冲突条数。 */
     @ColumnInfo(name = "conflict_count")
     public int conflictCount;
+
+    // ===== V3.1 同步诊断（基线第 23/24 章）=====
+
+    /** 最近一轮 Push 完成时间（epoch millis）；0 = 从未。 */
+    @ColumnInfo(name = "last_push_at", defaultValue = "0")
+    public long lastPushAt;
+
+    /** 最近一轮 Pull 完成时间（epoch millis）；0 = 从未。 */
+    @ColumnInfo(name = "last_pull_at", defaultValue = "0")
+    public long lastPullAt;
+
+    /** 最近一轮 Push 条数。 */
+    @ColumnInfo(name = "last_push_count", defaultValue = "0")
+    public int lastPushCount;
+
+    /** 最近一轮 Pull 应用条数。 */
+    @ColumnInfo(name = "last_pull_count", defaultValue = "0")
+    public int lastPullCount;
+
+    /** 最近一轮同步总耗时（毫秒）。 */
+    @ColumnInfo(name = "last_duration_ms", defaultValue = "0")
+    public long lastDurationMs;
+
+    /** 已识别的服务器恢复代际；与服务器不一致时触发游标重置重新收敛。 */
+    @ColumnInfo(name = "recovery_epoch", defaultValue = "0")
+    public long recoveryEpoch;
+
+    /** 本地账本绑定的云同步账号（基线第 30 章）；空 = LOCAL_ONLY。 */
+    @ColumnInfo(name = "bound_account_email")
+    public String boundAccountEmail;
+
+    /** 服务器恢复被本机识别的时间（epoch millis）；非 0 时同步中心显示“服务器已恢复”横幅，确认后清 0。 */
+    @ColumnInfo(name = "recovered_at", defaultValue = "0")
+    public long recoveredAt;
 }

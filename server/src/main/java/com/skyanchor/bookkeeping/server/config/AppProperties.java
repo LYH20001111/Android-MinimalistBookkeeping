@@ -16,6 +16,16 @@ public class AppProperties {
     private String baseUrl = "http://localhost:8080";
     private String mailFrom = "no-reply@localhost";
     private boolean mailDevLogOnly = true;
+    /** 服务器管理员邮箱列表（逗号分隔）。为空时默认最早注册的账号是管理员（家庭服务器开箱即用）。 */
+    private java.util.List<String> adminEmails = new java.util.ArrayList<>();
+
+    public java.util.List<String> getAdminEmails() {
+        return adminEmails;
+    }
+
+    public void setAdminEmails(java.util.List<String> adminEmails) {
+        this.adminEmails = adminEmails;
+    }
 
     public String getJwtSecret() {
         return jwtSecret;

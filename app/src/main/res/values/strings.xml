@@ -598,4 +598,84 @@
     <string name="cd_trend_chart">支出趋势折线图</string>
     <string name="cd_category_chart">消费分类占比环形图</string>
 
+
+    <!-- ===== V3.1 私有云稳定性与服务器管理 ===== -->
+    <string name="recycle_bin_title">回收站</string>
+    <string name="recycle_bin_empty">回收站是空的
+删除的账单、分类、账户和周期账单会出现在这里，可随时恢复</string>
+    <string name="recycle_bin_tab_transactions">账单</string>
+    <string name="recycle_bin_tab_categories">分类</string>
+    <string name="recycle_bin_tab_accounts">账户</string>
+    <string name="recycle_bin_tab_recurring">周期</string>
+    <string name="recycle_bin_restore">恢复</string>
+    <string name="recycle_bin_restored">已恢复，将同步到其他设备</string>
+    <string name="recycle_bin_deleted_at_format">删除于 %1$s</string>
+    <string name="recycle_bin_entry">回收站</string>
+    <string name="recycle_bin_entry_hint">已删除数据可找回</string>
+
+    <string name="sync_health_title">服务器状态</string>
+    <string name="sync_test_connection">测试连接</string>
+    <string name="sync_health_last_check_format">最近检测：%1$s</string>
+    <string name="sync_health_ok">● 在线</string>
+    <string name="sync_health_down">● 离线</string>
+    <string name="sync_health_server_version_format">服务器版本：%1$s</string>
+    <string name="sync_health_protocol_format">API v%1$d · 同步协议 v%2$d</string>
+    <string name="sync_health_database_format">数据库：%1$s</string>
+    <string name="sync_health_storage_format">磁盘剩余：%1$s</string>
+    <string name="sync_health_security_https">● 安全连接（HTTPS）</string>
+    <string name="sync_health_security_http">⚠ 未加密连接（HTTP，仅建议家庭局域网使用）</string>
+    <string name="sync_health_testing">正在检测…</string>
+    <string name="sync_health_check_failed">无法连接服务器
+
+可能原因：
+· 服务器未开机或程序未运行
+· 服务器地址填错了
+· 手机与电脑不在同一网络
+· 防火墙阻止了连接</string>
+    <string name="sync_health_database_up">正常</string>
+    <string name="sync_health_database_down">异常</string>
+    <string name="sync_health_last_backup_format">最近备份：%1$s</string>
+
+    <string name="sync_diag_pull_format">最近拉取：%1$d 条</string>
+    <string name="sync_diag_duration_format">同步耗时：%1$d 毫秒</string>
+    <string name="sync_diag_last_error_format">最后错误：%1$s</string>
+    <string name="sync_diag_no_error">无</string>
+    <string name="sync_diag_entry">高级诊断</string>
+    <string name="sync_diag_entry_hint">同步历史与协议信息</string>
+    <string name="sync_diag_title">高级诊断</string>
+    <string name="sync_diag_server_section">服务器</string>
+    <string name="sync_diag_sync_section">最近一轮同步</string>
+    <string name="sync_diag_event_section">同步历史（最近 50 次）</string>
+    <string name="sync_diag_last_push_format">Last Push：%1$s</string>
+    <string name="sync_diag_last_pull_format">Last Pull：%1$s</string>
+    <string name="sync_diag_push_count_format">Push：%1$d 条</string>
+    <string name="sync_diag_epoch_format">恢复代际：#%1$d</string>
+    <string name="sync_diag_event_format">%1$s · Push %2$d / Pull %3$d · %4$d ms</string>
+    <string name="sync_diag_empty">暂无同步记录</string>
+
+    <string name="conflict_history_title">冲突历史</string>
+    <string name="conflict_history_empty">暂无冲突记录
+多设备同时修改同一条数据时，服务器会自动按“后来者优先”合并并在这里留痕</string>
+    <string name="conflict_item_title_format">%1$s（自动合并）</string>
+    <string name="conflict_item_winner_server">结果：采用服务器版本（其他设备的修改）</string>
+    <string name="conflict_item_winner_client">结果：保留本机修改</string>
+    <string name="conflict_item_source_format">来源：设备 %1$s</string>
+    <string name="conflict_entity_category">分类</string>
+    <string name="conflict_entity_account">账户</string>
+    <string name="conflict_entity_transaction">账单</string>
+    <string name="conflict_entity_budget">预算</string>
+    <string name="conflict_entity_recurring">周期账单</string>
+    <string name="conflict_entity_unknown">数据</string>
+
+    <string name="sync_recovered_banner">检测到服务器已从备份恢复（代际 #%1$d）。本机已重置同步游标并重新收敛数据。</string>
+    <string name="sync_recovered_dismiss">知道了</string>
+
+    <string name="sync_bound_account_format">本地账本绑定：%1$s</string>
+    <string name="sync_bound_local_only">本地账本：未绑定账号（LOCAL_ONLY）</string>
+    <string name="sync_bound_mismatch_warn">当前登录账号与本地账本绑定的账号不同。本地账单不会自动变成新账号的数据，请注意区分。</string>
+    <string name="sync_logout_message_v31">退出当前账号？
+
+本地账单不会自动删除。
+下次登录其他账号时，当前本地账本不会自动变成新账号的数据。</string>
 </resources>
+

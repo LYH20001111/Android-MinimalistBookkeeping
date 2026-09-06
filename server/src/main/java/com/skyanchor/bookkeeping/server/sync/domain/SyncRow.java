@@ -38,6 +38,10 @@ public abstract class SyncRow {
     @Column(name = "is_deleted", nullable = false)
     private boolean deleted;
 
+    /** 软删发生时间（epoch millis，客户端删除时产生并随载荷传播）；未删除为 null。 */
+    @Column(name = "deleted_at")
+    private Long deletedAt;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -91,6 +95,14 @@ public abstract class SyncRow {
 
     public void setDeleted(boolean deleted) {
         this.deleted = deleted;
+    }
+
+    public Long getDeletedAt() {
+        return deletedAt;
+    }
+
+    public void setDeletedAt(Long deletedAt) {
+        this.deletedAt = deletedAt;
     }
 
     public Instant getCreatedAt() {

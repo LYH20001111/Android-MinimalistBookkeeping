@@ -13,6 +13,7 @@ import com.skyanchor.bookkeeping.data.entity.RecurringTransactionEntity;
 import com.skyanchor.bookkeeping.data.entity.SyncChangeQueueEntity;
 import com.skyanchor.bookkeeping.data.entity.SyncCursorEntity;
 import com.skyanchor.bookkeeping.data.entity.SyncEntityTypes;
+import com.skyanchor.bookkeeping.data.entity.SyncEventEntity;
 import com.skyanchor.bookkeeping.data.entity.SyncStateEntity;
 import com.skyanchor.bookkeeping.data.entity.TransactionEntity;
 import com.skyanchor.bookkeeping.data.remote.ApiClient;
@@ -67,6 +68,13 @@ public class SyncCoordinator {
     private volatile boolean pendingAgain;
     private volatile int failedRounds;
     private volatile String lastError;
+
+    /** 一轮同步的计数器（诊断用，V3.1 基线第 23/24 章）。 */
+    private static final class RoundCounters {
+        int pushed;
+        int pulled;
+        int conflicts;
+    }
 
     public SyncCoordinator(@NonNull AppDatabase database,
                            @NonNull BookkeepingRepository repository,
@@ -136,6 +144,17 @@ public class SyncCoordinator {
         });
     }
 
+    /** 用户确认“服务器已恢复”横幅：清除提示位（recovered_at 置 0）。 */
+    public void dismissRecoveredNotice() {
+        repository.runOnIo(() -> {
+            SyncStateEntity state = requireState();
+            if (state.recoveredAt != 0) {
+                state.recoveredAt = 0;
+                database.syncStateDao().upsert(state);
+            }
+        });
+    }
+
     /** 开启同步前的初始化检查（基线 7.2）：是否已登录 / 邮箱已验证 / 服务器已配置。 */
     public boolean preflightReady() {
         return tokenStore.isLoggedIn() && tokenStore.isEmailVerified()
@@ -182,6 +201,14 @@ public class SyncCoordinator {
     public void confirmBootstrap(@NonNull Callback<Boolean> callback) {
         repository.runOnIo(() -> {
             try {
+                // 记录本地账本绑定的云同步账号（V3.1 基线第 30 章，防隐式串账）
+                String boundEmail = tokenStore.getAccountEmail();
+                SyncStateEntity bound = requireState();
+                if (bound.boundAccountEmail == null
+                        || !bound.boundAccountEmail.equals(boundEmail)) {
+                    bound.boundAccountEmail = boundEmail;
+                    database.syncStateDao().upsert(bound);
+                }
                 repairSyncIds();
                 mergeDuplicateRows();
                 enqueueEverythingForBootstrap();
@@ -213,37 +240,40 @@ public class SyncCoordinator {
         running = true;
         pendingAgain = false;
         postStatus(Status.SYNCING);
-        int conflicts = 0;
+        long startedAt = System.currentTimeMillis();
+        RoundCounters counters = new RoundCounters();
         try {
             repairSyncIds();
             mergeDuplicateRows();
-            conflicts = pushPending(api);
-            pullChanges(api);
+            counters.conflicts = pushPending(api, counters);
+            pullChanges(api, counters);
             failedRounds = 0;
             lastError = null;
-            finishRound(Status.SUCCESS, conflicts);
+            finishRound(Status.SUCCESS, counters, startedAt);
         } catch (ApiException e) {
             lastError = e.getMessage();
+            recordEvent(startedAt, status.getValue(), counters, e.getMessage());
             if (e.isAuthRequired()) {
                 // Refresh Token 已失效：本地功能照常，重新登录后恢复同步（基线 24.3）
                 postStatus(Status.AUTH_REQUIRED);
-                persistState(Status.AUTH_REQUIRED, e.getMessage(), conflicts);
+                persistState(Status.AUTH_REQUIRED, e.getMessage(), counters.conflicts);
             } else if (e.isNetworkLevel()) {
                 failedRounds++;
                 postStatus(Status.SERVER_UNAVAILABLE);
-                persistState(Status.SERVER_UNAVAILABLE, e.getMessage(), conflicts);
+                persistState(Status.SERVER_UNAVAILABLE, e.getMessage(), counters.conflicts);
                 retryLater();
             } else {
                 failedRounds++;
                 postStatus(Status.WAITING_RETRY);
-                persistState(Status.WAITING_RETRY, e.getMessage(), conflicts);
+                persistState(Status.WAITING_RETRY, e.getMessage(), counters.conflicts);
                 retryLater();
             }
         } catch (Exception e) {
             lastError = e.getMessage();
             failedRounds++;
             postStatus(Status.ERROR);
-            persistState(Status.ERROR, e.getMessage(), conflicts);
+            recordEvent(startedAt, Status.ERROR, counters, e.getMessage());
+            persistState(Status.ERROR, e.getMessage(), counters.conflicts);
             retryLater();
         } finally {
             running = false;
@@ -256,7 +286,8 @@ public class SyncCoordinator {
     }
 
     /** Push 全部到期队列项，返回冲突条数（基线第 22 章 3-7 步）。 */
-    private int pushPending(ApiService api) throws ApiException, IOException {
+    private int pushPending(ApiService api, RoundCounters counters)
+            throws ApiException, IOException {
         int conflictCount = 0;
         while (true) {
             List<SyncChangeQueueEntity> due = database.syncChangeQueueDao()
@@ -280,7 +311,8 @@ public class SyncCoordinator {
             if (!response.isSuccessful() || response.body() == null) {
                 throw ApiClient.toApiError(response);
             }
-            conflictCount += applyPushResults(response.body(), snapshots);
+            handleRecoveryEpoch(response.body().recoveryEpoch);
+            conflictCount += applyPushResults(response.body(), snapshots, counters);
             if (due.size() < PUSH_BATCH && batch.size() < PUSH_BATCH) {
                 break;
             }
@@ -402,7 +434,8 @@ public class SyncCoordinator {
      * 否则丢弃 ack（服务器已接受的内容是合法历史版本），本地最新状态留给下一轮。
      */
     private int applyPushResults(@NonNull ApiDtos.PushResponse response,
-                                 @NonNull Map<String, PushSnapshot> snapshots) {
+                                 @NonNull Map<String, PushSnapshot> snapshots,
+                                 @NonNull RoundCounters counters) {
         int[] conflicts = {0};
         database.runInTransaction(() -> {
             for (ApiDtos.PushResultItem result : response.results) {
@@ -413,11 +446,13 @@ public class SyncCoordinator {
                 if (result.accepted && result.mergedInto != null
                         && !result.mergedInto.equals(result.syncId)) {
                     // 重名合并：本地行身份重映射到服务器已有实体（开发计划完成备注 14）
+                    counters.pushed++;
                     applyMergedInto(result);
                 } else if (result.accepted) {
                     if (result.conflicted) {
                         conflicts[0]++;
                     }
+                    counters.pushed++;
                     ackSnapshot(snapshot, result);
                 } else if ("CONFLICT_SERVER_WON".equals(result.errorCode)
                         && result.payload != null) {
@@ -520,7 +555,8 @@ public class SyncCoordinator {
 
     // ===== Pull（基线第 22 章 8-10 步） =====
 
-    private void pullChanges(ApiService api) throws ApiException, IOException {
+    private void pullChanges(ApiService api, RoundCounters counters)
+            throws ApiException, IOException {
         String email = tokenStore.getAccountEmail();
         if (email == null) {
             return;
@@ -541,10 +577,13 @@ public class SyncCoordinator {
             ApiDtos.PullResponse pull = response.body();
             pages++;
             hasMore = pull.hasMore;
+            handleRecoveryEpoch(pull.recoveryEpoch);
             for (ApiDtos.ChangeItem change : pull.changes) {
                 latestChangeId = Math.max(latestChangeId, change.changeId);
                 boolean applied = applyServerChange(change);
-                if (!applied) {
+                if (applied) {
+                    counters.pulled++;
+                } else {
                     deferred.add(change);
                     long id = change.changeId;
                     minUnresolved = minUnresolved < 0 ? id : Math.min(minUnresolved, id);
@@ -749,6 +788,7 @@ public class SyncCoordinator {
         entity.sortOrder = payload.sortOrder != null ? payload.sortOrder : entity.sortOrder;
         entity.isDefault = payload.isDefault != null ? payload.isDefault : entity.isDefault;
         entity.isDeleted = payload.isDeleted != null && payload.isDeleted;
+        entity.deletedAt = payload.deletedAt;
     }
 
     private void applyAccountFields(AccountEntity entity, ApiDtos.SyncPayload payload) {
@@ -760,6 +800,7 @@ public class SyncCoordinator {
         entity.sortOrder = payload.sortOrder != null ? payload.sortOrder : entity.sortOrder;
         entity.isArchived = payload.isArchived != null ? payload.isArchived : entity.isArchived;
         entity.isDeleted = payload.isDeleted != null && payload.isDeleted;
+        entity.deletedAt = payload.deletedAt;
         // balance 缓存由 Pull 结束后的统一重算对齐（真值在交易）
     }
 
@@ -778,6 +819,7 @@ public class SyncCoordinator {
         entity.updatedAt = payload.clientUpdatedAt != null
                 ? payload.clientUpdatedAt : entity.updatedAt;
         entity.isDeleted = payload.isDeleted != null && payload.isDeleted;
+        entity.deletedAt = payload.deletedAt;
     }
 
     private void applyBudgetFields(BudgetEntity entity, ApiDtos.SyncPayload payload,
@@ -789,6 +831,7 @@ public class SyncCoordinator {
         entity.updatedAt = payload.clientUpdatedAt != null
                 ? payload.clientUpdatedAt : entity.updatedAt;
         entity.isDeleted = payload.isDeleted != null && payload.isDeleted;
+        entity.deletedAt = payload.deletedAt;
     }
 
     private void applyRecurringFields(RecurringTransactionEntity entity,
@@ -813,6 +856,7 @@ public class SyncCoordinator {
         entity.updatedAt = payload.clientUpdatedAt != null
                 ? payload.clientUpdatedAt : entity.updatedAt;
         entity.isDeleted = payload.isDeleted != null && payload.isDeleted;
+        entity.deletedAt = payload.deletedAt;
     }
 
     // ===== 重名合并（多设备各自初始化同名默认分类/账户的收敛，完成备注 14） =====
@@ -1155,9 +1199,10 @@ public class SyncCoordinator {
         SyncScheduler.scheduleRetry(RetryPolicy.delayFor(failedRounds));
     }
 
-    private void finishRound(Status success, int conflicts) {
+    private void finishRound(Status success, RoundCounters counters, long startedAt) {
         postStatus(success);
-        persistState(success, null, conflicts);
+        persistState(success, null, counters.conflicts);
+        recordEvent(startedAt, success, counters, null);
         // Pull 后统一重算账户余额缓存（继承 V2「缓存不是唯一真值」）
         repository.runOnIo(repository::validateAccountBalancesInternal);
     }
@@ -1168,9 +1213,67 @@ public class SyncCoordinator {
         state.lastError = error;
         state.conflictCount = conflicts;
         if (statusName == Status.SUCCESS) {
-            state.lastSyncAt = System.currentTimeMillis();
+            long now = System.currentTimeMillis();
+            state.lastSyncAt = now;
+            state.lastPushAt = now;
+            state.lastPullAt = now;
         }
         database.syncStateDao().upsert(state);
+    }
+
+    /** 记录一轮同步摘要事件（V3.1 基线第 25 章），裁剪保留最近 50 条。 */
+    private void recordEvent(long startedAt, @Nullable Status result,
+                             @NonNull RoundCounters counters, @Nullable String error) {
+        try {
+            SyncEventEntity event = new SyncEventEntity();
+            long now = System.currentTimeMillis();
+            event.startedAt = startedAt;
+            event.finishedAt = now;
+            event.result = result != null ? result.name() : Status.ERROR.name();
+            event.pushCount = counters.pushed;
+            event.pullCount = counters.pulled;
+            event.conflictCount = counters.conflicts;
+            event.durationMs = Math.max(0, now - startedAt);
+            event.errorMessage = error;
+            database.runInTransaction(() -> {
+                database.syncEventDao().insert(event);
+                database.syncEventDao().trimToLimit();
+            });
+        } catch (Exception e) {
+            // 诊断记录失败不影响同步主流程
+        }
+    }
+
+    /**
+     * 服务器恢复代际检测（V3.1 决策 2，基线第 16 章）：
+     * epoch 变化 = 服务器恢复过备份。此时旧的 change_id 游标失去意义
+     * （变更日志按业务行重建、id 重新从 1 起），必须重置游标并全量重推本地状态：
+     * Pull 侧按「只应用更高版本」幂等，Push 侧 LWW 收敛，各设备最终一致。
+     */
+    private void handleRecoveryEpoch(long epoch) {
+        if (epoch <= 0) {
+            return;
+        }
+        SyncStateEntity state = requireState();
+        if (state.recoveryEpoch == epoch) {
+            return;
+        }
+        String email = tokenStore.getAccountEmail();
+        if (email != null) {
+            SyncCursorEntity row = database.syncCursorDao().find(email);
+            if (row == null) {
+                row = new SyncCursorEntity();
+                row.accountEmail = email;
+            }
+            row.lastChangeId = 0;
+            row.updatedAt = System.currentTimeMillis();
+            database.syncCursorDao().upsert(row);
+        }
+        state.recoveryEpoch = epoch;
+        state.recoveredAt = System.currentTimeMillis();
+        database.syncStateDao().upsert(state);
+        // 全量重推：让服务器收敛到各设备持有的最新状态（含墓碑）
+        enqueueEverythingForBootstrap();
     }
 
     @NonNull
@@ -1246,7 +1349,8 @@ public class SyncCoordinator {
                 && java.util.Objects.equals(a.anchorDayOfMonth, b.anchorDayOfMonth)
                 && java.util.Objects.equals(a.isEnabled, b.isEnabled)
                 && java.util.Objects.equals(a.clientUpdatedAt, b.clientUpdatedAt)
-                && java.util.Objects.equals(a.isDeleted, b.isDeleted);
+                && java.util.Objects.equals(a.isDeleted, b.isDeleted)
+                && java.util.Objects.equals(a.deletedAt, b.deletedAt);
     }
 
     private BudgetEntity findBudgetBySyncId(String syncId) {

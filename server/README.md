@@ -74,11 +74,27 @@ POST /api/v1/auth/logout-all                  退出全部设备
 GET  /api/v1/devices                          设备列表
 POST /api/v1/devices/{id}/revoke              吊销设备
 DELETE /api/v1/account                        注销（二次确认密码）
-GET  /api/v1/sync/status                      可用性 + 邮箱验证状态
+GET  /api/v1/sync/status                      可用性 + 邮箱验证状态（V3.1 起附服务器版本与恢复代际）
 GET  /api/v1/sync/bootstrap/summary           首次同步云端统计
-POST /api/v1/sync/changes/push                增量推送（baseVersion 乐观控制 + LWW）
-POST /api/v1/sync/changes/pull                增量拉取（change_id 游标）
+POST /api/v1/sync/changes/push                增量推送（baseVersion 乐观控制 + LWW，响应附 recoveryEpoch）
+POST /api/v1/sync/changes/pull                增量拉取（change_id 游标，响应附 recoveryEpoch）
+GET  /api/v1/sync/conflicts?limit=50          冲突历史摘要（V3.1）
+
+## V3.1 服务器管理（备份 / 恢复，仅管理员）
+
+GET  /api/v1/server/health                    健康检查（公开：状态/版本/数据库/磁盘/代际/最近备份）
+GET  /api/v1/server/stats                     管理统计（管理员）
+GET  /api/v1/server/backup                    备份列表（管理员）
+POST /api/v1/server/backup                   立即备份（管理员）
+GET  /api/v1/server/backup/{name}/meta        备份详情（管理员）
+POST /api/v1/server/backup/{name}/restore    恢复备份（管理员；epoch+1，设备重新登录并重新收敛）
+
+浏览器管理页：`http://server-address/admin`（登录后可查看状态、执行备份与恢复）。
+管理员判定：配置 `APP_ADMIN_EMAILS`（逗号分隔）；未配置时默认最早注册的账号。
+备份目录：`BACKUP_DIR`（默认 `./backups`），每日自动备份默认 03:00（`BACKUP_DAILY_CRON`），
+保留策略为最近 7 天每日一份 + 4 周每周一份 + 12 个月每月一份；备份不含任何登录令牌。
 ```
 
 所有 `/api/v1/**` 请求需带请求头 `X-Api-Version: 1` 与 `X-Sync-Protocol-Version: 1`；
-受保护接口另带 `Authorization: Bearer <accessToken>`。
+受保护接口另带 `Authorization: Bearer <accessToken>`。豁免版本头的例外：`/api/v1/auth/verify-email`
+（浏览器打开）与 `/api/v1/server/health`（浏览器 / curl 排障）。

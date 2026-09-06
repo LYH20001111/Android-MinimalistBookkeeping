@@ -1,6 +1,7 @@
 package com.skyanchor.bookkeeping.data.entity;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.room.ColumnInfo;
 import androidx.room.Entity;
 import androidx.room.Index;
@@ -67,6 +68,11 @@ public class CategoryEntity {
     /** Soft Delete 标记（基线第 17 章）：删除 = 置位 + 版本递增，作为可同步事件传播。 */
     @ColumnInfo(name = "is_deleted", defaultValue = "0")
     public boolean isDeleted;
+
+    /** 软删发生时间（epoch millis，V3.1 回收站排序与展示用）；未删除为 null，随载荷传播。 */
+    @Nullable
+    @ColumnInfo(name = "deleted_at")
+    public Long deletedAt;
 
     public CategoryEntity() {
     }

@@ -26,13 +26,17 @@ public class ApiVersionFilter extends OncePerRequestFilter {
 
     private static final String PREFIX = "/api/v1/";
     private static final String BROWSER_VERIFY_PATH = "/api/v1/auth/verify-email";
+    /** 健康检查面向浏览器 / curl / 管理页，不强制同步协议版本头（V3.1 目标 A）。 */
+    private static final String HEALTH_PATH = "/api/v1/server/health";
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getServletPath();
-        return !path.startsWith(PREFIX) || path.startsWith(BROWSER_VERIFY_PATH);
+        return !path.startsWith(PREFIX)
+                || path.startsWith(BROWSER_VERIFY_PATH)
+                || path.equals(HEALTH_PATH);
     }
 
     @Override

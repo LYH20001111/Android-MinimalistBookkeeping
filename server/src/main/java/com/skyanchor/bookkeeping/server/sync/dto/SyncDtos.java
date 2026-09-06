@@ -32,7 +32,8 @@ public final class SyncDtos {
                                  SyncPayload payload, String errorCode, String mergedInto) {
     }
 
-    public record PushResponse(List<PushResultItem> results, long serverTime) {
+    public record PushResponse(List<PushResultItem> results, long serverTime,
+                               long recoveryEpoch) {
     }
 
     public record PullRequest(long sinceChangeId, int limit) {
@@ -43,7 +44,7 @@ public final class SyncDtos {
     }
 
     public record PullResponse(List<ChangeItem> changes, long lastChangeId,
-                               boolean hasMore, long serverTime) {
+                               boolean hasMore, long serverTime, long recoveryEpoch) {
     }
 
     public record BootstrapSummaryResponse(boolean hasCloudData, Counts counts, long serverTime) {
@@ -53,6 +54,17 @@ public final class SyncDtos {
                          long budget, long recurring) {
     }
 
-    public record StatusResponse(long serverTime, boolean emailVerified) {
+    public record StatusResponse(long serverTime, boolean emailVerified,
+                                 String serverVersion, long recoveryEpoch) {
+    }
+
+    // ===== V3.1 冲突历史（基线第 26 章：自动收敛 + 可事后查看） =====
+
+    public record ConflictItem(long id, String entityType, String syncId,
+                               String clientDeviceId, long baseVersion, long serverVersion,
+                               String winner, long createdAt) {
+    }
+
+    public record ConflictsResponse(List<ConflictItem> conflicts, long serverTime) {
     }
 }

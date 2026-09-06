@@ -9,6 +9,7 @@ import com.skyanchor.bookkeeping.server.auth.dto.AuthDtos.RefreshResponse;
 import com.skyanchor.bookkeeping.server.auth.dto.AuthDtos.RegisterRequest;
 import com.skyanchor.bookkeeping.server.auth.dto.AuthDtos.SimpleResponse;
 import com.skyanchor.bookkeeping.server.common.ApiException;
+import com.skyanchor.bookkeeping.server.common.SyncWriteBarrier;
 import jakarta.validation.Valid;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -28,9 +29,11 @@ import java.util.List;
 public class AuthController {
 
     private final AuthService authService;
+    private final SyncWriteBarrier writeBarrier;
 
-    public AuthController(AuthService authService) {
+    public AuthController(AuthService authService, SyncWriteBarrier writeBarrier) {
         this.authService = authService;
+        this.writeBarrier = writeBarrier;
     }
 
     @PostMapping("/auth/register")
@@ -95,10 +98,13 @@ public class AuthController {
         return new SimpleResponse(true, "设备已退出");
     }
 
-    /** 账号注销：客户端已做二次确认，服务端再次校验密码。 */
+    /** 账号注销：客户端已做二次确认，服务端再次校验密码。清库期间与服务器恢复互斥。 */
     @DeleteMapping("/account")
     public SimpleResponse deleteAccount(@Valid @RequestBody DeleteAccountRequest request) {
-        authService.deleteAccount(AuthUser.current().userId(), request);
+        writeBarrier.write(() -> {
+            authService.deleteAccount(AuthUser.current().userId(), request);
+            return null;
+        });
         return new SimpleResponse(true, "账号已注销，云端数据已删除");
     }
 }

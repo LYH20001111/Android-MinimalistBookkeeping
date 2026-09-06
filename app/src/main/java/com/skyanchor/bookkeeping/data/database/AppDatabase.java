@@ -17,6 +17,7 @@ import com.skyanchor.bookkeeping.data.entity.CategoryEntity;
 import com.skyanchor.bookkeeping.data.entity.RecurringTransactionEntity;
 import com.skyanchor.bookkeeping.data.entity.SyncChangeQueueEntity;
 import com.skyanchor.bookkeeping.data.entity.SyncCursorEntity;
+import com.skyanchor.bookkeeping.data.entity.SyncEventEntity;
 import com.skyanchor.bookkeeping.data.entity.SyncStateEntity;
 import com.skyanchor.bookkeeping.data.entity.TransactionEntity;
 import com.skyanchor.bookkeeping.data.entity.UserSettingsEntity;
@@ -34,6 +35,8 @@ import java.util.List;
  * V3 升级到 version 5：5 张可同步业务表增加同步元数据（sync_id / version /
  * server_received_at / is_deleted），并新建 sync_change_queue、sync_cursor、sync_state
  * 三张同步支撑表，见 {@link #MIGRATION_4_5}。
+ * V3.1 升级到 version 6：5 张业务表增加 deleted_at（回收站排序与展示）；
+ * sync_state 增加诊断列；新建 sync_events 事件历史表，见 {@link #MIGRATION_5_6}。
  *
  * <p>禁止使用 destructiveMigration，否则用户已有账单数据将丢失。
  */
@@ -47,9 +50,10 @@ import java.util.List;
                 RecurringTransactionEntity.class,
                 SyncChangeQueueEntity.class,
                 SyncCursorEntity.class,
-                SyncStateEntity.class
+                SyncStateEntity.class,
+                SyncEventEntity.class
         },
-        version = 5,
+        version = 6,
         exportSchema = true)
 public abstract class AppDatabase extends RoomDatabase {
 
@@ -74,6 +78,8 @@ public abstract class AppDatabase extends RoomDatabase {
     public abstract SyncCursorDao syncCursorDao();
 
     public abstract SyncStateDao syncStateDao();
+
+    public abstract SyncEventDao syncEventDao();
 
     /**
      * V1.1 基线第 36 章：将 transactions 表的外键从 CASCADE 改为 RESTRICT，
@@ -304,6 +310,53 @@ public abstract class AppDatabase extends RoomDatabase {
         }
     };
 
+    /**
+     * V3.1 升级 5 → 6（基线第 18/23/25 章）：
+     * <ol>
+     *   <li>5 张业务表加 deleted_at（软删时间戳，回收站排序与展示、随载荷传播）；</li>
+     *   <li>sync_state 加诊断列（last_push_at / last_pull_at / last_push_count /
+     *       last_pull_count / last_duration_ms / recovery_epoch / bound_account_email /
+     *       recovered_at）；</li>
+     *   <li>新建 sync_events 同步事件历史表（保留最近 50 条）。</li>
+     * </ol>
+     * 存量数据全部取默认值：deleted_at 为 NULL（历史墓碑在回收站按 updated_at 展示）、
+     * 诊断计数为 0、代际 0（下次同步从服务器读取真实代际）。
+     */
+    static final Migration MIGRATION_5_6 = new Migration(5, 6) {
+        @Override
+        public void migrate(@NonNull SupportSQLiteDatabase db) {
+            String[] businessTables = {
+                    "transactions", "category", "account", "budget", "recurring_transaction"};
+            for (String table : businessTables) {
+                db.execSQL("ALTER TABLE " + table + " ADD COLUMN deleted_at INTEGER");
+            }
+
+            db.execSQL("ALTER TABLE sync_state ADD COLUMN last_push_at INTEGER NOT NULL DEFAULT 0");
+            db.execSQL("ALTER TABLE sync_state ADD COLUMN last_pull_at INTEGER NOT NULL DEFAULT 0");
+            db.execSQL("ALTER TABLE sync_state "
+                    + "ADD COLUMN last_push_count INTEGER NOT NULL DEFAULT 0");
+            db.execSQL("ALTER TABLE sync_state "
+                    + "ADD COLUMN last_pull_count INTEGER NOT NULL DEFAULT 0");
+            db.execSQL("ALTER TABLE sync_state "
+                    + "ADD COLUMN last_duration_ms INTEGER NOT NULL DEFAULT 0");
+            db.execSQL("ALTER TABLE sync_state "
+                    + "ADD COLUMN recovery_epoch INTEGER NOT NULL DEFAULT 0");
+            db.execSQL("ALTER TABLE sync_state ADD COLUMN bound_account_email TEXT");
+            db.execSQL("ALTER TABLE sync_state ADD COLUMN recovered_at INTEGER NOT NULL DEFAULT 0");
+
+            db.execSQL("CREATE TABLE IF NOT EXISTS sync_events ("
+                    + "id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, "
+                    + "started_at INTEGER NOT NULL, "
+                    + "finished_at INTEGER NOT NULL, "
+                    + "result TEXT NOT NULL, "
+                    + "push_count INTEGER NOT NULL, "
+                    + "pull_count INTEGER NOT NULL, "
+                    + "conflict_count INTEGER NOT NULL, "
+                    + "duration_ms INTEGER NOT NULL, "
+                    + "error_message TEXT)");
+        }
+    };
+
     public static AppDatabase getInstance(@NonNull Context context) {
         AppDatabase local = instance;
         if (local == null) {
@@ -312,7 +365,8 @@ public abstract class AppDatabase extends RoomDatabase {
                 if (local == null) {
                     local = Room.databaseBuilder(
                                     context.getApplicationContext(), AppDatabase.class, DB_NAME)
-                            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4,
+                                    MIGRATION_4_5, MIGRATION_5_6)
                             .addCallback(SEED_CALLBACK)
                             .build();
                     instance = local;

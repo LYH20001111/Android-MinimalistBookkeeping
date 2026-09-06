@@ -76,4 +76,11 @@ public interface CategoryDao {
     /** 当前类型下最大的 sortOrder，用于新增分类时追加到末尾。 */
     @Query("SELECT COALESCE(MAX(sort_order), 0) FROM category WHERE type = :type")
     int maxSortOrder(int type);
+
+    // ===== V3.1 回收站 =====
+
+    /** 回收站：全部软删分类，删除时间新→旧。 */
+    @Query("SELECT * FROM category WHERE is_deleted = 1 "
+            + "ORDER BY COALESCE(deleted_at, sort_order) DESC")
+    LiveData<List<CategoryEntity>> observeRecycleBin();
 }

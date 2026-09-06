@@ -223,6 +223,42 @@
 
             </com.google.android.material.card.MaterialCardView>
 
+            <!-- V3.1：回收站入口（基线第 18 章：我的 → 数据管理 → 回收站） -->
+            <LinearLayout
+                android:id="@+id/recycleBinRow"
+                style="@style/AppMenuRow"
+                android:orientation="horizontal">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/recycle_bin_entry"
+                        android:textAppearance="@style/TextAppearance.App.Body" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/spacing_xxs"
+                        android:text="@string/recycle_bin_entry_hint"
+                        android:textAppearance="@style/TextAppearance.App.Caption" />
+
+                </LinearLayout>
+
+                <ImageView
+                    android:layout_width="@dimen/icon_size_sm"
+                    android:layout_height="@dimen/icon_size_sm"
+                    android:importantForAccessibility="no"
+                    android:src="@drawable/ic_chevron_right"
+                    app:tint="@color/text_tertiary" />
+
+            </LinearLayout>
+
         </LinearLayout>
 
     </ScrollView>

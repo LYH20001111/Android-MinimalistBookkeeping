@@ -111,6 +111,20 @@
             android:name=".ui.sync.DeviceManageActivity"
             android:exported="false"
             android:parentActivityName=".MainActivity" />
+
+        <!-- V3.1：回收站 / 高级诊断 / 冲突历史（只能由应用内部跳转） -->
+        <activity
+            android:name=".ui.sync.RecycleBinActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity" />
+        <activity
+            android:name=".ui.sync.SyncDiagnosticsActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity" />
+        <activity
+            android:name=".ui.sync.ConflictHistoryActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity" />
     </application>
 
 </manifest>

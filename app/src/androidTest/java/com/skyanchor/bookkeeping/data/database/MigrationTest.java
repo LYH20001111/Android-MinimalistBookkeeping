@@ -112,9 +112,52 @@ public class MigrationTest {
     private AppDatabase openLatest() {
         return Room.databaseBuilder(context, AppDatabase.class, DB_NAME)
                 .addMigrations(AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4,
-                        AppDatabase.MIGRATION_4_5)
+                        AppDatabase.MIGRATION_4_5, AppDatabase.MIGRATION_5_6)
                 .allowMainThreadQueries()
                 .build();
+    }
+
+    /** V3 的 schema（MIGRATION_4_5 的产物）：5 张业务表带同步元数据 + 三张同步支撑表。 */
+    private SQLiteDatabase createV5Database() {
+        SQLiteDatabase db = createV4Database();
+        for (String table : new String[]{
+                "transactions", "category", "account", "budget", "recurring_transaction"}) {
+            db.execSQL("ALTER TABLE " + table
+                    + " ADD COLUMN sync_id TEXT NOT NULL DEFAULT ''");
+            db.execSQL("ALTER TABLE " + table
+                    + " ADD COLUMN version INTEGER NOT NULL DEFAULT 0");
+            db.execSQL("ALTER TABLE " + table
+                    + " ADD COLUMN server_received_at INTEGER NOT NULL DEFAULT 0");
+            db.execSQL("ALTER TABLE " + table
+                    + " ADD COLUMN is_deleted INTEGER NOT NULL DEFAULT 0");
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_" + table + "_sync_id "
+                    + "ON " + table + "(sync_id)");
+        }
+        db.execSQL("CREATE TABLE IF NOT EXISTS sync_change_queue ("
+                + "id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, "
+                + "entity_type TEXT NOT NULL, "
+                + "sync_id TEXT NOT NULL, "
+                + "operation TEXT NOT NULL, "
+                + "base_version INTEGER NOT NULL, "
+                + "created_at INTEGER NOT NULL, "
+                + "retry_count INTEGER NOT NULL, "
+                + "last_error TEXT, "
+                + "next_retry_at INTEGER NOT NULL)");
+        db.execSQL("CREATE TABLE IF NOT EXISTS sync_cursor ("
+                + "account_email TEXT NOT NULL, "
+                + "last_change_id INTEGER NOT NULL, "
+                + "updated_at INTEGER NOT NULL, "
+                + "PRIMARY KEY(account_email))");
+        db.execSQL("CREATE TABLE IF NOT EXISTS sync_state ("
+                + "id INTEGER NOT NULL, "
+                + "sync_enabled INTEGER NOT NULL, "
+                + "status TEXT, "
+                + "last_sync_at INTEGER NOT NULL, "
+                + "last_error TEXT, "
+                + "conflict_count INTEGER NOT NULL, "
+                + "PRIMARY KEY(id))");
+        db.setVersion(5);
+        return db;
     }
 
     // ------------------------------------------------------------------
@@ -598,6 +641,58 @@ public class MigrationTest {
             assertEquals("缺少索引 " + index, 1, cursor.getCount());
             cursor.close();
         }
+        db.close();
+    }
+
+    // ------------------------------------------------------------------
+    // V3.1：5 → 6（deleted_at / 诊断列 / sync_events）
+    // ------------------------------------------------------------------
+
+    @Test
+    public void migrate_v5_addsDeletedAtDiagnosticsAndEvents() {
+        SQLiteDatabase v5 = createV5Database();
+        // 一条已软删的交易（历史墓碑，无 deleted_at）
+        Cursor accountRow = v5.rawQuery("SELECT id FROM account LIMIT 1", new String[0]);
+        assertTrue(accountRow.moveToFirst());
+        long accountId = accountRow.getLong(0);
+        accountRow.close();
+        insert(v5, "transactions", row(
+                "type", 1, "amount", 3500L, "category_id", null,
+                "account_id", accountId, "transfer_account_id", null,
+                "date", 1_700_000_000_000L, "time", "12:30",
+                "created_at", 1_700_000_000_000L, "updated_at", 1_700_000_000_000L));
+        v5.execSQL("UPDATE transactions SET is_deleted = 1");
+        v5.close();
+
+        AppDatabase db = openLatest();
+        // Room 开库时已按 6.json 完成整库 schema 校验；这里验证数据语义：
+        // 1) 历史墓碑的 deleted_at 为 NULL（回收站按 updated_at 兜底展示）
+        Cursor deletedAt = db.getOpenHelper().getWritableDatabase().query(
+                "SELECT deleted_at FROM transactions WHERE is_deleted = 1");
+        assertEquals(1, deletedAt.getCount());
+        assertTrue(deletedAt.moveToFirst());
+        assertTrue(deletedAt.isNull(0));
+        deletedAt.close();
+        // 2) sync_state 诊断列默认 0，可正常读写
+        com.skyanchor.bookkeeping.data.entity.SyncStateEntity state =
+                new com.skyanchor.bookkeeping.data.entity.SyncStateEntity();
+        db.syncStateDao().upsert(state);
+        assertEquals(0L, db.syncStateDao().get().lastPushAt);
+        assertEquals(0L, db.syncStateDao().get().recoveryEpoch);
+        // 3) sync_events 表可用且裁剪生效
+        for (int i = 0; i < 60; i++) {
+            com.skyanchor.bookkeeping.data.entity.SyncEventEntity event =
+                    new com.skyanchor.bookkeeping.data.entity.SyncEventEntity();
+            event.startedAt = i;
+            event.finishedAt = i;
+            event.result = "SUCCESS";
+            event.pushCount = 0;
+            event.pullCount = 0;
+            event.conflictCount = 0;
+            event.durationMs = 0;
+            db.syncEventDao().insert(event);
+        }
+        assertEquals(50, db.syncEventDao().count());
         db.close();
     }
 }

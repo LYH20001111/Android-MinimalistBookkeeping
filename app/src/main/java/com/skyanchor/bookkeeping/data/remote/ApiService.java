@@ -52,4 +52,14 @@ public interface ApiService {
 
     @GET("api/v1/sync/status")
     Call<ApiDtos.StatusResponse> status();
+
+    /** 冲突历史（V3.1 基线第 26 章）。 */
+    @GET("api/v1/sync/conflicts")
+    Call<ApiDtos.ConflictsResponse> conflicts(@retrofit2.http.Query("limit") int limit);
+
+    // ===== Server（V3.1） =====
+
+    /** 服务器健康检查：公开端点，供测试连接与状态展示。 */
+    @GET("api/v1/server/health")
+    Call<ApiDtos.ServerHealthResponse> serverHealth();
 }

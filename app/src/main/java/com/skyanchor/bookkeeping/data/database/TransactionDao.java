@@ -272,4 +272,17 @@ public interface TransactionDao {
             + "GROUP BY strftime('%Y', date / 1000, 'unixepoch', 'localtime') "
             + "ORDER BY day ASC")
     LiveData<List<DayCount>> observeYearCounts();
+
+    // ===== V3.1 回收站（基线第 18/19 章）=====
+
+    /** 回收站：全部软删交易，删除时间新→旧（历史墓碑无 deleted_at 时按更新时间）。 */
+    @Query("SELECT * FROM transactions WHERE is_deleted = 1 "
+            + "ORDER BY COALESCE(deleted_at, updated_at) DESC")
+    LiveData<List<TransactionEntity>> observeRecycleBin();
+
+    @Query("SELECT * FROM transactions WHERE sync_id = :syncId")
+    TransactionEntity getEntityBySyncIdAnyState(String syncId);
+
+    @Query("SELECT COUNT(*) FROM transactions WHERE is_deleted = 1")
+    int countRecycleBin();
 }

@@ -18,7 +18,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
  */
 @Configuration
 @EnableWebSecurity
-@EnableConfigurationProperties(AppProperties.class)
+@EnableConfigurationProperties({AppProperties.class, BackupProperties.class})
 public class SecurityConfig {
 
     @Bean
@@ -37,6 +37,11 @@ public class SecurityConfig {
                                 "/api/v1/auth/login",
                                 "/api/v1/auth/refresh",
                                 "/api/v1/auth/verify-email").permitAll()
+                        // 服务器健康检查（V3.1 目标 A）：只含运行状态与容量水位，
+                        // 无用户数据，供客户端测试连接 / 管理页 / 人工排障使用
+                        .requestMatchers("/api/v1/server/health").permitAll()
+                        // 内置极简 Web 管理页（静态资源），数据操作仍走需要鉴权的管理 API
+                        .requestMatchers("/admin", "/admin/**").permitAll()
                         .requestMatchers("/api/**").authenticated()
                         .anyRequest().denyAll())
                 // 未认证（含 Token 过期）必须回 401 + JSON：客户端 OkHttp Authenticator

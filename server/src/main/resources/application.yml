@@ -36,3 +36,11 @@ app:
   mail-from: ${MAIL_FROM:极简记账 <no-reply@localhost>}
   # 无 SMTP 环境下把验证链接打到服务端日志（开发模式）
   mail-dev-log-only: ${MAIL_DEV_LOG_ONLY:true}
+  # 服务器管理员邮箱（逗号分隔）。为空时默认最早注册的账号是管理员（V3.1 决策 1）
+  admin-emails: ${APP_ADMIN_EMAILS:}
+  backup:
+    # 备份文件目录（默认工作目录下 backups/；Docker 部署请挂载为卷）
+    dir: ${BACKUP_DIR:./backups}
+    # 每日自动备份时间（默认 03:00，Spring cron 含秒位）
+    daily-cron: ${BACKUP_DAILY_CRON:0 0 3 * * *}
+    auto-enabled: ${BACKUP_AUTO_ENABLED:true}

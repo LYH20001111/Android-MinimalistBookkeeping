@@ -21,12 +21,13 @@ echo.
 echo   Email verification links are printed in THIS window.
 echo   Close this window to stop the server.
 echo.
+echo   Admin page: http://192.168.0.2:8080/admin/   (backups in serverackups)
 echo   If the LAN IP of this PC changes, update the address in
 echo   the App sync center AND the app.base-url line below.
 echo ============================================================
 echo.
 
-java -jar build\libs\bookkeeping-sync-server-0.1.0.jar --spring.datasource.url="jdbc:h2:file:./data/bookkeeping;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;CASE_INSENSITIVE_IDENTIFIERS=TRUE;DB_CLOSE_ON_EXIT=FALSE" --app.base-url="http://192.168.0.2:8080"
+java -jar build\libs\bookkeeping-sync-server-3.1.0.jar --spring.datasource.url="jdbc:h2:file:./data/bookkeeping;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;CASE_INSENSITIVE_IDENTIFIERS=TRUE;DB_CLOSE_ON_EXIT=FALSE" --app.base-url="http://192.168.0.2:8080"
 
 echo.
 echo Server exited.

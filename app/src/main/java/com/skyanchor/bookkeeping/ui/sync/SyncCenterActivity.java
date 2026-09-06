@@ -18,6 +18,7 @@ import com.skyanchor.bookkeeping.databinding.ActivitySyncCenterBinding;
 import com.skyanchor.bookkeeping.sync.SyncCoordinator;
 import com.skyanchor.bookkeeping.ui.auth.LoginActivity;
 import com.skyanchor.bookkeeping.util.Callback;
+import com.skyanchor.bookkeeping.util.ConnectionErrorMapper;
 import com.skyanchor.bookkeeping.util.InsetsUtil;
 
 /**
@@ -44,6 +45,10 @@ public class SyncCenterActivity extends AppCompatActivity {
                 getString(R.string.sync_never)));
         binding.pendingText.setText(getString(R.string.sync_pending_format, 0));
         binding.conflictText.setText(getString(R.string.sync_conflict_format, 0));
+        binding.pullText.setText(getString(R.string.sync_diag_pull_format, 0));
+        binding.durationText.setText(getString(R.string.sync_diag_duration_format, 0));
+        binding.lastErrorText.setText(getString(R.string.sync_diag_last_error_format,
+                getString(R.string.sync_diag_no_error)));
         setContentView(binding.getRoot());
         InsetsUtil.applyTopAndHorizontalPadding(binding.syncRoot);
         InsetsUtil.syncSystemBarAppearance(this);
@@ -62,6 +67,14 @@ public class SyncCenterActivity extends AppCompatActivity {
         binding.deviceManageRow.setOnClickListener(v ->
                 startActivity(DeviceManageActivity.newIntent(this)));
         binding.logoutButton.setOnClickListener(v -> confirmLogout());
+        // ===== V3.1：服务器连接中心 / 诊断 / 冲突历史 =====
+        binding.testConnectionButton.setOnClickListener(v -> viewModel.testConnection());
+        binding.conflictHistoryRow.setOnClickListener(v ->
+                startActivity(ConflictHistoryActivity.newIntent(this)));
+        binding.diagnosticsRow.setOnClickListener(v ->
+                startActivity(SyncDiagnosticsActivity.newIntent(this)));
+        binding.recoveredDismiss.setOnClickListener(v -> viewModel.dismissRecoveredNotice());
+        binding.healthStatusText.setText("");
 
         observe();
         renderAccountSection();
@@ -92,6 +105,38 @@ public class SyncCenterActivity extends AppCompatActivity {
             binding.conflictText.setText(getString(R.string.sync_conflict_format,
                     state.conflictCount));
             binding.serverStateText.setText(serverStateText(state.status));
+            // ===== V3.1 诊断摘要（基线第 23 章）=====
+            binding.pullText.setText(getString(R.string.sync_diag_pull_format,
+                    state.lastPullCount));
+            binding.durationText.setText(getString(R.string.sync_diag_duration_format,
+                    state.lastDurationMs));
+            binding.lastErrorText.setText(getString(R.string.sync_diag_last_error_format,
+                    state.lastError == null ? getString(R.string.sync_diag_no_error)
+                            : state.lastError));
+            // ===== V3.1 服务器已恢复横幅（基线第 16 章）=====
+            boolean recovered = state.recoveredAt > 0;
+            binding.recoveredBanner.setVisibility(recovered ? View.VISIBLE : View.GONE);
+            if (recovered) {
+                binding.recoveredBannerText.setText(
+                        getString(R.string.sync_recovered_banner, state.recoveryEpoch));
+            }
+            renderBoundAccount(state);
+        });
+        viewModel.healthBusy().observe(this, busy -> {
+            binding.testConnectionButton.setEnabled(busy == null || !busy);
+            if (busy != null && busy) {
+                binding.healthStatusText.setText(R.string.sync_health_testing);
+            }
+        });
+        viewModel.health().observe(this, health -> {
+            if (health != null) {
+                renderHealth(health);
+            }
+        });
+        viewModel.healthFailure().observe(this, failure -> {
+            if (failure != null) {
+                renderHealthFailure(failure);
+            }
         });
         viewModel.preflight().observe(this, this::onPreflight);
         viewModel.localCounts().observe(this, counts -> maybeShowBootstrapConfirm());
@@ -205,6 +250,11 @@ public class SyncCenterActivity extends AppCompatActivity {
         }
         viewModel.setServerBaseUrl(url);
         // 立即基于 URL 更新显示（乐观），再异步探测验证，syncState observer 会最终修正
+        viewModel.resetHealth();
+        binding.healthStatusText.setText("");
+        binding.healthDetailText.setText("");
+        binding.healthStorageText.setText("");
+        binding.healthLastCheckText.setText("");
         refreshServerState();
         viewModel.checkServerStatus();
         Snackbar.make(binding.syncRoot, R.string.sync_server_saved, Snackbar.LENGTH_SHORT).show();
@@ -220,7 +270,7 @@ public class SyncCenterActivity extends AppCompatActivity {
     private void confirmLogout() {
         new MaterialAlertDialogBuilder(this)
                 .setTitle(R.string.sync_logout_title)
-                .setMessage(R.string.sync_logout_message)
+                .setMessage(R.string.sync_logout_message_v31)
                 .setNegativeButton(android.R.string.cancel, null)
                 .setPositiveButton(R.string.sync_logout_confirm, (d, w) ->
                         viewModel.logout(new Callback<Boolean>() {
@@ -284,6 +334,58 @@ public class SyncCenterActivity extends AppCompatActivity {
                 binding.statusText.setText(R.string.sync_status_idle);
                 break;
         }
+    }
+
+    /** 渲染健康检测结果（V3.1 基线第 8 章）：在线状态 + 版本 + 数据库/磁盘。 */
+    private void renderHealth(@NonNull ApiDtos.ServerHealthResponse health) {
+        boolean online = "UP".equals(health.status) || "DEGRADED".equals(health.status);
+        binding.healthStatusText.setText(online
+                ? R.string.sync_health_ok : R.string.sync_health_down);
+        String version = health.serverVersion == null ? "-" : health.serverVersion;
+        String dbStatus = "UP".equals(health.database)
+                ? getString(R.string.sync_health_database_up)
+                : getString(R.string.sync_health_database_down);
+        binding.healthDetailText.setText(getString(R.string.sync_health_server_version_format,
+                version) + "\n" + getString(R.string.sync_health_protocol_format,
+                health.apiVersion, health.syncProtocolVersion)
+                + "\n" + getString(R.string.sync_health_database_format, dbStatus));
+        String storage = "-";
+        if (health.storage != null && health.storage.totalBytes > 0) {
+            storage = ConnectionErrorMapper.humanBytes(health.storage.freeBytes)
+                    + " / " + ConnectionErrorMapper.humanBytes(health.storage.totalBytes);
+        }
+        binding.healthStorageText.setText(
+                getString(R.string.sync_health_storage_format, storage));
+        binding.healthLastCheckText.setText(
+                getString(R.string.sync_health_last_check_format, lastSyncText(
+                        System.currentTimeMillis())));
+        // HTTP/HTTPS 安全提示（基线第 32 章）
+        binding.healthLastCheckText.append("\n"
+                + (ConnectionErrorMapper.isSecure(viewModel.serverBaseUrl())
+                ? getString(R.string.sync_health_security_https)
+                : getString(R.string.sync_health_security_http)));
+    }
+
+    /** 检测失败：展示固定原因清单，不暴露底层异常（基线第 9 章）。 */
+    private void renderHealthFailure(@NonNull Throwable failure) {
+        binding.healthStatusText.setText(R.string.sync_health_down);
+        binding.healthDetailText.setText(ConnectionErrorMapper.summarize(failure));
+        binding.healthLastCheckText.setText(R.string.sync_health_check_failed);
+    }
+
+    /** 账号与本地账本绑定关系（V3.1 基线第 30 章）。 */
+    private void renderBoundAccount(@NonNull SyncStateEntity state) {
+        String bound = state.boundAccountEmail;
+        String current = viewModel.accountEmail();
+        if (bound == null || bound.isEmpty()) {
+            binding.boundAccountText.setText(R.string.sync_bound_local_only);
+        } else {
+            binding.boundAccountText.setText(getString(R.string.sync_bound_account_format,
+                    bound));
+        }
+        boolean mismatch = bound != null && !bound.isEmpty()
+                && current != null && !current.equalsIgnoreCase(bound);
+        binding.boundMismatchWarn.setVisibility(mismatch ? View.VISIBLE : View.GONE);
     }
 
     private String serverStateText(String status) {

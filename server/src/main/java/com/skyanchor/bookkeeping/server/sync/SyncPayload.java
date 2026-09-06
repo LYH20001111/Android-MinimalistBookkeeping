@@ -49,4 +49,6 @@ public class SyncPayload {
     // ===== 通用 =====
     public Long clientUpdatedAt;
     public Boolean isDeleted;
+    /** 软删发生时间（epoch millis）；仅 isDeleted=true 时有意义，恢复置回 null。 */
+    public Long deletedAt;
 }

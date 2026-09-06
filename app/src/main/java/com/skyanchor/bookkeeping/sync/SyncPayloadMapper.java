@@ -85,6 +85,7 @@ public final class SyncPayloadMapper {
         payload.clientCreatedAt = entity.createdAt;
         payload.clientUpdatedAt = entity.updatedAt;
         payload.isDeleted = entity.isDeleted;
+        payload.deletedAt = entity.deletedAt;
         return payload;
     }
 
@@ -99,6 +100,7 @@ public final class SyncPayloadMapper {
         payload.isDefault = entity.isDefault;
         payload.clientUpdatedAt = 0L; // category 表无 updated_at 列，协议允许缺省
         payload.isDeleted = entity.isDeleted;
+        payload.deletedAt = entity.deletedAt;
         return payload;
     }
 
@@ -115,6 +117,7 @@ public final class SyncPayloadMapper {
         payload.isArchived = entity.isArchived;
         payload.clientUpdatedAt = entity.updatedAt;
         payload.isDeleted = entity.isDeleted;
+        payload.deletedAt = entity.deletedAt;
         return payload;
     }
 
@@ -129,6 +132,7 @@ public final class SyncPayloadMapper {
         payload.amount = entity.amount;
         payload.clientUpdatedAt = entity.updatedAt;
         payload.isDeleted = entity.isDeleted;
+        payload.deletedAt = entity.deletedAt;
         return payload;
     }
 
@@ -153,6 +157,7 @@ public final class SyncPayloadMapper {
         payload.note = entity.note;
         payload.clientUpdatedAt = entity.updatedAt;
         payload.isDeleted = entity.isDeleted;
+        payload.deletedAt = entity.deletedAt;
         return payload;
     }
 

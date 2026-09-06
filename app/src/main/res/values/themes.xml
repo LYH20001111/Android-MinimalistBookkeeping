@@ -120,6 +120,14 @@
         <item name="elevation">0dp</item>
     </style>
 
+    <style name="Widget.App.Button.Secondary" parent="Widget.Material3.Button.OutlinedButton">
+        <item name="android:minHeight">@dimen/button_height</item>
+        <item name="android:textSize">@dimen/font_body</item>
+        <item name="android:textColor">@color/primary</item>
+        <item name="cornerRadius">@dimen/radius_sm</item>
+        <item name="strokeColor">@color/primary</item>
+    </style>
+
     <style name="Widget.App.Button.Danger" parent="Widget.Material3.Button.OutlinedButton">
         <item name="android:minHeight">@dimen/button_height</item>
         <item name="android:textSize">@dimen/font_body</item>

@@ -84,4 +84,11 @@ public interface RecurringTransactionDao {
 
     @Query("DELETE FROM recurring_transaction")
     void deleteAll();
+
+    // ===== V3.1 回收站 =====
+
+    /** 回收站：全部软删周期规则，删除时间新→旧。 */
+    @Query("SELECT * FROM recurring_transaction WHERE is_deleted = 1 "
+            + "ORDER BY COALESCE(deleted_at, updated_at) DESC")
+    LiveData<List<RecurringTransactionEntity>> observeRecycleBin();
 }

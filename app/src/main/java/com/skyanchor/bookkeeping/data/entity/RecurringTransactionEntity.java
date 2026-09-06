@@ -122,6 +122,11 @@ public class RecurringTransactionEntity {
     @ColumnInfo(name = "is_deleted", defaultValue = "0")
     public boolean isDeleted;
 
+    /** 软删发生时间（epoch millis，V3.1 回收站排序与展示用）；未删除为 null，随载荷传播。 */
+    @Nullable
+    @ColumnInfo(name = "deleted_at")
+    public Long deletedAt;
+
     @Override
     public boolean equals(Object o) {
         if (this == o) {

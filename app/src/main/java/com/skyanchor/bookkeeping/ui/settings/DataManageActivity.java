@@ -63,6 +63,10 @@ public class DataManageActivity extends AppCompatActivity {
         repository = BookkeepingApp.get(this).getRepository();
         binding.toolbar.setNavigationOnClickListener(v -> finish());
         binding.clearDataButton.setOnClickListener(v -> showAdminVerifyDialog());
+        // V3.1：回收站（软删数据可找回，基线第 18 章）
+        binding.recycleBinRow.setOnClickListener(v ->
+                startActivity(com.skyanchor.bookkeeping.ui.sync.RecycleBinActivity
+                        .newIntent(this)));
 
         // 计数都走 LiveData，清空后无需手动刷新即可回落到默认值
         repository.observeTransactionCount().observe(this,

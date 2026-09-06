@@ -13,6 +13,7 @@ import com.skyanchor.bookkeeping.data.remote.ServerConfigStore;
 import com.skyanchor.bookkeeping.data.remote.TokenStore;
 import com.skyanchor.bookkeeping.data.repository.AuthRepository;
 import com.skyanchor.bookkeeping.data.repository.BookkeepingRepository;
+import com.skyanchor.bookkeeping.data.repository.ServerRepository;
 import com.skyanchor.bookkeeping.domain.importexport.BackupUseCase;
 import com.skyanchor.bookkeeping.domain.importexport.ExportTransactionsUseCase;
 import com.skyanchor.bookkeeping.domain.importexport.ImportTransactionsUseCase;
@@ -54,6 +55,7 @@ public class BookkeepingApp extends Application {
     private ServerConfigStore serverConfigStore;
     private ApiClient apiClient;
     private AuthRepository authRepository;
+    private ServerRepository serverRepository;
     private SyncEnqueuer syncEnqueuer;
     private SyncCoordinator syncCoordinator;
 
@@ -117,6 +119,11 @@ public class BookkeepingApp extends Application {
         return apiClient;
     }
 
+    @NonNull
+    public ServerRepository getServerRepository() {
+        return serverRepository;
+    }
+
     @Override
     public void onCreate() {
         super.onCreate();
@@ -138,6 +145,8 @@ public class BookkeepingApp extends Application {
             SyncScheduler.requestSyncNow();
         });
         authRepository = new AuthRepository(apiClient, tokenStore, serverConfigStore);
+        // V3.1：服务器健康 / 冲突历史等只读展示接口
+        serverRepository = new ServerRepository(apiClient::api);
         syncEnqueuer = new SyncEnqueuer(AppDatabase.getInstance(this), repository.getIoExecutor());
         repository.setSyncEnqueuer(syncEnqueuer);
         syncCoordinator = new SyncCoordinator(AppDatabase.getInstance(this), repository,

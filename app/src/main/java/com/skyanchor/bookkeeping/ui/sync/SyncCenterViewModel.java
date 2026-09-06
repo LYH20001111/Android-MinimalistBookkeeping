@@ -13,6 +13,7 @@ import com.skyanchor.bookkeeping.data.remote.ApiDtos;
 import com.skyanchor.bookkeeping.data.remote.ApiException;
 import com.skyanchor.bookkeeping.data.remote.ApiService;
 import com.skyanchor.bookkeeping.data.repository.AuthRepository;
+import com.skyanchor.bookkeeping.data.repository.ServerRepository;
 import com.skyanchor.bookkeeping.sync.SyncCoordinator;
 import com.skyanchor.bookkeeping.util.Callback;
 
@@ -32,6 +33,7 @@ public class SyncCenterViewModel extends AndroidViewModel {
     }
 
     private final AuthRepository authRepository;
+    private final ServerRepository serverRepository;
     private final SyncCoordinator coordinator;
 
     private final MutableLiveData<Preflight> preflight = new MutableLiveData<>();
@@ -40,11 +42,17 @@ public class SyncCenterViewModel extends AndroidViewModel {
     private final MutableLiveData<int[]> localCounts = new MutableLiveData<>();
     private final MutableLiveData<String> error = new MutableLiveData<>();
     private final MutableLiveData<Boolean> busy = new MutableLiveData<>(false);
+    // ===== V3.1：服务器健康检测 =====
+    private final MutableLiveData<ApiDtos.ServerHealthResponse> health =
+            new MutableLiveData<>();
+    private final MutableLiveData<Throwable> healthFailure = new MutableLiveData<>();
+    private final MutableLiveData<Boolean> healthBusy = new MutableLiveData<>(false);
 
     public SyncCenterViewModel(@NonNull Application application) {
         super(application);
         BookkeepingApp app = BookkeepingApp.get(application);
         this.authRepository = app.getAuthRepository();
+        this.serverRepository = app.getServerRepository();
         this.coordinator = app.getSyncCoordinator();
     }
 
@@ -66,6 +74,58 @@ public class SyncCenterViewModel extends AndroidViewModel {
 
     public LiveData<Boolean> busy() {
         return busy;
+    }
+
+    public LiveData<ApiDtos.ServerHealthResponse> health() {
+        return health;
+    }
+
+    public LiveData<Throwable> healthFailure() {
+        return healthFailure;
+    }
+
+    public LiveData<Boolean> healthBusy() {
+        return healthBusy;
+    }
+
+    /** 测试连接：调用公开健康端点（V3.1 基线第 8/9 章），错误文案由 UI 层转译。 */
+    public void testConnection() {
+        if (Boolean.TRUE.equals(healthBusy.getValue())) {
+            return;
+        }
+        healthBusy.setValue(true);
+        healthFailure.setValue(null);
+        health.setValue(null);
+        serverRepository.getHealth(new Callback<ApiDtos.ServerHealthResponse>() {
+            @Override
+            public void onResult(ApiDtos.ServerHealthResponse result) {
+                healthBusy.setValue(false);
+                if (result == null) {
+                    // 未配置服务器地址（getHealth 直接回调 null）
+                    healthFailure.setValue(new Exception(
+                            com.skyanchor.bookkeeping.util.ConnectionErrorMapper.notConfigured()));
+                } else {
+                    health.setValue(result);
+                }
+            }
+
+            @Override
+            public void onError(@NonNull Exception e) {
+                healthBusy.setValue(false);
+                healthFailure.setValue(e);
+            }
+        });
+    }
+
+    /** 服务器地址变化后清空上一次检测结果。 */
+    public void resetHealth() {
+        health.setValue(null);
+        healthFailure.setValue(null);
+    }
+
+    /** 关闭“服务器已恢复”横幅。 */
+    public void dismissRecoveredNotice() {
+        coordinator.dismissRecoveredNotice();
     }
 
     public LiveData<SyncCoordinator.Status> status() {

@@ -145,6 +145,8 @@ public final class ApiDtos {
         // 通用
         public Long clientUpdatedAt;
         public Boolean isDeleted;
+        /** 软删发生时间（epoch millis，V3.1）；仅 isDeleted=true 有意义，恢复置回 null。 */
+        public Long deletedAt;
     }
 
     public static class PushItem {
@@ -196,6 +198,8 @@ public final class ApiDtos {
     public static class PushResponse {
         public List<PushResultItem> results;
         public long serverTime;
+        /** 服务器恢复代际（V3.1）：与本机记录不一致说明服务器恢复过备份，需重置游标重新收敛。 */
+        public long recoveryEpoch;
     }
 
     public static class PullRequest {
@@ -224,6 +228,7 @@ public final class ApiDtos {
         public long lastChangeId;
         public boolean hasMore;
         public long serverTime;
+        public long recoveryEpoch;
     }
 
     public static class BootstrapSummaryResponse {
@@ -243,6 +248,45 @@ public final class ApiDtos {
     public static class StatusResponse {
         public long serverTime;
         public boolean emailVerified;
+        /** 服务器应用版本（V3.1，仅展示用，不参与业务判断）。 */
+        public String serverVersion;
+        public long recoveryEpoch;
+    }
+
+    // ===== V3.1 服务器健康（基线第 8/10 章，公开端点） =====
+
+    public static class ServerHealthResponse {
+        public String status;
+        public String serverVersion;
+        public int apiVersion;
+        public int syncProtocolVersion;
+        public String database;
+        public Storage storage;
+
+        public static class Storage {
+            public String status;
+            public long totalBytes;
+            public long freeBytes;
+        }
+    }
+
+    // ===== V3.1 冲突历史（基线第 26 章） =====
+
+    public static class ConflictItem {
+        public long id;
+        public String entityType;
+        public String syncId;
+        public String clientDeviceId;
+        public long baseVersion;
+        public long serverVersion;
+        /** CLIENT = 保留本机修改；SERVER = 采用服务器版本。 */
+        public String winner;
+        public long createdAt;
+    }
+
+    public static class ConflictsResponse {
+        public List<ConflictItem> conflicts;
+        public long serverTime;
     }
 
     /** 预算的分类引用协议值：null = 总预算（对应本地 categoryId=0 哨兵）。 */

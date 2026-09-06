@@ -6,6 +6,9 @@ import com.skyanchor.bookkeeping.server.auth.AuthUser;
 import com.skyanchor.bookkeeping.server.auth.repo.UserRepository;
 import com.skyanchor.bookkeeping.server.common.ApiException;
 import com.skyanchor.bookkeeping.server.common.HashUtil;
+import com.skyanchor.bookkeeping.server.common.ServerInfo;
+import com.skyanchor.bookkeeping.server.common.ServerMeta;
+import com.skyanchor.bookkeeping.server.common.ServerMetaRepository;
 import com.skyanchor.bookkeeping.server.sync.domain.AccountRow;
 import com.skyanchor.bookkeeping.server.sync.domain.BudgetRow;
 import com.skyanchor.bookkeeping.server.sync.domain.CategoryRow;
@@ -17,6 +20,8 @@ import com.skyanchor.bookkeeping.server.sync.domain.TransactionRow;
 import com.skyanchor.bookkeeping.server.sync.dto.SyncDtos;
 import com.skyanchor.bookkeeping.server.sync.dto.SyncDtos.BootstrapSummaryResponse;
 import com.skyanchor.bookkeeping.server.sync.dto.SyncDtos.ChangeItem;
+import com.skyanchor.bookkeeping.server.sync.dto.SyncDtos.ConflictItem;
+import com.skyanchor.bookkeeping.server.sync.dto.SyncDtos.ConflictsResponse;
 import com.skyanchor.bookkeeping.server.sync.dto.SyncDtos.Counts;
 import com.skyanchor.bookkeeping.server.sync.dto.SyncDtos.PullRequest;
 import com.skyanchor.bookkeeping.server.sync.dto.SyncDtos.PullResponse;
@@ -35,6 +40,7 @@ import com.skyanchor.bookkeeping.server.sync.repo.SyncRowRepository;
 import com.skyanchor.bookkeeping.server.sync.repo.TransactionRowRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -75,6 +81,7 @@ public class SyncService {
     private final ConflictLogRepository conflictRepository;
     private final SyncRowRepository syncRowRepository;
     private final UserRepository userRepository;
+    private final ServerMetaRepository serverMetaRepository;
     private final ObjectMapper objectMapper;
 
     public SyncService(CategoryRowRepository categoryRepository,
@@ -86,6 +93,7 @@ public class SyncService {
                        ConflictLogRepository conflictRepository,
                        SyncRowRepository syncRowRepository,
                        UserRepository userRepository,
+                       ServerMetaRepository serverMetaRepository,
                        ObjectMapper objectMapper) {
         this.categoryRepository = categoryRepository;
         this.accountRepository = accountRepository;
@@ -96,6 +104,7 @@ public class SyncService {
         this.conflictRepository = conflictRepository;
         this.syncRowRepository = syncRowRepository;
         this.userRepository = userRepository;
+        this.serverMetaRepository = serverMetaRepository;
         this.objectMapper = objectMapper;
     }
 
@@ -117,7 +126,7 @@ public class SyncService {
         log.info("sync push user={} device={} items={} conflicts={}", user.userId(),
                 maskDeviceId(user.deviceId()), items.size(),
                 results.stream().filter(PushResultItem::conflicted).count());
-        return new PushResponse(results, System.currentTimeMillis());
+        return new PushResponse(results, System.currentTimeMillis(), recoveryEpoch());
     }
 
     private PushResultItem applyItem(AuthUser user, PushItem item) {
@@ -163,9 +172,9 @@ public class SyncService {
         }
         Lww.Decision decision = decide(user, item, row, now);
         if (decision == Lww.Decision.CONFLICT_SERVER_WINS) {
-            return serverWon(item, row, now);
+            return serverWon(user, item, row, now);
         }
-        applyDeleteOrFields(row, item, () -> applyCategoryFields(row, item.payload()));
+        applyDeleteOrFields(row, item, () -> applyCategoryFields(row, item.payload()), now);
         return finishUpdate(user, item, row, now,
                 decision == Lww.Decision.CONFLICT_INCOMING_WINS, categoryRepository::save);
     }
@@ -193,9 +202,9 @@ public class SyncService {
         }
         Lww.Decision decision = decide(user, item, row, now);
         if (decision == Lww.Decision.CONFLICT_SERVER_WINS) {
-            return serverWon(item, row, now);
+            return serverWon(user, item, row, now);
         }
-        applyDeleteOrFields(row, item, () -> applyAccountFields(row, item.payload()));
+        applyDeleteOrFields(row, item, () -> applyAccountFields(row, item.payload()), now);
         return finishUpdate(user, item, row, now,
                 decision == Lww.Decision.CONFLICT_INCOMING_WINS, accountRepository::save);
     }
@@ -220,13 +229,15 @@ public class SyncService {
         }
         Lww.Decision decision = decide(user, item, row, now);
         if (decision == Lww.Decision.CONFLICT_SERVER_WINS) {
-            return serverWon(item, row, now);
+            return serverWon(user, item, row, now);
         }
-        String refError = validateTransactionRefs(user.userId(), item.payload());
+        // DELETE 允许空载荷（软删墓碑），引用校验只针对 UPSERT
+        String refError = item.payload() == null ? null
+                : validateTransactionRefs(user.userId(), item.payload());
         if (refError != null) {
             return rejected(item, refError);
         }
-        applyDeleteOrFields(row, item, () -> applyTransactionFields(row, item.payload()));
+        applyDeleteOrFields(row, item, () -> applyTransactionFields(row, item.payload()), now);
         return finishUpdate(user, item, row, now,
                 decision == Lww.Decision.CONFLICT_INCOMING_WINS, transactionRepository::save);
     }
@@ -258,13 +269,14 @@ public class SyncService {
         }
         Lww.Decision decision = decide(user, item, row, now);
         if (decision == Lww.Decision.CONFLICT_SERVER_WINS) {
-            return serverWon(item, row, now);
+            return serverWon(user, item, row, now);
         }
-        String refError = validateCategoryRef(user.userId(), item.payload().categorySyncId);
+        String refError = item.payload() == null ? null
+                : validateCategoryRef(user.userId(), item.payload().categorySyncId);
         if (refError != null) {
             return rejected(item, refError);
         }
-        applyDeleteOrFields(row, item, () -> applyBudgetFields(row, item.payload()));
+        applyDeleteOrFields(row, item, () -> applyBudgetFields(row, item.payload()), now);
         return finishUpdate(user, item, row, now,
                 decision == Lww.Decision.CONFLICT_INCOMING_WINS, budgetRepository::save);
     }
@@ -289,13 +301,14 @@ public class SyncService {
         }
         Lww.Decision decision = decide(user, item, row, now);
         if (decision == Lww.Decision.CONFLICT_SERVER_WINS) {
-            return serverWon(item, row, now);
+            return serverWon(user, item, row, now);
         }
-        String refError = validateRecurringRefs(user.userId(), item.payload());
+        String refError = item.payload() == null ? null
+                : validateRecurringRefs(user.userId(), item.payload());
         if (refError != null) {
             return rejected(item, refError);
         }
-        applyDeleteOrFields(row, item, () -> applyRecurringFields(row, item.payload()));
+        applyDeleteOrFields(row, item, () -> applyRecurringFields(row, item.payload()), now);
         return finishUpdate(user, item, row, now,
                 decision == Lww.Decision.CONFLICT_INCOMING_WINS, recurringRepository::save);
     }
@@ -335,9 +348,12 @@ public class SyncService {
     }
 
     /** DELETE 只置软删位（payload 允许为 null）；UPSERT 应用业务字段。 */
-    private void applyDeleteOrFields(SyncRow row, PushItem item, Runnable fieldApplier) {
+    private void applyDeleteOrFields(SyncRow row, PushItem item, Runnable fieldApplier,
+                                     Instant now) {
         if (SyncChangeRow.OP_DELETE.equals(item.operation())) {
             row.setDeleted(true);
+            row.setDeletedAt(item.payload() != null && item.payload().deletedAt != null
+                    ? item.payload().deletedAt : now.toEpochMilli());
             row.setClientUpdatedAt(item.payload() != null && item.payload().clientUpdatedAt != null
                     ? item.payload().clientUpdatedAt : 0);
         } else {
@@ -366,7 +382,7 @@ public class SyncService {
                                                             Instant now, boolean conflicted,
                                                             Function<T, T> saver) {
         if (conflicted) {
-            writeConflictLog(user, item, row, now);
+            writeConflictLog(user, item, row, now, ConflictLogRow.WINNER_CLIENT);
         }
         row.setVersion(row.getVersion() + 1);
         row.setServerReceivedAt(now);
@@ -383,7 +399,9 @@ public class SyncService {
         return accepted(item, 0, now, payload, null);
     }
 
-    private PushResultItem serverWon(PushItem item, SyncRow row, Instant now) {
+    /** 服务器当前版本胜出：传入写入被拒，同样补写冲突审计（winner=SERVER）。 */
+    private PushResultItem serverWon(AuthUser user, PushItem item, SyncRow row, Instant now) {
+        writeConflictLog(user, item, row, now, ConflictLogRow.WINNER_SERVER);
         return new PushResultItem(item.entityType(), item.syncId(), false, true,
                 row.getVersion(), row.getServerReceivedAt().toEpochMilli(),
                 toPayload(itemEntityType(item), row), "CONFLICT_SERVER_WON", null);
@@ -411,7 +429,8 @@ public class SyncService {
         changeRepository.save(change);
     }
 
-    private void writeConflictLog(AuthUser user, PushItem item, SyncRow row, Instant now) {
+    private void writeConflictLog(AuthUser user, PushItem item, SyncRow row, Instant now,
+                                  String winner) {
         ConflictLogRow conflict = new ConflictLogRow();
         conflict.setUserId(user.userId());
         conflict.setEntityType(item.entityType());
@@ -421,7 +440,7 @@ public class SyncService {
         conflict.setServerVersion(row.getVersion());
         conflict.setClientPayloadDigest(digest(item.payload()));
         conflict.setServerPayloadDigest(digest(toPayload(item.entityType(), row)));
-        conflict.setWinner(ConflictLogRow.WINNER_CLIENT);
+        conflict.setWinner(winner);
         conflict.setCreatedAt(now);
         conflictRepository.save(conflict);
     }
@@ -495,6 +514,7 @@ public class SyncService {
         row.setDefault(Boolean.TRUE.equals(payload.isDefault));
         row.setClientUpdatedAt(orZero(payload.clientUpdatedAt));
         row.setDeleted(payload.isDeleted != null && payload.isDeleted);
+        row.setDeletedAt(payload.deletedAt);
     }
 
     private void applyAccountFields(AccountRow row, SyncPayload payload) {
@@ -507,6 +527,7 @@ public class SyncService {
         row.setArchived(Boolean.TRUE.equals(payload.isArchived));
         row.setClientUpdatedAt(orZero(payload.clientUpdatedAt));
         row.setDeleted(payload.isDeleted != null && payload.isDeleted);
+        row.setDeletedAt(payload.deletedAt);
     }
 
     private void applyTransactionFields(TransactionRow row, SyncPayload payload) {
@@ -521,6 +542,7 @@ public class SyncService {
         row.setClientCreatedAt(orZero(payload.clientCreatedAt));
         row.setClientUpdatedAt(orZero(payload.clientUpdatedAt));
         row.setDeleted(payload.isDeleted != null && payload.isDeleted);
+        row.setDeletedAt(payload.deletedAt);
     }
 
     private void applyBudgetFields(BudgetRow row, SyncPayload payload) {
@@ -530,6 +552,7 @@ public class SyncService {
         row.setAmount(orZero(payload.amount));
         row.setClientUpdatedAt(orZero(payload.clientUpdatedAt));
         row.setDeleted(payload.isDeleted != null && payload.isDeleted);
+        row.setDeletedAt(payload.deletedAt);
     }
 
     private void applyRecurringFields(RecurringRow row, SyncPayload payload) {
@@ -548,6 +571,7 @@ public class SyncService {
         row.setNote(payload.note);
         row.setClientUpdatedAt(orZero(payload.clientUpdatedAt));
         row.setDeleted(payload.isDeleted != null && payload.isDeleted);
+        row.setDeletedAt(payload.deletedAt);
     }
 
     // ===== 载荷组装 =====
@@ -556,6 +580,7 @@ public class SyncService {
         SyncPayload payload = new SyncPayload();
         payload.clientUpdatedAt = row.getClientUpdatedAt();
         payload.isDeleted = row.isDeleted();
+        payload.deletedAt = row.getDeletedAt();
         if (row instanceof CategoryRow category) {
             payload.name = category.getName();
             payload.icon = category.getIcon();
@@ -634,7 +659,8 @@ public class SyncService {
                     row.getServerReceivedAt().toEpochMilli(),
                     toPayload(change.getEntityType(), row)));
         }
-        return new PullResponse(items, lastChangeId, hasMore, System.currentTimeMillis());
+        return new PullResponse(items, lastChangeId, hasMore, System.currentTimeMillis(),
+                recoveryEpoch());
     }
 
     private SyncRow findRow(Long userId, String entityType, String syncId) {
@@ -665,7 +691,35 @@ public class SyncService {
         boolean verified = userRepository.findById(user.userId())
                 .map(u -> u.isEmailVerified())
                 .orElse(false);
-        return new StatusResponse(System.currentTimeMillis(), verified);
+        return new StatusResponse(System.currentTimeMillis(), verified,
+                ServerInfo.SERVER_VERSION, recoveryEpoch());
+    }
+
+    /** 冲突历史（基线第 26 章）：最近 N 条冲突审计摘要，自动收敛、事后可查。 */
+    @Transactional(readOnly = true)
+    public ConflictsResponse conflicts(AuthUser user, int limit) {
+        int safeLimit = Math.max(1, Math.min(limit, 100));
+        List<ConflictItem> items = new ArrayList<>();
+        for (ConflictLogRow row : conflictRepository
+                .findByUserIdOrderByIdDesc(user.userId(), PageRequest.of(0, safeLimit))) {
+            items.add(new ConflictItem(row.getId(), row.getEntityType(), row.getSyncId(),
+                    row.getClientDeviceId(), row.getBaseVersion(), row.getServerVersion(),
+                    row.getWinner(), row.getCreatedAt().toEpochMilli()));
+        }
+        return new ConflictsResponse(items, System.currentTimeMillis());
+    }
+
+    /** 服务器恢复代际：恢复备份时 +1，客户端据此重置游标重新收敛（基线第 16 章）。 */
+    public long recoveryEpoch() {
+        return serverMetaRepository.findById(ServerMeta.KEY_RECOVERY_EPOCH)
+                .map(meta -> {
+                    try {
+                        return Long.parseLong(meta.getValue());
+                    } catch (NumberFormatException e) {
+                        return 0L;
+                    }
+                })
+                .orElse(0L);
     }
 
     private Counts toCounts(SyncRowRepository.Counts counts) {
