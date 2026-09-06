@@ -10,6 +10,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.lifecycle.Observer;
 import androidx.lifecycle.ViewModelProvider;
 import androidx.recyclerview.widget.LinearLayoutManager;
 
@@ -23,6 +24,7 @@ import com.skyanchor.bookkeeping.data.model.RecurringDue;
 import com.skyanchor.bookkeeping.databinding.ActivityRecurringManageBinding;
 import com.skyanchor.bookkeeping.databinding.DialogRecurringEditBinding;
 import com.skyanchor.bookkeeping.ui.adapter.RecurringAdapter;
+import com.skyanchor.bookkeeping.util.AccountTypes;
 import com.skyanchor.bookkeeping.util.AmountUtil;
 import com.skyanchor.bookkeeping.util.DateUtil;
 import com.skyanchor.bookkeeping.util.InsetsUtil;
@@ -46,6 +48,10 @@ public class RecurringManageActivity extends AppCompatActivity {
     private ActivityRecurringManageBinding binding;
     private RecurringViewModel viewModel;
     private RecurringAdapter adapter;
+    /** 弹窗打开时可用的最新分类 / 账户快照，进页面即开始观察，避免弹窗拿到空列表。 */
+    private List<CategoryEntity> expenseCategories = Collections.emptyList();
+    private List<CategoryEntity> incomeCategories = Collections.emptyList();
+    private List<AccountEntity> activeAccounts = Collections.emptyList();
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
@@ -78,6 +84,13 @@ public class RecurringManageActivity extends AppCompatActivity {
 
         viewModel.getRecurring().observe(this, this::onRecurringChanged);
         viewModel.getDues().observe(this, this::onDuesChanged);
+        // Room 的 LiveData 只有被观察才会执行查询：页面级保持观察，弹窗打开时快照才有数据
+        viewModel.getExpenseCategories().observe(this,
+                list -> expenseCategories = snapshot(list));
+        viewModel.getIncomeCategories().observe(this,
+                list -> incomeCategories = snapshot(list));
+        viewModel.getActiveAccounts().observe(this,
+                list -> activeAccounts = snapshotAccounts(list));
     }
 
     private void onRecurringChanged(@Nullable List<RecurringTransactionEntity> rules) {
@@ -151,10 +164,6 @@ public class RecurringManageActivity extends AppCompatActivity {
      * 结束日期任一非法时就地显示错误并留在弹窗内。停用开关仅编辑既有规则时出现。
      */
     private void showEditDialog(@Nullable RecurringTransactionEntity existing) {
-        List<CategoryEntity> expenseCategories = snapshot(viewModel.getExpenseCategories().getValue());
-        List<CategoryEntity> incomeCategories = snapshot(viewModel.getIncomeCategories().getValue());
-        List<AccountEntity> accounts = snapshotAccounts(viewModel.getActiveAccounts().getValue());
-
         DialogRecurringEditBinding dialogBinding =
                 DialogRecurringEditBinding.inflate(getLayoutInflater());
 
@@ -171,14 +180,17 @@ public class RecurringManageActivity extends AppCompatActivity {
                 ? RecurringTransactionEntity.FREQUENCY_MONTHLY : existing.frequency};
         final long[] startDate = {existing == null
                 ? DateUtil.today() : DateUtil.startOfDay(existing.startDate)};
-        final long[] endDate = {existing == null
+        final long[] endDate = {existing == null || existing.endDate == 0L
                 ? 0L : DateUtil.startOfDay(existing.endDate)};
 
         SimpleDateFormat format = new SimpleDateFormat(
                 getString(R.string.recurring_date_format), Locale.getDefault());
-        CategoryPicker categoryPicker = new CategoryPicker(dialogBinding, expenseCategories,
-                incomeCategories);
-        AccountPicker accountPicker = new AccountPicker(dialogBinding, accounts);
+        CategoryPicker categoryPicker = new CategoryPicker(dialogBinding,
+                expenseCategories, incomeCategories);
+        AccountPicker accountPicker = new AccountPicker(dialogBinding, activeAccounts);
+
+        dialogBinding.typeInput.setSimpleItems(typeLabels);
+        dialogBinding.frequencyInput.setSimpleItems(frequencyLabels);
 
         dialogBinding.typeInput.setText(typeLabels[selectedType[0] == CategoryEntity.TYPE_INCOME
                 ? 1 : 0], false);
@@ -194,11 +206,22 @@ public class RecurringManageActivity extends AppCompatActivity {
                 selectedFrequency[0] = frequencyOf(position));
 
         categoryPicker.showType(selectedType[0]);
-        accountPicker.showAccounts();
         if (existing != null) {
             categoryPicker.select(existing.categoryId);
             accountPicker.select(existing.accountId);
         }
+
+        // 弹窗存活期间分类 / 账户数据到达或变化时原地刷新选项（保留已选 id），
+        // 弹窗关闭即解除观察，避免继续触碰已废弃的绑定。
+        Observer<List<CategoryEntity>> expenseObserver =
+                list -> categoryPicker.setCategories(CategoryEntity.TYPE_EXPENSE, snapshot(list));
+        Observer<List<CategoryEntity>> incomeObserver =
+                list -> categoryPicker.setCategories(CategoryEntity.TYPE_INCOME, snapshot(list));
+        Observer<List<AccountEntity>> accountObserver =
+                list -> accountPicker.setAccounts(snapshotAccounts(list));
+        viewModel.getExpenseCategories().observe(this, expenseObserver);
+        viewModel.getIncomeCategories().observe(this, incomeObserver);
+        viewModel.getActiveAccounts().observe(this, accountObserver);
 
         dialogBinding.startDateInput.setText(format.format(new Date(startDate[0])));
         dialogBinding.startDateInput.setOnClickListener(v ->
@@ -255,6 +278,11 @@ public class RecurringManageActivity extends AppCompatActivity {
                 .setNegativeButton(R.string.action_cancel, null)
                 .setPositiveButton(R.string.action_save, null)
                 .create();
+        dialog.setOnDismissListener(d -> {
+            viewModel.getExpenseCategories().removeObserver(expenseObserver);
+            viewModel.getIncomeCategories().removeObserver(incomeObserver);
+            viewModel.getActiveAccounts().removeObserver(accountObserver);
+        });
         dialog.show();
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
             String error = collectAndSave(existing, dialogBinding, selectedType,
@@ -403,14 +431,19 @@ public class RecurringManageActivity extends AppCompatActivity {
         return accounts == null ? Collections.emptyList() : accounts;
     }
 
-    /** 分类下拉的状态封装：按类型重建选项、按 id 回选。 */
+    /**
+     * 分类下拉的状态封装：按类型重建选项、按 id 回选。选项列表由观察者随时刷新，
+     * 刷新时保留已选 id，因此数据晚于弹窗到达也不会丢失编辑中的选择。
+     */
     private static final class CategoryPicker {
 
         private final DialogRecurringEditBinding binding;
-        private final List<CategoryEntity> expenseCategories;
-        private final List<CategoryEntity> incomeCategories;
+        private List<CategoryEntity> expenseCategories;
+        private List<CategoryEntity> incomeCategories;
+        private int currentType;
         private List<CategoryEntity> current;
-        private int selectedIndex = -1;
+        @Nullable
+        private Long selectedId = null;
 
         CategoryPicker(DialogRecurringEditBinding binding,
                        List<CategoryEntity> expenseCategories,
@@ -418,89 +451,152 @@ public class RecurringManageActivity extends AppCompatActivity {
             this.binding = binding;
             this.expenseCategories = expenseCategories;
             this.incomeCategories = incomeCategories;
+            this.currentType = CategoryEntity.TYPE_EXPENSE;
             this.current = expenseCategories;
             binding.categoryInput.setOnItemClickListener((parent, view, position, id) -> {
-                selectedIndex = position;
-                binding.categoryLayout.setError(null);
+                if (position >= 0 && position < current.size()) {
+                    selectedId = current.get(position).id;
+                    binding.categoryLayout.setError(null);
+                }
             });
         }
 
-        void showType(int type) {
-            current = type == CategoryEntity.TYPE_INCOME ? incomeCategories : expenseCategories;
-            selectedIndex = -1;
-            String[] labels = new String[current.size()];
-            for (int i = 0; i < current.size(); i++) {
-                labels[i] = current.get(i).name;
+        /** 某一类型的新数据到达：仅当正是当前展示的类型时重建选项。 */
+        void setCategories(int type, List<CategoryEntity> categories) {
+            if (type == CategoryEntity.TYPE_INCOME) {
+                incomeCategories = categories;
+            } else {
+                expenseCategories = categories;
             }
-            binding.categoryInput.setText("", false);
-            binding.categoryInput.setSimpleItems(labels);
+            if (type == currentType) {
+                current = categories;
+                refresh();
+            }
+        }
+
+        /** 切换类型：清空已选并按新类型重建选项。 */
+        void showType(int type) {
+            currentType = type;
+            current = type == CategoryEntity.TYPE_INCOME ? incomeCategories : expenseCategories;
+            selectedId = null;
+            refresh();
         }
 
         void select(@Nullable Long categoryId) {
-            if (categoryId == null) {
-                return;
-            }
-            for (int i = 0; i < current.size(); i++) {
-                if (current.get(i).id == categoryId) {
-                    selectedIndex = i;
-                    binding.categoryInput.setText(current.get(i).name, false);
-                    return;
-                }
-            }
+            selectedId = categoryId;
+            applySelection();
         }
 
+        /** 已选 id 必须仍存在于当前类型列表中，已删除的分类视为未选。 */
         @Nullable
         Long selectedId() {
-            if (selectedIndex < 0 || selectedIndex >= current.size()) {
+            if (selectedId == null) {
                 return null;
             }
-            return current.get(selectedIndex).id;
+            for (CategoryEntity category : current) {
+                if (category.id == selectedId) {
+                    return selectedId;
+                }
+            }
+            return null;
+        }
+
+        private void refresh() {
+            String[] labels = new String[current.size()];
+            for (int i = 0; i < current.size(); i++) {
+                labels[i] = label(current.get(i));
+            }
+            binding.categoryInput.setSimpleItems(labels);
+            applySelection();
+        }
+
+        private void applySelection() {
+            if (selectedId != null) {
+                for (int i = 0; i < current.size(); i++) {
+                    if (current.get(i).id == selectedId) {
+                        binding.categoryInput.setText(label(current.get(i)), false);
+                        return;
+                    }
+                }
+            }
+            binding.categoryInput.setText("", false);
+        }
+
+        /** 「emoji + 名称」单行展示，与回收站等列表一致；旧数据无图标时只显示名称。 */
+        private static String label(CategoryEntity category) {
+            return category.icon.isEmpty() ? category.name
+                    : category.icon + " " + category.name;
         }
     }
 
-    /** 账户下拉的状态封装。 */
+    /** 账户下拉的状态封装：账户列表由观察者随时刷新，刷新时保留已选。 */
     private static final class AccountPicker {
 
         private final DialogRecurringEditBinding binding;
-        private final List<AccountEntity> accounts;
-        private int selectedIndex = -1;
+        private List<AccountEntity> accounts;
+        @Nullable
+        private Long selectedId = null;
 
         AccountPicker(DialogRecurringEditBinding binding, List<AccountEntity> accounts) {
             this.binding = binding;
             this.accounts = accounts;
             binding.accountInput.setOnItemClickListener((parent, view, position, id) -> {
-                selectedIndex = position;
-                binding.accountLayout.setError(null);
+                if (position >= 0 && position < accounts.size()) {
+                    selectedId = accounts.get(position).id;
+                    binding.accountLayout.setError(null);
+                }
             });
+            refresh();
         }
 
-        void showAccounts() {
-            String[] labels = new String[accounts.size()];
-            for (int i = 0; i < accounts.size(); i++) {
-                labels[i] = accounts.get(i).name;
-            }
-            binding.accountInput.setSimpleItems(labels);
+        void setAccounts(List<AccountEntity> accounts) {
+            this.accounts = accounts;
+            refresh();
         }
 
         void select(@Nullable Long accountId) {
-            if (accountId == null) {
-                return;
-            }
-            for (int i = 0; i < accounts.size(); i++) {
-                if (accounts.get(i).id == accountId) {
-                    selectedIndex = i;
-                    binding.accountInput.setText(accounts.get(i).name, false);
-                    return;
-                }
-            }
+            selectedId = accountId;
+            applySelection();
         }
 
+        /** 已选 id 必须仍存在于活跃账户列表中，已归档 / 删除的账户视为未选。 */
         @Nullable
         Long selectedId() {
-            if (selectedIndex < 0 || selectedIndex >= accounts.size()) {
+            if (selectedId == null) {
                 return null;
             }
-            return accounts.get(selectedIndex).id;
+            for (AccountEntity account : accounts) {
+                if (account.id == selectedId) {
+                    return selectedId;
+                }
+            }
+            return null;
+        }
+
+        private void refresh() {
+            String[] labels = new String[accounts.size()];
+            for (int i = 0; i < accounts.size(); i++) {
+                labels[i] = label(accounts.get(i));
+            }
+            binding.accountInput.setSimpleItems(labels);
+            applySelection();
+        }
+
+        private void applySelection() {
+            if (selectedId != null) {
+                for (int i = 0; i < accounts.size(); i++) {
+                    if (accounts.get(i).id == selectedId) {
+                        binding.accountInput.setText(label(accounts.get(i)), false);
+                        return;
+                    }
+                }
+            }
+            binding.accountInput.setText("", false);
+        }
+
+        /** 「emoji + 名称」单行展示，与记账页账户下拉一致。 */
+        private static String label(AccountEntity account) {
+            return AccountTypes.emoji(account.type) + " " + account.name;
         }
     }
 
