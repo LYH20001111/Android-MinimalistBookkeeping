@@ -22,6 +22,7 @@ import com.skyanchor.bookkeeping.data.remote.ApiException;
 import com.skyanchor.bookkeeping.data.repository.LedgerRepository;
 import com.skyanchor.bookkeeping.databinding.ActivityLedgerManageBinding;
 import com.skyanchor.bookkeeping.sync.SyncCoordinator;
+import com.skyanchor.bookkeeping.util.InsetsUtil;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -49,12 +50,11 @@ public class LedgerManageActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         binding = ActivityLedgerManageBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
-        setSupportActionBar(binding.toolbar);
+
+        InsetsUtil.applySystemBarsPadding(binding.getRoot());
+        InsetsUtil.syncSystemBarAppearance(this);
+
         binding.toolbar.setNavigationOnClickListener(v -> finish());
-        if (getSupportActionBar() != null) {
-            getSupportActionBar().setDisplayHomeAsUpEnabled(true);
-            setTitle(R.string.ledger_manage_title);
-        }
 
         BookkeepingApp app = BookkeepingApp.get(this);
         repository = app.getRepository();

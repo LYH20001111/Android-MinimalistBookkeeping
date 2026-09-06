@@ -19,6 +19,7 @@ import com.skyanchor.bookkeeping.data.remote.ApiDtos;
 import com.skyanchor.bookkeeping.data.repository.LedgerRepository;
 import com.skyanchor.bookkeeping.databinding.ActivityInvitationBinding;
 import com.skyanchor.bookkeeping.sync.SyncCoordinator;
+import com.skyanchor.bookkeeping.util.InsetsUtil;
 
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -44,12 +45,11 @@ public class InvitationActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         binding = ActivityInvitationBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
-        setSupportActionBar(binding.toolbar);
+
+        InsetsUtil.applySystemBarsPadding(binding.getRoot());
+        InsetsUtil.syncSystemBarAppearance(this);
+
         binding.toolbar.setNavigationOnClickListener(v -> finish());
-        if (getSupportActionBar() != null) {
-            getSupportActionBar().setDisplayHomeAsUpEnabled(true);
-            setTitle(R.string.invitation_title);
-        }
 
         ledgerRepository = new LedgerRepository(BookkeepingApp.get(this).getApiClient());
         syncCoordinator = BookkeepingApp.get(this).getSyncCoordinator();

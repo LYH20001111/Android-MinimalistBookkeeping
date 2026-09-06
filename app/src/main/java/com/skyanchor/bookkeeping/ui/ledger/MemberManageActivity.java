@@ -22,6 +22,7 @@ import com.skyanchor.bookkeeping.data.remote.ApiDtos;
 import com.skyanchor.bookkeeping.data.repository.LedgerRepository;
 import com.skyanchor.bookkeeping.databinding.ActivityMemberManageBinding;
 import com.skyanchor.bookkeeping.sync.SyncCoordinator;
+import com.skyanchor.bookkeeping.util.InsetsUtil;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -60,16 +61,16 @@ public class MemberManageActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         binding = ActivityMemberManageBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
-        setSupportActionBar(binding.toolbar);
+
+        InsetsUtil.applySystemBarsPadding(binding.getRoot());
+        InsetsUtil.syncSystemBarAppearance(this);
+
         binding.toolbar.setNavigationOnClickListener(v -> finish());
 
         ledgerSyncId = getIntent().getStringExtra(EXTRA_LEDGER_SYNC_ID);
         ledgerName = getIntent().getStringExtra(EXTRA_LEDGER_NAME);
         myRole = getIntent().getStringExtra(EXTRA_MY_ROLE);
-        if (getSupportActionBar() != null) {
-            getSupportActionBar().setDisplayHomeAsUpEnabled(true);
-            setTitle(getString(R.string.member_manage_title, ledgerName));
-        }
+        binding.toolbar.setTitle(getString(R.string.member_manage_title, ledgerName));
 
         ledgerRepository = new LedgerRepository(BookkeepingApp.get(this).getApiClient());
         syncCoordinator = BookkeepingApp.get(this).getSyncCoordinator();

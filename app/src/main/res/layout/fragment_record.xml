@@ -43,11 +43,12 @@
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/searchButton"
-                style="@style/Widget.App.Button.Quiet"
+                style="@style/Widget.App.Button.Icon"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:contentDescription="@string/cd_search"
                 app:icon="@drawable/ic_search"
+                app:iconTint="@color/primary"
                 app:iconSize="@dimen/icon_size_sm" />
 
             <com.google.android.material.button.MaterialButton
@@ -57,6 +58,7 @@
                 android:layout_height="wrap_content"
                 android:contentDescription="@string/record_pick_business_date"
                 app:icon="@drawable/ic_calendar"
+                app:iconTint="@color/primary"
                 app:iconSize="@dimen/icon_size_sm" />
 
         </LinearLayout>
