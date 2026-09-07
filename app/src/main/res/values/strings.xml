@@ -597,6 +597,7 @@
     <string name="cd_empty_state">空状态插图</string>
     <string name="cd_trend_chart">支出趋势折线图</string>
     <string name="cd_category_chart">消费分类占比环形图</string>
+    <string name="cd_switch_ledger">切换账本</string>
 
 
     <!-- ===== V3.1 私有云稳定性与服务器管理 ===== -->
@@ -733,6 +734,5 @@
     <string name="invitation_accepted">已加入账本「%1$s」，正在同步</string>
     <string name="invitation_item_title">加入「%1$s」</string>
     <string name="invitation_item_subtitle">%1$s 邀请你以「%2$s」身份加入 · %3$s 前有效</string>
-    <string name="record_current_ledger">当前账本：%1$s</string>
 </resources>
 

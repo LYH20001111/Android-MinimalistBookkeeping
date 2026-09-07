@@ -30,16 +30,37 @@
                 android:visibility="gone"
                 android:textAppearance="@style/TextAppearance.App.PageTitle" />
 
-            <TextView
+            <!-- 账本切换入口：切换图标 + 当前账本名，点击进入账本管理 -->
+            <LinearLayout
                 android:id="@+id/ledgerChip"
-                android:layout_width="wrap_content"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:layout_marginEnd="@dimen/spacing_sm"
                 android:background="?attr/selectableItemBackground"
+                android:contentDescription="@string/cd_switch_ledger"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
                 android:paddingHorizontal="@dimen/spacing_sm"
-                android:paddingVertical="@dimen/spacing_xs"
-                android:textAppearance="@style/TextAppearance.App.Secondary" />
+                android:paddingVertical="@dimen/spacing_xs">
+
+                <ImageView
+                    android:layout_width="@dimen/icon_size_sm"
+                    android:layout_height="@dimen/icon_size_sm"
+                    android:layout_marginEnd="@dimen/spacing_xs"
+                    android:importantForAccessibility="no"
+                    android:src="@drawable/ic_swap"
+                    app:tint="@color/primary" />
+
+                <TextView
+                    android:id="@+id/ledgerChipText"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:textAppearance="@style/TextAppearance.App.Body" />
+
+            </LinearLayout>
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/searchButton"

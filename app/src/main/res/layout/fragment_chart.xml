@@ -15,6 +15,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="@string/chart_title"
+        android:visibility="gone"
         android:textAppearance="@style/TextAppearance.App.PageTitle" />
 
     <!-- 周期切换：周 / 月 / 年 -->

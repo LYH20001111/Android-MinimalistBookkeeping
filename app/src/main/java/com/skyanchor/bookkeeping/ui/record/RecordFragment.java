@@ -62,9 +62,7 @@ public class RecordFragment extends Fragment {
                     if (binding == null) {
                         return;
                     }
-                    binding.ledgerChip.setText(ledger == null
-                            ? getString(R.string.record_current_ledger, "我的账本")
-                            : getString(R.string.record_current_ledger, ledger.name));
+                    binding.ledgerChipText.setText(ledger == null ? "我的账本" : ledger.name);
                 });
         binding.ledgerChip.setOnClickListener(v ->
                 LedgerManageActivity.start(requireContext()));
