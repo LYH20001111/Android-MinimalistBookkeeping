@@ -20,7 +20,7 @@ android {
         targetSdk = 36
         // V3：版本 3→4 / 2.1.0→3.0.0
         versionCode = 6
-        versionName = "3.2.0"
+        versionName = "3.4.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
