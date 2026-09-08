@@ -20,6 +20,7 @@ import com.skyanchor.bookkeeping.data.entity.SyncChangeQueueEntity;
 import com.skyanchor.bookkeeping.data.entity.SyncCursorEntity;
 import com.skyanchor.bookkeeping.data.entity.SyncEventEntity;
 import com.skyanchor.bookkeeping.data.entity.SyncStateEntity;
+import com.skyanchor.bookkeeping.data.entity.TransactionEditLogEntity;
 import com.skyanchor.bookkeeping.data.entity.TransactionEntity;
 import com.skyanchor.bookkeeping.data.entity.UserSettingsEntity;
 
@@ -43,6 +44,8 @@ import java.util.UUID;
  * ledger_id（回填默认账本）；budget 唯一键升级为 (ledger_id, year, month, category_id)；
  * sync_cursor 升级为 (account_email, ledger_sync_id) 复合主键（账本级游标），见
  * {@link #MIGRATION_6_7}。
+ * V3.3 升级到 version 8：新建 transaction_edit_log 表（账单编辑历史，仅本机不参与同步），
+ * 见 {@link #MIGRATION_7_8}。
  *
  * <p>禁止使用 destructiveMigration，否则用户已有账单数据将丢失。
  */
@@ -58,9 +61,10 @@ import java.util.UUID;
                 SyncChangeQueueEntity.class,
                 SyncCursorEntity.class,
                 SyncStateEntity.class,
-                SyncEventEntity.class
+                SyncEventEntity.class,
+                TransactionEditLogEntity.class
         },
-        version = 7,
+        version = 8,
         exportSchema = true)
 public abstract class AppDatabase extends RoomDatabase {
 
@@ -89,6 +93,8 @@ public abstract class AppDatabase extends RoomDatabase {
     public abstract SyncStateDao syncStateDao();
 
     public abstract SyncEventDao syncEventDao();
+
+    public abstract TransactionEditLogDao transactionEditLogDao();
 
     /**
      * V1.1 基线第 36 章：将 transactions 表的外键从 CASCADE 改为 RESTRICT，
@@ -447,6 +453,26 @@ public abstract class AppDatabase extends RoomDatabase {
         }
     };
 
+    /**
+     * V3.3 升级 7 → 8：新建 transaction_edit_log（账单编辑历史）。
+     *
+     * <p>纯新增表，无存量数据回填：历史账单没有日志行，编辑页历史显示「暂无编辑记录」。
+     * 该表仅本机使用，不加入同步实体集合。
+     */
+    static final Migration MIGRATION_7_8 = new Migration(7, 8) {
+        @Override
+        public void migrate(@NonNull SupportSQLiteDatabase db) {
+            db.execSQL("CREATE TABLE IF NOT EXISTS transaction_edit_log ("
+                    + "id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, "
+                    + "transaction_id INTEGER NOT NULL, "
+                    + "operation TEXT NOT NULL, "
+                    + "detail TEXT NOT NULL, "
+                    + "changed_at INTEGER NOT NULL)");
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_transaction_edit_log_transaction_id "
+                    + "ON transaction_edit_log(transaction_id)");
+        }
+    };
+
     public static AppDatabase getInstance(@NonNull Context context) {
         AppDatabase local = instance;
         if (local == null) {
@@ -456,7 +482,7 @@ public abstract class AppDatabase extends RoomDatabase {
                     local = Room.databaseBuilder(
                                     context.getApplicationContext(), AppDatabase.class, DB_NAME)
                             .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4,
-                                    MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+                                    MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
                             .addCallback(SEED_CALLBACK)
                             .build();
                     instance = local;

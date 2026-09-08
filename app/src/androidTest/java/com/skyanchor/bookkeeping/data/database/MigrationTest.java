@@ -113,7 +113,7 @@ public class MigrationTest {
         return Room.databaseBuilder(context, AppDatabase.class, DB_NAME)
                 .addMigrations(AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4,
                         AppDatabase.MIGRATION_4_5, AppDatabase.MIGRATION_5_6,
-                        AppDatabase.MIGRATION_6_7)
+                        AppDatabase.MIGRATION_6_7, AppDatabase.MIGRATION_7_8)
                 .allowMainThreadQueries()
                 .build();
     }
@@ -144,6 +144,57 @@ public class MigrationTest {
                 + "duration_ms INTEGER NOT NULL, "
                 + "error_message TEXT)");
         db.setVersion(6);
+        return db;
+    }
+
+    /** V3.2 的 schema（MIGRATION_6_7 的产物）：ledger 根节点 + ledger_id 回填 + 复合游标。 */
+    private SQLiteDatabase createV7Database() {
+        SQLiteDatabase db = createV6Database();
+        db.execSQL("CREATE TABLE IF NOT EXISTS ledger ("
+                + "id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, "
+                + "sync_id TEXT NOT NULL, "
+                + "name TEXT NOT NULL, "
+                + "description TEXT NOT NULL, "
+                + "currency TEXT NOT NULL, "
+                + "role TEXT NOT NULL, "
+                + "owner_user_id INTEGER, "
+                + "is_default INTEGER NOT NULL, "
+                + "is_archived INTEGER NOT NULL, "
+                + "is_deleted INTEGER NOT NULL, "
+                + "deleted_at INTEGER, "
+                + "is_current INTEGER NOT NULL, "
+                + "version INTEGER NOT NULL, "
+                + "server_received_at INTEGER NOT NULL, "
+                + "created_at INTEGER NOT NULL, "
+                + "updated_at INTEGER NOT NULL)");
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_ledger_sync_id ON ledger(sync_id)");
+        db.execSQL("INSERT INTO ledger (id, sync_id, name, description, currency, role, "
+                + "owner_user_id, is_default, is_archived, is_deleted, deleted_at, "
+                + "is_current, version, server_received_at, created_at, updated_at) "
+                + "VALUES (1, 'ledger-sync-id', '我的账本', '', 'CNY', 'OWNER', "
+                + "NULL, 1, 0, 0, NULL, 1, 0, 0, 1, 1)");
+        for (String table : new String[]{
+                "transactions", "category", "account", "budget", "recurring_transaction"}) {
+            db.execSQL("ALTER TABLE " + table + " ADD COLUMN ledger_id INTEGER NOT NULL DEFAULT 1");
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_" + table + "_ledger_id "
+                    + "ON " + table + "(ledger_id)");
+        }
+        db.execSQL("DROP INDEX IF EXISTS index_budget_year_month_category_id");
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS "
+                + "index_budget_ledger_id_year_month_category_id "
+                + "ON budget(ledger_id, year, month, category_id)");
+        db.execSQL("CREATE TABLE IF NOT EXISTS sync_cursor_new ("
+                + "account_email TEXT NOT NULL, "
+                + "ledger_sync_id TEXT NOT NULL, "
+                + "last_change_id INTEGER NOT NULL, "
+                + "updated_at INTEGER NOT NULL, "
+                + "PRIMARY KEY(account_email, ledger_sync_id))");
+        db.execSQL("INSERT INTO sync_cursor_new (account_email, ledger_sync_id, "
+                + "last_change_id, updated_at) "
+                + "SELECT account_email, '', last_change_id, updated_at FROM sync_cursor");
+        db.execSQL("DROP TABLE sync_cursor");
+        db.execSQL("ALTER TABLE sync_cursor_new RENAME TO sync_cursor");
+        db.setVersion(7);
         return db;
     }
 
@@ -791,6 +842,34 @@ public class MigrationTest {
                 db.syncCursorDao().find("migrate@example.com", "");
         assertNotNull(cursor);
         assertEquals(42L, cursor.lastChangeId);
+        db.close();
+    }
+
+    // ------------------------------------------------------------------
+    // V3.3：7 → 8（transaction_edit_log 账单编辑日志表）
+    // ------------------------------------------------------------------
+
+    @Test
+    public void migrate_v7_addsEditLogTableAndKeepsData() {
+        SQLiteDatabase v7 = createV7Database();
+        Cursor accountRow = v7.rawQuery("SELECT id FROM account LIMIT 1", new String[0]);
+        assertTrue(accountRow.moveToFirst());
+        long accountId = accountRow.getLong(0);
+        accountRow.close();
+        insert(v7, "transactions", row(
+                "type", 1, "amount", 3500L, "category_id", null,
+                "account_id", accountId, "transfer_account_id", null,
+                "date", 1_700_000_000_000L, "time", "12:30", "ledger_id", 1L,
+                "created_at", 1_700_000_000_000L, "updated_at", 1_700_000_000_000L));
+        v7.close();
+
+        AppDatabase db = openLatest();
+        // Room 开库时已按最新 schema 完成整库校验（含 transaction_edit_log 的列与索引）；
+        // 这里验证数据语义：
+        // 1) 新表为空：存量账单没有历史日志（编辑记录页以「暂无编辑记录」空态兼容）
+        assertTrue(db.transactionEditLogDao().getByTransaction(1L).isEmpty());
+        // 2) 存量数据零丢失
+        assertEquals(1, db.transactionDao().count());
         db.close();
     }
 }

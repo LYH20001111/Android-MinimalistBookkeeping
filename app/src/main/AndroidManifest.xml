@@ -38,6 +38,11 @@
             android:name=".ui.record.TransactionEditActivity"
             android:exported="false"
             android:parentActivityName=".MainActivity" />
+        <!-- V3.3：账单编辑记录（编辑账单页右上角三点菜单进入） -->
+        <activity
+            android:name=".ui.record.TransactionHistoryActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity" />
         <activity
             android:name=".ui.category.CategoryManageActivity"
             android:exported="false"

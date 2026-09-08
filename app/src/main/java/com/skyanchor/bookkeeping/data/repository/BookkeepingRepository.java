@@ -16,6 +16,7 @@ import com.skyanchor.bookkeeping.data.entity.CategoryEntity;
 import com.skyanchor.bookkeeping.data.entity.LedgerEntity;
 import com.skyanchor.bookkeeping.data.entity.RecurringTransactionEntity;
 import com.skyanchor.bookkeeping.data.entity.SyncEntityTypes;
+import com.skyanchor.bookkeeping.data.entity.TransactionEditLogEntity;
 import com.skyanchor.bookkeeping.data.entity.TransactionEntity;
 import com.skyanchor.bookkeeping.data.entity.TransactionExport;
 import com.skyanchor.bookkeeping.data.entity.TransactionItem;
@@ -32,6 +33,8 @@ import com.skyanchor.bookkeeping.domain.recurring.GenerateRecurringTransactionsU
 import com.skyanchor.bookkeeping.sync.SyncEnqueuer;
 import com.skyanchor.bookkeeping.sync.SyncPayloadMapper;
 import com.skyanchor.bookkeeping.util.Callback;
+import com.skyanchor.bookkeeping.util.AccountTypes;
+import com.skyanchor.bookkeeping.util.AmountUtil;
 import com.skyanchor.bookkeeping.util.DateUtil;
 import com.skyanchor.bookkeeping.util.ThemeStore;
 
@@ -39,6 +42,8 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
@@ -531,6 +536,8 @@ public class BookkeepingRepository {
                     // V3.2：新交易归属当前账本（基线第 6 章）
                     entity.ledgerId = currentLedgerId();
                     entity.id = database.transactionDao().insert(entity);
+                    appendEditLog(entity.id, TransactionEditLogEntity.OP_CREATE,
+                            buildCreateDetail(entity), now);
                 } else {
                     TransactionEntity existing = database.transactionDao().getEntityById(entity.id);
                     entity.createdAt = existing != null ? existing.createdAt : now;
@@ -543,6 +550,12 @@ public class BookkeepingRepository {
                         collectAccount(affected, existing.transferAccountId);
                     }
                     database.transactionDao().update(entity);
+                    // V3.3：保存有实际变更时留痕（无变化不写日志，避免刷屏）
+                    String changeDetail = buildUpdateDetail(existing, entity);
+                    if (changeDetail != null) {
+                        appendEditLog(entity.id, TransactionEditLogEntity.OP_UPDATE,
+                                changeDetail, now);
+                    }
                 }
                 collectAccount(affected, entity.accountId);
                 collectAccount(affected, entity.transferAccountId);
@@ -597,6 +610,159 @@ public class BookkeepingRepository {
             long balance = balanceUseCase.calculate(accountId);
             database.accountDao().updateBalance(accountId, balance, now);
         }
+    }
+
+    // ------------------------------------------------------------------
+    // 账单编辑日志（V3.3）
+    //
+    // 明细文本在写入时刻用当时的分类 / 账户名称生成并落库，之后改名不影响历史可读性。
+    // 仅覆盖本机的创建与编辑；其他设备经云同步改写账单不经过这里，不产生日志。
+    // ------------------------------------------------------------------
+
+    /** 读取某账单的编辑日志（最新在前），供编辑记录页展示。 */
+    public void loadEditLogs(long transactionId,
+                             @Nullable Callback<List<TransactionEditLogEntity>> callback) {
+        io.execute(() ->
+                post(callback, database.transactionEditLogDao().getByTransaction(transactionId)));
+    }
+
+    /** 在当前 DB 事务内追加一条编辑日志（调用方需处于 DB 事务内）。 */
+    private void appendEditLog(long transactionId, @NonNull String operation,
+                               @NonNull String detail, long now) {
+        TransactionEditLogEntity log = new TransactionEditLogEntity();
+        log.transactionId = transactionId;
+        log.operation = operation;
+        log.detail = detail;
+        log.changedAt = now;
+        database.transactionEditLogDao().insert(log);
+    }
+
+    /** 创建日志的明细：完整初始值清单。 */
+    @NonNull
+    private String buildCreateDetail(@NonNull TransactionEntity entity) {
+        StringBuilder lines = new StringBuilder();
+        addDetailLine(lines, "类型", typeLabel(entity.type));
+        addDetailLine(lines, "金额", AmountUtil.format(entity.amount));
+        if (entity.type == CategoryEntity.TYPE_TRANSFER) {
+            addDetailLine(lines, "转出账户", accountLogLabel(entity.accountId));
+            addDetailLine(lines, "转入账户", accountLogLabel(entity.transferAccountId));
+        } else {
+            addDetailLine(lines, "分类", categoryLogLabel(entity.categoryId));
+            addDetailLine(lines, "账户", accountLogLabel(entity.accountId));
+        }
+        addDetailLine(lines, "日期", dayLogLabel(entity.date));
+        addDetailLine(lines, "时间", entity.time);
+        addDetailLine(lines, "备注", noteLogLabel(entity.note));
+        return lines.toString();
+    }
+
+    /**
+     * 修改日志的明细：逐字段比对旧值与新值，返回「字段：旧值 → 新值」清单；
+     * 没有任何变化时返回 null（调用方跳过写日志）。
+     */
+    @Nullable
+    private String buildUpdateDetail(@Nullable TransactionEntity old,
+                                     @NonNull TransactionEntity entity) {
+        if (old == null) {
+            return null;
+        }
+        StringBuilder lines = new StringBuilder();
+        if (old.type != entity.type) {
+            addDetailChange(lines, "类型", typeLabel(old.type), typeLabel(entity.type));
+        }
+        if (old.amount != entity.amount) {
+            addDetailChange(lines, "金额",
+                    AmountUtil.format(old.amount), AmountUtil.format(entity.amount));
+        }
+        if (!Objects.equals(old.categoryId, entity.categoryId)) {
+            addDetailChange(lines, "分类",
+                    categoryLogLabel(old.categoryId), categoryLogLabel(entity.categoryId));
+        }
+        if (!Objects.equals(old.accountId, entity.accountId)) {
+            // 涉及转账时该端叫「转出账户」，纯支出 / 收入叫「账户」
+            String field = old.type == CategoryEntity.TYPE_TRANSFER
+                    || entity.type == CategoryEntity.TYPE_TRANSFER ? "转出账户" : "账户";
+            addDetailChange(lines, field,
+                    accountLogLabel(old.accountId), accountLogLabel(entity.accountId));
+        }
+        if (!Objects.equals(old.transferAccountId, entity.transferAccountId)) {
+            addDetailChange(lines, "转入账户",
+                    accountLogLabel(old.transferAccountId),
+                    accountLogLabel(entity.transferAccountId));
+        }
+        if (old.date != entity.date) {
+            addDetailChange(lines, "日期", dayLogLabel(old.date), dayLogLabel(entity.date));
+        }
+        if (!Objects.equals(old.time, entity.time)) {
+            addDetailChange(lines, "时间", old.time, entity.time);
+        }
+        if (!Objects.equals(old.note, entity.note)) {
+            addDetailChange(lines, "备注", noteLogLabel(old.note), noteLogLabel(entity.note));
+        }
+        return lines.length() == 0 ? null : lines.toString();
+    }
+
+    private static void addDetailLine(@NonNull StringBuilder lines, @NonNull String field,
+                                      @NonNull String value) {
+        addDetailChange(lines, field, null, value);
+    }
+
+    /** 追加一行「字段：值」或「字段：旧值 → 新值」，行间以 \n 分隔。 */
+    private static void addDetailChange(@NonNull StringBuilder lines, @NonNull String field,
+                                        @Nullable String from, @NonNull String to) {
+        if (lines.length() > 0) {
+            lines.append('\n');
+        }
+        lines.append(field).append("：");
+        if (from != null) {
+            lines.append(from).append(" → ");
+        }
+        lines.append(to);
+    }
+
+    /** 交易类型展示名。日志文本落库，与界面文案保持中文一致。 */
+    @NonNull
+    private static String typeLabel(int type) {
+        if (type == CategoryEntity.TYPE_INCOME) {
+            return "收入";
+        }
+        if (type == CategoryEntity.TYPE_TRANSFER) {
+            return "转账";
+        }
+        return "支出";
+    }
+
+    /** 分类展示名（icon + 名称）；转账无分类或已不可查时为「无」。 */
+    @NonNull
+    private String categoryLogLabel(@Nullable Long categoryId) {
+        if (categoryId == null || categoryId == 0L) {
+            return "无";
+        }
+        CategoryEntity category = database.categoryDao().getById(categoryId);
+        return category == null ? "无" : category.icon + " " + category.name;
+    }
+
+    /** 账户展示名（emoji + 名称），与编辑页账户下拉标签同风格。 */
+    @NonNull
+    private String accountLogLabel(@Nullable Long accountId) {
+        if (accountId == null || accountId == 0L) {
+            return "无";
+        }
+        AccountEntity account = database.accountDao().getById(accountId);
+        return account == null ? "无" : AccountTypes.emoji(account.type) + " " + account.name;
+    }
+
+    /** 业务日期展示为 yyyy-MM-dd，与日志时间戳风格一致且无歧义。 */
+    @NonNull
+    private static String dayLogLabel(long dayMillis) {
+        return String.format(Locale.US, "%04d-%02d-%02d",
+                DateUtil.yearOf(dayMillis), DateUtil.monthOf(dayMillis),
+                DateUtil.dayOfMonthOf(dayMillis));
+    }
+
+    @NonNull
+    private static String noteLogLabel(@Nullable String note) {
+        return note == null || note.isEmpty() ? "（无）" : note;
     }
 
     // ------------------------------------------------------------------
@@ -690,6 +856,8 @@ public class BookkeepingRepository {
             database.accountDao().clearCurrentLedger();
             database.categoryDao().clearCurrentLedger();
             database.userSettingsDao().deleteAll();
+            // 编辑日志描述的是恢复前的数据，随覆盖一并清空（该表不进备份）
+            database.transactionEditLogDao().deleteAll();
 
             // V3：恢复行保留备份中的 syncId（身份连续，云端 LWW 收敛）；
             // 旧备份缺 syncId 时补发；version/serverReceivedAt 归零后全量重推
@@ -1035,6 +1203,9 @@ public class BookkeepingRepository {
             transaction.serverReceivedAt = 0;
             transaction.isDeleted = false;
             database.transactionDao().insert(transaction);
+            // 周期生成的账单同样留创建日志，编辑记录页不出现「本该有却查无」的空档
+            appendEditLog(transaction.id, TransactionEditLogEntity.OP_CREATE,
+                    buildCreateDetail(transaction), now);
             enqueueSync(SyncEntityTypes.TRANSACTION, transaction.syncId, false);
             collectAccount(affectedAccounts, transaction.accountId);
         }

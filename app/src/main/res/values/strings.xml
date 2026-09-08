@@ -96,6 +96,13 @@
     <string name="edit_transfer_from_title">转出账户</string>
     <string name="edit_transfer_to_title">转入账户</string>
     <string name="edit_error_transfer_same">转出与转入不能是同一账户</string>
+    <!-- V3.3 新增：账单编辑记录（编辑页右上角三点菜单，仅编辑模式显示） -->
+    <string name="edit_menu_history">编辑记录</string>
+    <string name="cd_edit_history">查看账单编辑记录</string>
+    <string name="edit_history_title">编辑记录</string>
+    <string name="edit_history_empty">暂无编辑记录</string>
+    <string name="edit_history_op_create">创建账单</string>
+    <string name="edit_history_op_update">修改账单</string>
 
     <!-- ============ 图表页 ============ -->
     <string name="chart_title">图表</string>

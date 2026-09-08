@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 编辑账单页右上角三点菜单：查看当前账单的编辑记录（仅编辑模式挂载） -->
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <item
+        android:id="@+id/action_edit_history"
+        android:icon="@drawable/ic_more_vert"
+        android:iconTint="?attr/colorOnSurface"
+        android:title="@string/edit_menu_history"
+        android:contentDescription="@string/cd_edit_history"
+        app:showAsAction="always" />
+
+</menu>

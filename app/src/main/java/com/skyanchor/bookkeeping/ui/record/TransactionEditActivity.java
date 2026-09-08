@@ -129,6 +129,17 @@ public class TransactionEditActivity extends AppCompatActivity {
         binding.toolbar.setTitle(transactionId == 0L
                 ? R.string.edit_title_new : R.string.edit_title_edit);
         binding.toolbar.setNavigationOnClickListener(v -> finish());
+        // V3.3：编辑模式下右上角挂三点菜单，进入「编辑记录」（新增模式无历史可看，不挂）
+        if (transactionId != 0L) {
+            binding.toolbar.inflateMenu(R.menu.menu_transaction_edit);
+            binding.toolbar.setOnMenuItemClickListener(item -> {
+                if (item.getItemId() == R.id.action_edit_history) {
+                    TransactionHistoryActivity.start(this, transactionId);
+                    return true;
+                }
+                return false;
+            });
+        }
 
         restoreFormState(savedInstanceState);
         renderDate();
