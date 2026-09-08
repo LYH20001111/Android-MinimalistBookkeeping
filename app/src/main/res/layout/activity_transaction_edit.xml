@@ -246,13 +246,31 @@
 
             </com.google.android.material.textfield.TextInputLayout>
 
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/saveButton"
-                style="@style/Widget.App.Button.Primary"
+            <!-- V3.4：保存按钮右上角挂「内容已修改」小圆点，编辑已有账单且有字段变更时显示 -->
+            <FrameLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="@dimen/spacing_xl"
-                android:text="@string/action_save" />
+                android:layout_marginTop="@dimen/spacing_xl">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/saveButton"
+                    style="@style/Widget.App.Button.Primary"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/action_save" />
+
+                <View
+                    android:id="@+id/saveChangeDot"
+                    android:layout_width="@dimen/save_change_dot_size"
+                    android:layout_height="@dimen/save_change_dot_size"
+                    android:layout_gravity="top|end"
+                    android:layout_marginTop="@dimen/spacing_sm"
+                    android:layout_marginEnd="@dimen/spacing_sm"
+                    android:background="@drawable/bg_save_change_dot"
+                    android:contentDescription="@string/cd_save_change_dot"
+                    android:visibility="gone" />
+
+            </FrameLayout>
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/deleteButton"

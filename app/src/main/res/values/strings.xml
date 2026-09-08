@@ -103,6 +103,9 @@
     <string name="edit_history_empty">暂无编辑记录</string>
     <string name="edit_history_op_create">创建账单</string>
     <string name="edit_history_op_update">修改账单</string>
+    <!-- V3.4 新增：编辑已有账单的变更保护（保存按钮小圆点 + 保存前确认弹窗） -->
+    <string name="edit_change_confirm_title">确认保存以下修改？</string>
+    <string name="cd_save_change_dot">账单内容已修改，保存前请确认变更</string>
 
     <!-- ============ 图表页 ============ -->
     <string name="chart_title">图表</string>

@@ -4,6 +4,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.os.Bundle;
 import android.text.Editable;
+import android.text.TextUtils;
 import android.text.TextWatcher;
 import android.view.View;
 import android.widget.Toast;
@@ -36,6 +37,8 @@ import com.skyanchor.bookkeeping.util.InsetsUtil;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
+import java.util.Objects;
 
 /**
  * 记一笔 / 编辑账单。新增与编辑复用同一个 Activity，靠 {@link #EXTRA_TRANSACTION_ID} 区分。
@@ -93,6 +96,10 @@ public class TransactionEditActivity extends AppCompatActivity {
     /** 程序化切换类型开关时置位，防止监听器把已选分类清掉。 */
     private boolean updatingTypeUi;
 
+    /** 编辑模式下从库里读出的原始账单快照，变更检测的比对基准；新增模式恒为 null。 */
+    @Nullable
+    private TransactionItem sourceItem;
+
     @Nullable
     private String deleteMessage;
 
@@ -121,7 +128,10 @@ public class TransactionEditActivity extends AppCompatActivity {
         viewModel = new ViewModelProvider(this).get(TransactionEditViewModel.class);
         transactionId = getIntent().getLongExtra(EXTRA_TRANSACTION_ID, 0L);
 
-        categoryAdapter = new CategoryGridAdapter(category -> selectedCategoryId = category.id);
+        categoryAdapter = new CategoryGridAdapter(category -> {
+            selectedCategoryId = category.id;
+            updateChangeIndicator();
+        });
         binding.categoryGrid.setLayoutManager(new GridLayoutManager(this,
                 getResources().getInteger(R.integer.category_grid_span)));
         binding.categoryGrid.setAdapter(categoryAdapter);
@@ -159,6 +169,22 @@ public class TransactionEditActivity extends AppCompatActivity {
             public void afterTextChanged(Editable s) {
                 binding.amountLayout.setError(null);
                 updateAmountPreview();
+                updateChangeIndicator();
+            }
+        });
+
+        binding.noteInput.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {
+            }
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+            }
+
+            @Override
+            public void afterTextChanged(Editable s) {
+                updateChangeIndicator();
             }
         });
 
@@ -170,11 +196,13 @@ public class TransactionEditActivity extends AppCompatActivity {
             selectedCategoryId = 0L;
             categoryAdapter.setSelectedId(0L);
             viewModel.selectType(typeOfButton(checkedId));
+            updateChangeIndicator();
         });
 
         binding.accountInput.setOnItemClickListener((parent, view, position, id) -> {
             if (position >= 0 && position < accountList.size()) {
                 selectedAccountId = accountList.get(position).id;
+                updateChangeIndicator();
             }
         });
         binding.transferFromInput.setOnItemClickListener((parent, view, position, id) -> {
@@ -185,11 +213,13 @@ public class TransactionEditActivity extends AppCompatActivity {
                     selectedToAccountId = 0L;
                 }
                 renderTransferSelection();
+                updateChangeIndicator();
             }
         });
         binding.transferToInput.setOnItemClickListener((parent, view, position, id) -> {
             if (position >= 0 && position < accountList.size()) {
                 selectedToAccountId = accountList.get(position).id;
+                updateChangeIndicator();
             }
         });
 
@@ -305,6 +335,8 @@ public class TransactionEditActivity extends AppCompatActivity {
         renderAccountSelection();
         renderTransferSelection();
         renderFormVisibility();
+        // 默认账户可能纠正失效选择，重算一次变更态。
+        updateChangeIndicator();
     }
 
     /**
@@ -481,6 +513,7 @@ public class TransactionEditActivity extends AppCompatActivity {
         selectedHour = picker.getHour();
         selectedMinute = picker.getMinute();
         renderTime();
+        updateChangeIndicator();
     }
 
     /**
@@ -508,11 +541,14 @@ public class TransactionEditActivity extends AppCompatActivity {
         if (item == null) {
             return;
         }
+        sourceItem = item;
         deleteMessage = getString(R.string.record_delete_message,
                 item.displayIcon() + item.displayName(),
                 AmountUtil.formatSigned(item.amount, item.isIncome()));
         binding.deleteButton.setVisibility(View.VISIBLE);
         if (formApplied) {
+            // 重建 Activity：表单文本已由系统恢复，只补比对基准并重算变更态。
+            updateChangeIndicator();
             return;
         }
         formApplied = true;
@@ -534,6 +570,8 @@ public class TransactionEditActivity extends AppCompatActivity {
         renderAccountSelection();
         renderTransferSelection();
         updateAmountPreview();
+        // 初始态应无变更；若默认选中纠正了失效分类 / 账户，小圆点会如实亮起。
+        updateChangeIndicator();
     }
 
     private void showDeleteDialog() {
@@ -605,11 +643,177 @@ public class TransactionEditActivity extends AppCompatActivity {
             entity.transferAccountId = null;
         }
 
+        // V3.4：编辑已有账单且有字段变更时，先弹窗列出「旧值 → 新值」再落库，
+        // 防误触保存；无变更或新增模式直接保存。
+        List<String> changes = computeChanges();
+        if (!changes.isEmpty()) {
+            showChangeConfirmDialog(entity, changes);
+            return;
+        }
+        performSave(entity);
+    }
+
+    /** 保存前确认弹窗：逐条列出变更明细，确认后才真正写库。 */
+    private void showChangeConfirmDialog(@NonNull TransactionEntity entity,
+                                         @NonNull List<String> changes) {
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.edit_change_confirm_title)
+                .setMessage(TextUtils.join("\n", changes))
+                .setNegativeButton(R.string.action_cancel, null)
+                .setPositiveButton(R.string.action_save, (dialog, which) -> performSave(entity))
+                .show();
+    }
+
+    private void performSave(@NonNull TransactionEntity entity) {
         binding.saveButton.setEnabled(false);
         viewModel.save(entity, id -> {
             Toast.makeText(this, R.string.edit_saved, Toast.LENGTH_SHORT).show();
             finish();
         });
+    }
+
+    // ------------------------------------------------------------------
+    // 变更检测（V3.4）
+    //
+    // 与仓库侧编辑日志（buildUpdateDetail）同一套字段与「字段：旧值 → 新值」格式，
+    // 弹窗内容即落库日志的预览。仅编辑模式生效，新增模式恒为无变更。
+    // ------------------------------------------------------------------
+
+    /** 按保存按钮上的「内容已修改」小圆点亮 / 灭。 */
+    private void updateChangeIndicator() {
+        boolean changed = !computeChanges().isEmpty();
+        binding.saveChangeDot.setVisibility(changed ? View.VISIBLE : View.GONE);
+    }
+
+    /**
+     * 对比当前表单与原账单快照，返回逐字段的「字段：旧值 → 新值」变更行；
+     * 新增模式、快照未就绪或没有任何变化时返回空列表。
+     */
+    @NonNull
+    private List<String> computeChanges() {
+        List<String> changes = new ArrayList<>();
+        TransactionItem source = sourceItem;
+        if (transactionId == 0L || source == null || !formApplied) {
+            return changes;
+        }
+        Integer typeValue = viewModel.getType().getValue();
+        int type = typeValue == null ? CategoryEntity.TYPE_EXPENSE : typeValue;
+        long cents = AmountUtil.parseToCents(textOf(binding.amountInput.getText()));
+        boolean transfer = type == CategoryEntity.TYPE_TRANSFER;
+        boolean oldTransfer = source.isTransfer();
+
+        if (source.type != type) {
+            changes.add(changeLine("类型", typeLabel(source.type), typeLabel(type)));
+        }
+        // 金额非法（<= 0）时保存会被校验拦下，不产生误导性的变更行。
+        if (cents > 0L && source.amount != cents) {
+            changes.add(changeLine("金额",
+                    AmountUtil.format(source.amount), AmountUtil.format(cents)));
+        }
+        // 分类：转账双方都视为「无」（TransactionItem 的 categoryId 经 COALESCE 归 0）。
+        Long oldCategoryId = oldTransfer || source.categoryId == 0L ? null : source.categoryId;
+        Long newCategoryId = transfer ? null : selectedCategoryId;
+        if (!Objects.equals(oldCategoryId, newCategoryId)) {
+            changes.add(changeLine("分类",
+                    categoryLabelOf(oldCategoryId, source), selectedCategoryLabel()));
+        }
+        // 账户：转账语义下叫「转出账户」，纯支出 / 收入叫「账户」，与编辑日志一致。
+        Long oldAccountId = source.accountId;
+        Long newAccountId = transfer ? selectedFromAccountId : selectedAccountId;
+        if (!Objects.equals(oldAccountId, zeroToNull(newAccountId))) {
+            String field = oldTransfer || transfer ? "转出账户" : "账户";
+            changes.add(changeLine(field,
+                    accountChangeLabel(oldAccountId, source.accountName),
+                    accountChangeLabel(newAccountId, null)));
+        }
+        Long oldTransferAccountId = source.transferAccountId;
+        Long newTransferAccountId = transfer ? selectedToAccountId : null;
+        if (!Objects.equals(oldTransferAccountId, zeroToNull(newTransferAccountId))) {
+            changes.add(changeLine("转入账户",
+                    accountChangeLabel(oldTransferAccountId, source.transferAccountName),
+                    accountChangeLabel(newTransferAccountId, null)));
+        }
+        if (source.date != selectedDate) {
+            changes.add(changeLine("日期",
+                    dayLogLabel(source.date), dayLogLabel(selectedDate)));
+        }
+        String newTime = DateUtil.formatHourMinute(selectedHour, selectedMinute);
+        if (!Objects.equals(source.time, newTime)) {
+            changes.add(changeLine("时间", source.time, newTime));
+        }
+        String oldNote = source.note == null ? "" : source.note;
+        String newNote = textOf(binding.noteInput.getText()).trim();
+        if (!oldNote.equals(newNote)) {
+            changes.add(changeLine("备注", noteLabel(oldNote), noteLabel(newNote)));
+        }
+        return changes;
+    }
+
+    /** 追加一行「字段：旧值 → 新值」。 */
+    @NonNull
+    private static String changeLine(@NonNull String field,
+                                     @NonNull String from, @NonNull String to) {
+        return field + "：" + from + " → " + to;
+    }
+
+    @NonNull
+    private String typeLabel(int type) {
+        if (type == CategoryEntity.TYPE_INCOME) {
+            return getString(R.string.edit_type_income);
+        }
+        if (type == CategoryEntity.TYPE_TRANSFER) {
+            return getString(R.string.edit_type_transfer);
+        }
+        return getString(R.string.edit_type_expense);
+    }
+
+    /** 旧分类展示名（icon + 名称），复用联表快照里的名称；无分类时为「无」。 */
+    @NonNull
+    private static String categoryLabelOf(@Nullable Long categoryId,
+                                          @NonNull TransactionItem source) {
+        if (categoryId == null || categoryId == 0L || source.displayName().isEmpty()) {
+            return "无";
+        }
+        return source.displayIcon() + " " + source.displayName();
+    }
+
+    /** 新分类展示名，取自当前网格选中项。 */
+    @NonNull
+    private String selectedCategoryLabel() {
+        CategoryEntity category = categoryAdapter.getSelectedCategory();
+        return category == null ? "无" : category.icon + " " + category.name;
+    }
+
+    /** 账户展示名：优先用当前候选列表标签（含已归档徽标），查不到时退回联表快照名。 */
+    @NonNull
+    private String accountChangeLabel(@Nullable Long accountId, @Nullable String fallbackName) {
+        if (accountId == null || accountId == 0L) {
+            return "无";
+        }
+        String label = labelOf(accountId);
+        if (!label.isEmpty()) {
+            return label;
+        }
+        return fallbackName == null || fallbackName.isEmpty() ? "无" : fallbackName;
+    }
+
+    /** 业务日期展示为 yyyy-MM-dd，与编辑日志的 dayLogLabel 风格一致。 */
+    @NonNull
+    private static String dayLogLabel(long dayMillis) {
+        return String.format(Locale.US, "%04d-%02d-%02d",
+                DateUtil.yearOf(dayMillis), DateUtil.monthOf(dayMillis),
+                DateUtil.dayOfMonthOf(dayMillis));
+    }
+
+    @NonNull
+    private static String noteLabel(@Nullable String note) {
+        return note == null || note.isEmpty() ? "（无）" : note;
+    }
+
+    /** 0L 与 null 语义等价（未选），统一成 null 便于比较。 */
+    @Nullable
+    private static Long zeroToNull(@Nullable Long value) {
+        return value == null || value == 0L ? null : value;
     }
 
     @NonNull

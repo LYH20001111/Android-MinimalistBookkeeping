@@ -84,5 +84,7 @@
     <dimen name="chart_edge_padding">12dp</dimen>
     <!-- V2.1 趋势图相邻 X 轴标签的最小像素间距，不足时降采样标签而不是缩小字体 -->
     <dimen name="chart_label_min_gap">16dp</dimen>
+    <!-- V3.4 编辑账单：保存按钮右上角「内容已修改」小圆点边长 -->
+    <dimen name="save_change_dot_size">12dp</dimen>
 
 </resources>

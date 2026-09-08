@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- V3.4：编辑已有账单时的「内容已修改」小圆点，warning 色圆点 + surface 色描边，
+     保证在主色按钮（浅深色两种主题）上都有对比 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="oval">
+    <solid android:color="@color/warning" />
+    <stroke
+        android:width="2dp"
+        android:color="@color/surface" />
+</shape>
