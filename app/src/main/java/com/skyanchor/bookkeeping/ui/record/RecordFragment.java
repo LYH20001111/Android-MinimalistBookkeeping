@@ -39,6 +39,9 @@ public class RecordFragment extends Fragment {
     private RecordViewModel viewModel;
     private TransactionListAdapter adapter;
 
+    /** 上一次渲染的业务日期，Long.MIN_VALUE 表示本视图尚未渲染过。 */
+    private long renderedBusinessDate = Long.MIN_VALUE;
+
     public static RecordFragment newInstance() {
         return new RecordFragment();
     }
@@ -120,7 +123,18 @@ public class RecordFragment extends Fragment {
         binding.dayBalanceValue.setTextColor(ContextCompat.getColor(requireContext(),
                 balance < 0L ? R.color.danger : R.color.text_primary));
 
-        adapter.submitList(state.rows);
+        // 切换业务日期后把列表定位回顶部：所选日期的账单在列表最上方，
+        // 不主动归位的话 RecyclerView 会锚在旧日期的滚动位置上。
+        // 首次渲染不干预，保留旋转/重建时框架恢复的滚动位置。
+        boolean dateChanged = renderedBusinessDate != Long.MIN_VALUE
+                && state.businessDate != renderedBusinessDate;
+        renderedBusinessDate = state.businessDate;
+
+        adapter.submitList(state.rows, () -> {
+            if (dateChanged && binding != null) {
+                binding.transactionList.scrollToPosition(0);
+            }
+        });
         boolean empty = state.isEmpty();
         binding.transactionList.setVisibility(empty ? View.GONE : View.VISIBLE);
         binding.emptyState.getRoot().setVisibility(empty ? View.VISIBLE : View.GONE);
