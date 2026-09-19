@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- V4.0 退款流水单行：状态标签 + 金额 + 时间 + 原因；未取消的行给「编辑 / 标记到账 / 撤销」三个操作 -->
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    style="@style/Widget.App.Card"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginBottom="@dimen/spacing_md">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/refundState"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_pill"
+                android:paddingStart="@dimen/spacing_sm"
+                android:paddingTop="@dimen/spacing_xxs"
+                android:paddingEnd="@dimen/spacing_sm"
+                android:paddingBottom="@dimen/spacing_xxs"
+                android:textAppearance="@style/TextAppearance.App.Caption"
+                tools:text="待到账" />
+
+            <TextView
+                android:id="@+id/refundTime"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="@dimen/spacing_sm"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textAppearance="@style/TextAppearance.App.Caption"
+                android:textColor="@color/text_tertiary"
+                tools:text="申请于 2026-09-19 14:20" />
+
+            <TextView
+                android:id="@+id/refundAmount"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="@dimen/spacing_sm"
+                android:textAppearance="@style/TextAppearance.App.Body"
+                android:textStyle="bold"
+                tools:text="-¥10.00" />
+
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/refundReason"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/spacing_xxs"
+            android:ellipsize="end"
+            android:maxLines="2"
+            android:textAppearance="@style/TextAppearance.App.Secondary"
+            android:visibility="gone"
+            tools:text="原因：尺码不合适" />
+
+        <LinearLayout
+            android:id="@+id/refundActions"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/spacing_sm"
+            android:gravity="end"
+            android:orientation="horizontal"
+            android:visibility="gone">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/refundActionEdit"
+                style="@style/Widget.App.Button.Quiet"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/refund_record_action_edit" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/refundActionReceived"
+                style="@style/Widget.App.Button.Quiet"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/refund_record_action_mark_received" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/refundActionCancel"
+                style="@style/Widget.App.Button.Quiet"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/refund_record_action_cancel"
+                android:textColor="@color/danger" />
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+</com.google.android.material.card.MaterialCardView>

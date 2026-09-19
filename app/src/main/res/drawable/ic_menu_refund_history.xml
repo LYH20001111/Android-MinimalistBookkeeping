@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+
+    <!-- 文档外轮廓 -->
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#151A22"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="
+            M5.0,3.7
+            L13.7,3.7
+            C14.6,3.7 15.3,4.4 15.3,5.3
+            L15.3,10.8
+            M5.0,3.7
+            C4.2,3.7 3.6,4.4 3.6,5.2
+            L3.6,17.5
+            C3.6,18.4 4.3,19.1 5.2,19.1
+            L10.9,19.1" />
+
+    <!-- 文档内容 -->
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#151A22"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:pathData="
+            M6.5,8.2
+            L12.2,8.2
+            M6.5,11.3
+            L12.2,11.3
+            M6.5,14.4
+            L9.8,14.4" />
+
+    <!-- 时钟 -->
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#151A22"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:pathData="
+            M17.1,11.7
+            A4.7,4.7 0,1 1,17.1,21.1
+            A4.7,4.7 0,1 1,17.1,11.7 Z" />
+
+    <!-- 时针/分针 -->
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#151A22"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:pathData="
+            M17.1,14.2
+            L17.1,16.5
+            L18.7,17.5" />
+
+</vector>

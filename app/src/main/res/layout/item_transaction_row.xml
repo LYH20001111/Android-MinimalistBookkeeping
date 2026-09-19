@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:background="?attr/selectableItemBackground"
@@ -34,13 +35,38 @@
         android:layout_weight="1"
         android:orientation="vertical">
 
-        <TextView
-            android:id="@+id/rowTitle"
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:textAppearance="@style/TextAppearance.App.Body" />
+            android:baselineAligned="false"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/rowTitle"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textAppearance="@style/TextAppearance.App.Body" />
+
+            <!-- V4.0 退款角标：金额仍显示原额，角标说明净额口径 -->
+            <TextView
+                android:id="@+id/rowRefundBadge"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="@dimen/spacing_xs"
+                android:background="@drawable/bg_pill"
+                android:paddingStart="@dimen/spacing_sm"
+                android:paddingTop="@dimen/spacing_xxs"
+                android:paddingEnd="@dimen/spacing_sm"
+                android:paddingBottom="@dimen/spacing_xxs"
+                android:textAppearance="@style/TextAppearance.App.Caption"
+                android:visibility="gone"
+                tools:text="@string/refund_badge_pending" />
+
+        </LinearLayout>
 
         <TextView
             android:id="@+id/rowNote"

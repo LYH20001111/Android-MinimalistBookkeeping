@@ -21,9 +21,9 @@ import java.util.Map;
 @Component
 public class ApiVersionFilter extends OncePerRequestFilter {
 
-    /** V3.2：协议升级到 2（账本级隔离与共享，基线第 10 章）；V3.1 旧客户端将收到 VERSION_MISMATCH。 */
-    public static final int API_VERSION = 2;
-    public static final int SYNC_PROTOCOL_VERSION = 2;
+    /** V4.0：协议升级到 3（新增退款流水）；V3.2 及更早客户端（协议 2）将收到 VERSION_MISMATCH。 */
+    public static final int API_VERSION = 3;
+    public static final int SYNC_PROTOCOL_VERSION = 3;
 
     private static final String PREFIX = "/api/v1/";
     private static final String BROWSER_VERIFY_PATH = "/api/v1/auth/verify-email";

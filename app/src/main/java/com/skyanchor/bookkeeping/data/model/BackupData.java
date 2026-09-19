@@ -6,6 +6,7 @@ import com.skyanchor.bookkeeping.data.entity.AccountEntity;
 import com.skyanchor.bookkeeping.data.entity.BudgetEntity;
 import com.skyanchor.bookkeeping.data.entity.CategoryEntity;
 import com.skyanchor.bookkeeping.data.entity.RecurringTransactionEntity;
+import com.skyanchor.bookkeeping.data.entity.RefundRecordEntity;
 import com.skyanchor.bookkeeping.data.entity.TransactionEntity;
 import com.skyanchor.bookkeeping.data.entity.UserSettingsEntity;
 
@@ -16,7 +17,8 @@ import java.util.List;
  * 一份本地数据快照（V2 新增，开发计划 Phase 7）：备份时的全部 V2 本地数据。
  *
  * <p>实体全部保留原始 id，恢复时按原 id 重插，跨表引用（交易 → 分类 / 账户、
- * 预算 → 分类、周期账单 → 分类 / 账户）才不会断裂。
+ * 预算 → 分类、周期账单 → 分类 / 账户、退款 → 交易）才不会断裂。
+ * 账单上的退款累计列是缓存，恢复后一律按 {@link #refunds} 重算，不信任备份值。
  */
 public final class BackupData {
 
@@ -31,6 +33,10 @@ public final class BackupData {
 
     @Nullable
     public List<TransactionEntity> transactions = new ArrayList<>();
+
+    /** V4.0 退款流水；旧版本备份缺该段时为空，即「该账本没有退款」。 */
+    @Nullable
+    public List<RefundRecordEntity> refunds = new ArrayList<>();
 
     @Nullable
     public List<BudgetEntity> budgets = new ArrayList<>();

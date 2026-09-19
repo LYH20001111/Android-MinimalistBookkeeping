@@ -19,6 +19,7 @@ import com.skyanchor.bookkeeping.data.repository.BookkeepingRepository;
 import com.skyanchor.bookkeeping.util.Callback;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -43,6 +44,27 @@ public class TransactionEditViewModel extends AndroidViewModel {
 
     /** 编辑模式下从库里读出的原始账单，跨配置变更存活，避免重复回读与反复覆盖表单。 */
     private final MutableLiveData<TransactionItem> source = new MutableLiveData<>();
+
+    /**
+     * V4.1：待保存的退款草稿。点「确认退款」只写这里，账单保存成功后才逐笔落库；
+     * 未保存就返回即随之丢弃。放在 ViewModel 是为了旋转屏幕等配置变更不丢草稿。
+     */
+    private final MutableLiveData<List<DraftRefund>> draftRefunds =
+            new MutableLiveData<>(Collections.emptyList());
+
+    /** 一条尚未落库的退款：与 {@code requestRefund} 的三个入参一一对应。 */
+    public static final class DraftRefund {
+        public final long amount;
+        @Nullable
+        public final String reason;
+        public final boolean toReceived;
+
+        DraftRefund(long amount, @Nullable String reason, boolean toReceived) {
+            this.amount = amount;
+            this.reason = reason;
+            this.toReceived = toReceived;
+        }
+    }
 
     public TransactionEditViewModel(@NonNull Application application) {
         super(application);
@@ -127,5 +149,70 @@ public class TransactionEditViewModel extends AndroidViewModel {
 
     public void delete(long id, @Nullable Callback<Boolean> callback) {
         repository.deleteTransaction(id, callback);
+    }
+
+    /** V4.0：发起一笔退款，回调告知是否受理（额度不足 / 非支出返回 false）。 */
+    public void requestRefund(long transactionId, long amountCents, @Nullable String reason,
+                              boolean toReceived, @Nullable Callback<Boolean> callback) {
+        repository.requestRefund(transactionId, amountCents, reason, toReceived, callback);
+    }
+
+    /** 退款生效后强制回读原账单，刷新可退额度与金额明细（{@link #loadTransaction} 会短路缓存）。 */
+    public void reloadSource(long id) {
+        repository.loadTransaction(id, item -> {
+            if (item != null) {
+                source.setValue(item);
+            }
+        });
+    }
+
+    // ------------------------------------------------------------------
+    // V4.1：退款草稿（确认退款只入草稿，保存账单时才落库）
+    // ------------------------------------------------------------------
+
+    public LiveData<List<DraftRefund>> getDraftRefunds() {
+        return draftRefunds;
+    }
+
+    /** 当前草稿快照，供额度计算与保存时提交（不返回可变引用）。 */
+    @NonNull
+    public List<DraftRefund> currentDrafts() {
+        List<DraftRefund> value = draftRefunds.getValue();
+        return value == null ? Collections.emptyList() : new ArrayList<>(value);
+    }
+
+    public void addDraftRefund(long amountCents, @Nullable String reason, boolean toReceived) {
+        List<DraftRefund> next = currentDrafts();
+        next.add(new DraftRefund(amountCents, reason, toReceived));
+        draftRefunds.setValue(next);
+    }
+
+    public void clearDraftRefunds() {
+        if (!currentDrafts().isEmpty()) {
+            draftRefunds.setValue(Collections.emptyList());
+        }
+    }
+
+    /** 草稿中「已到账」部分的合计，参与净额与额度（与真正落库后的口径一致）。 */
+    public long draftReceivedTotal() {
+        return draftTotal(true);
+    }
+
+    /** 草稿中「待到账」部分的合计，只占额度、不冲减净额。 */
+    public long draftPendingTotal() {
+        return draftTotal(false);
+    }
+
+    private long draftTotal(boolean received) {
+        long sum = 0L;
+        List<DraftRefund> value = draftRefunds.getValue();
+        if (value != null) {
+            for (DraftRefund draft : value) {
+                if (draft.toReceived == received) {
+                    sum += draft.amount;
+                }
+            }
+        }
+        return sum;
     }
 }

@@ -128,5 +128,15 @@ public class TransactionEntity {
     @ColumnInfo(name = "ledger_id", defaultValue = "1")
     public long ledgerId = 1;
 
+    // ===== V4.0 退款（基线第 10、11 章）=====
+
+    /** 已到账退款累计，单位分；仅支出可非零，统计与余额按 amount - refundedAmount 取净额。 */
+    @ColumnInfo(name = "refunded_amount", defaultValue = "0")
+    public long refundedAmount;
+
+    /** 待到账退款累计，单位分；不冲减统计与余额，到账后转入 {@link #refundedAmount}。 */
+    @ColumnInfo(name = "pending_refund_amount", defaultValue = "0")
+    public long pendingRefundAmount;
+
 }
 

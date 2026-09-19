@@ -13,6 +13,7 @@ import com.skyanchor.bookkeeping.data.database.AppDatabase;
 import com.skyanchor.bookkeeping.data.database.TransactionDao;
 import com.skyanchor.bookkeeping.data.entity.AccountEntity;
 import com.skyanchor.bookkeeping.data.entity.CategoryEntity;
+import com.skyanchor.bookkeeping.data.entity.RefundRecordEntity;
 import com.skyanchor.bookkeeping.data.entity.TransactionEntity;
 
 import org.junit.After;
@@ -223,5 +224,84 @@ public class AccountBalanceConsistencyTest {
         assertEquals(35_00L, transactionDao.getEntityById(expenseId1).amount);
         transactionDao.deleteById(expenseId1);
         transactionDao.deleteById(expenseId2);
+    }
+
+    // ------------------------------------------------------------------
+    // V4.0：退款只在「已到账」时冲减余额（基线第 12、13 章，需真机 / 模拟器）
+    // ------------------------------------------------------------------
+
+    /** 直接写退款流水，复现仓库层「改 refund_record → 重算账单累计 → 重算余额」的写序。 */
+    private long insertRefund(long transactionId, long amount, String state, long at) {
+        RefundRecordEntity refund = new RefundRecordEntity();
+        refund.syncId = "refund-" + transactionId + "-" + amount + "-" + state;
+        refund.transactionId = transactionId;
+        refund.ledgerId = 1L;
+        refund.amount = amount;
+        refund.state = state;
+        refund.requestedAt = at;
+        if (RefundRecordEntity.STATE_RECEIVED.equals(state)) {
+            refund.receivedAt = Long.valueOf(at);
+        }
+        refund.createdAt = at;
+        refund.updatedAt = at;
+        return db.refundRecordDao().insert(refund);
+    }
+
+    /** 按仓库层收尾顺序把退款流水落到余额上：重算账单累计列，再重算账户余额缓存。 */
+    private void settle(long accountId, long at) {
+        assertEquals(1, transactionDao.recomputeRefundTotals());
+        accountDao.updateBalance(accountId, useCase.calculate(accountId), at);
+    }
+
+    /**
+     * 待到账只占额度、已到账才冲减、取消即还原；
+     * 同时固定 SQL 投影与 Java 重算两条净额实现恒等，且账单原始金额不被退款改写。
+     */
+    @Test
+    public void refund_reducesBalanceOnlyWhenReceived() {
+        long expenseId = insertTransaction(CategoryEntity.TYPE_EXPENSE, 100_00L, cashId, null);
+        assertInvariant(cashId, 0L); // 初始 100 元，支出 100 元
+
+        // 1) 待到账 30 元：只占额度，余额一分不动
+        long pendingId = insertRefund(expenseId, 30_00L, RefundRecordEntity.STATE_PENDING, 2L);
+        settle(cashId, 2L);
+        assertInvariant(cashId, 0L);
+        assertEquals(0L, transactionDao.getEntityById(expenseId).refundedAmount);
+        assertEquals(30_00L, transactionDao.getEntityById(expenseId).pendingRefundAmount);
+
+        // 2) 标记到账：支出净额 100 → 70，余额回升 30 元
+        RefundRecordEntity pending = db.refundRecordDao().getById(pendingId);
+        pending.state = RefundRecordEntity.STATE_RECEIVED;
+        pending.receivedAt = Long.valueOf(3L);
+        pending.updatedAt = 3L;
+        db.refundRecordDao().update(pending);
+        settle(cashId, 3L);
+        assertInvariant(cashId, 30_00L);
+        assertEquals(30_00L, transactionDao.getEntityById(expenseId).refundedAmount);
+        assertEquals(0L, transactionDao.getEntityById(expenseId).pendingRefundAmount);
+
+        // 3) 再退 40 元且直接到账：累计已退 70，净额 30
+        long lastId = insertRefund(expenseId, 40_00L, RefundRecordEntity.STATE_RECEIVED, 4L);
+        settle(cashId, 4L);
+        assertInvariant(cashId, 70_00L);
+
+        // 4) 退款只改两个累计列，账单原始金额仍是 100 元（列表显示原额、统计使用净额）
+        TransactionEntity afterRefunds = transactionDao.getEntityById(expenseId);
+        assertEquals(100_00L, afterRefunds.amount);
+        assertEquals(70_00L, afterRefunds.refundedAmount);
+        assertEquals(0L, afterRefunds.pendingRefundAmount);
+        assertEquals("SQL 净额聚合必须与余额投影同口径",
+                30_00L, transactionDao.sumByTypeAndAccount(CategoryEntity.TYPE_EXPENSE, cashId));
+
+        // 5) 取消那笔 40 元已到账退款：流水保留为 CANCELLED，不再计入累计，余额回落到 30 元
+        RefundRecordEntity cancellable = db.refundRecordDao().getById(lastId);
+        cancellable.state = RefundRecordEntity.STATE_CANCELLED;
+        cancellable.receivedAt = null;
+        cancellable.updatedAt = 5L;
+        db.refundRecordDao().update(cancellable);
+        settle(cashId, 5L);
+        assertInvariant(cashId, 30_00L);
+        assertEquals(30_00L, transactionDao.getEntityById(expenseId).refundedAmount);
+        assertEquals(2, db.refundRecordDao().getByTransaction(expenseId).size());
     }
 }

@@ -4,9 +4,9 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 
 /**
- * 同步协议统一载荷（Sync Protocol Version 1）。
+ * 同步协议统一载荷（Sync Protocol Version 3）。
  *
- * <p>六个实体共用一个超集 DTO，按 entityType 取用对应字段，其余为 null——
+ * <p>七个实体共用一个超集 DTO，按 entityType 取用对应字段，其余为 null——
  * 协议向前加字段不破坏双方解析。引用字段一律是对方的 syncId（跨设备稳定身份），
  * 由客户端与本地自增 id 互转；预算的总预算哨兵在协议层是 categorySyncId=null/""。
  * 金额单位「分」（long），时间一律 epoch millis（long）。
@@ -51,6 +51,15 @@ public class SyncPayload {
     public String currency;
     /** 账本所有者的服务器用户 id：仅由服务端下发，客户端不参与裁决。 */
     public Long ownerUserId;
+    // ===== Refund（V4.0，entityType=REFUND 专用；amount/note 复用上方字段） =====
+    /** 所属账单的 syncId：服务端按它做账本内引用校验。 */
+    public String transactionSyncId;
+    /** PENDING / RECEIVED / CANCELLED。 */
+    public String state;
+    public String reason;
+    public Long requestedAt;
+    /** 到账时间；未到账与已撤销为 null。 */
+    public Long receivedAt;
     // ===== 通用 =====
     public Long clientUpdatedAt;
     public Boolean isDeleted;

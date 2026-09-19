@@ -97,6 +97,137 @@
 
             </com.google.android.material.textfield.TextInputLayout>
 
+            <!-- V4.0 金额明细：仅在有退款时出现，解释「列表原额」与「统计净额」的差额。
+                 V4.1 改为卡片 + 左标题右数值，「实际支付」用分隔线单独收尾。 -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/amountDetail"
+                style="@style/Widget.App.Card"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/spacing_sm"
+                android:visibility="gone">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/edit_amount_detail_title"
+                        android:textAppearance="@style/TextAppearance.App.Secondary"
+                        android:textColor="@color/text_primary"
+                        android:textStyle="bold" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/spacing_sm"
+                        android:baselineAligned="false"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="@string/edit_amount_origin"
+                            android:textAppearance="@style/TextAppearance.App.Secondary"
+                            android:textColor="@color/text_secondary" />
+
+                        <TextView
+                            android:id="@+id/amountDetailOrigin"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textAppearance="@style/TextAppearance.App.Secondary"
+                            android:textColor="@color/text_secondary" />
+
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:id="@+id/amountDetailRefundedRow"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/spacing_xs"
+                        android:baselineAligned="false"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="@string/edit_amount_refunded"
+                            android:textAppearance="@style/TextAppearance.App.Secondary"
+                            android:textColor="@color/success" />
+
+                        <TextView
+                            android:id="@+id/amountDetailRefunded"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textAppearance="@style/TextAppearance.App.Secondary"
+                            android:textColor="@color/success" />
+
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:id="@+id/amountDetailPendingRow"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/spacing_xs"
+                        android:baselineAligned="false"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="@string/edit_amount_pending"
+                            android:textAppearance="@style/TextAppearance.App.Secondary"
+                            android:textColor="@color/warning" />
+
+                        <TextView
+                            android:id="@+id/amountDetailPending"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textAppearance="@style/TextAppearance.App.Secondary"
+                            android:textColor="@color/warning" />
+
+                    </LinearLayout>
+
+                    <View
+                        style="@style/AppDivider"
+                        android:layout_marginTop="@dimen/spacing_sm" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/spacing_sm"
+                        android:baselineAligned="false"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="@string/edit_amount_net"
+                            android:textAppearance="@style/TextAppearance.App.Body"
+                            android:textColor="@color/text_primary"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/amountDetailNet"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textAppearance="@style/TextAppearance.App.Body"
+                            android:textColor="@color/text_primary"
+                            android:textStyle="bold" />
+
+                    </LinearLayout>
+
+                </LinearLayout>
+
+            </com.google.android.material.card.MaterialCardView>
+
             <TextView
                 android:id="@+id/categoryTitle"
                 android:layout_width="match_parent"

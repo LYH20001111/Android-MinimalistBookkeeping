@@ -43,6 +43,11 @@
             android:name=".ui.record.TransactionHistoryActivity"
             android:exported="false"
             android:parentActivityName=".MainActivity" />
+        <!-- V4.0：账单退款记录（编辑账单页右上角菜单进入） -->
+        <activity
+            android:name=".ui.record.RefundRecordActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity" />
         <activity
             android:name=".ui.category.CategoryManageActivity"
             android:exported="false"

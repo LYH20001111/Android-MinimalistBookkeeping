@@ -15,6 +15,7 @@ public class SyncRowRepository {
     private final CategoryRowRepository categoryRepository;
     private final AccountRowRepository accountRepository;
     private final TransactionRowRepository transactionRepository;
+    private final RefundRowRepository refundRepository;
     private final BudgetRowRepository budgetRepository;
     private final RecurringRowRepository recurringRepository;
     private final SyncChangeRepository changeRepository;
@@ -24,6 +25,7 @@ public class SyncRowRepository {
     public SyncRowRepository(CategoryRowRepository categoryRepository,
                              AccountRowRepository accountRepository,
                              TransactionRowRepository transactionRepository,
+                             RefundRowRepository refundRepository,
                              BudgetRowRepository budgetRepository,
                              RecurringRowRepository recurringRepository,
                              SyncChangeRepository changeRepository,
@@ -31,6 +33,7 @@ public class SyncRowRepository {
         this.categoryRepository = categoryRepository;
         this.accountRepository = accountRepository;
         this.transactionRepository = transactionRepository;
+        this.refundRepository = refundRepository;
         this.budgetRepository = budgetRepository;
         this.recurringRepository = recurringRepository;
         this.changeRepository = changeRepository;
@@ -42,6 +45,7 @@ public class SyncRowRepository {
         categoryRepository.deleteAllByUserId(userId);
         accountRepository.deleteAllByUserId(userId);
         transactionRepository.deleteAllByUserId(userId);
+        refundRepository.deleteAllByUserId(userId);
         budgetRepository.deleteAllByUserId(userId);
         recurringRepository.deleteAllByUserId(userId);
         changeRepository.deleteAllByUserId(userId);
@@ -54,6 +58,7 @@ public class SyncRowRepository {
         categoryRepository.deleteAllByLedgerId(ledgerId);
         accountRepository.deleteAllByLedgerId(ledgerId);
         transactionRepository.deleteAllByLedgerId(ledgerId);
+        refundRepository.deleteAllByLedgerId(ledgerId);
         budgetRepository.deleteAllByLedgerId(ledgerId);
         recurringRepository.deleteAllByLedgerId(ledgerId);
         changeRepository.deleteAllByLedgerId(ledgerId);

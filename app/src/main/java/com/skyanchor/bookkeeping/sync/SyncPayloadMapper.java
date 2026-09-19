@@ -9,6 +9,7 @@ import com.skyanchor.bookkeeping.data.entity.BudgetEntity;
 import com.skyanchor.bookkeeping.data.entity.CategoryEntity;
 import com.skyanchor.bookkeeping.data.entity.LedgerEntity;
 import com.skyanchor.bookkeeping.data.entity.RecurringTransactionEntity;
+import com.skyanchor.bookkeeping.data.entity.RefundRecordEntity;
 import com.skyanchor.bookkeeping.data.entity.SyncEntityTypes;
 import com.skyanchor.bookkeeping.data.entity.TransactionEntity;
 import com.skyanchor.bookkeeping.data.remote.ApiDtos;
@@ -162,6 +163,35 @@ public final class SyncPayloadMapper {
         return payload;
     }
 
+    // ===== Refund（V4.0：退款是资金事实，随账单参与同步） =====
+
+    /** 为尚未持有 syncId 的退款行生成 UUID。 */
+    public static void ensureSyncId(@NonNull RefundRecordEntity entity) {
+        if (entity.syncId == null || entity.syncId.isEmpty()) {
+            entity.syncId = UUID.randomUUID().toString();
+        }
+    }
+
+    /**
+     * 退款 → 载荷。账单引用翻译成 syncId；账单已被物理清除时翻译为 null，
+     * 由服务器侧引用校验拒收，而不是静默推送一个悬挂引用。
+     */
+    @NonNull
+    public static ApiDtos.SyncPayload toPayload(@NonNull RefundRecordEntity entity,
+                                                @NonNull AppDatabase db) {
+        ApiDtos.SyncPayload payload = new ApiDtos.SyncPayload();
+        payload.transactionSyncId = syncIdOfTransaction(db, entity.transactionId);
+        payload.amount = entity.amount;
+        payload.state = entity.state;
+        payload.reason = entity.reason;
+        payload.requestedAt = entity.requestedAt;
+        payload.receivedAt = entity.receivedAt;
+        payload.clientUpdatedAt = entity.updatedAt;
+        payload.isDeleted = entity.isDeleted;
+        payload.deletedAt = entity.deletedAt;
+        return payload;
+    }
+
     // ===== Ledger（V3.2 基线第 3.2 章：账本自身走同步通道）=====
 
     /** 为尚未持有 syncId 的账本行生成 UUID。 */
@@ -217,7 +247,24 @@ public final class SyncPayloadMapper {
         return account == null ? null : account.id;
     }
 
-    /** Push 批次的实体处理顺序：账本 → 分类 → 账户 → 交易 → 预算 → 周期（降低悬挂引用）。 */
+    @Nullable
+    public static String syncIdOfTransaction(@NonNull AppDatabase db, long transactionId) {
+        TransactionEntity transaction = db.transactionDao().getEntityById(transactionId);
+        return transaction == null ? null : transaction.syncId;
+    }
+
+    /** 账单 syncId → 本地行 id；含软删账单（回收站里的账单仍持有其退款）。 */
+    @Nullable
+    public static Long localTransactionId(@NonNull AppDatabase db,
+                                          @Nullable String transactionSyncId) {
+        if (transactionSyncId == null || transactionSyncId.isEmpty()) {
+            return null;
+        }
+        TransactionEntity transaction = db.transactionDao().getBySyncId(transactionSyncId);
+        return transaction == null ? null : transaction.id;
+    }
+
+    /** Push 批次的实体处理顺序：账本 → 分类 → 账户 → 交易 → 退款 → 预算 → 周期（降低悬挂引用）。 */
     public static int orderOf(@NonNull String entityType) {
         switch (entityType) {
             case SyncEntityTypes.LEDGER:
@@ -228,12 +275,14 @@ public final class SyncPayloadMapper {
                 return 1;
             case SyncEntityTypes.TRANSACTION:
                 return 2;
-            case SyncEntityTypes.BUDGET:
+            case SyncEntityTypes.REFUND:
                 return 3;
-            case SyncEntityTypes.RECURRING:
+            case SyncEntityTypes.BUDGET:
                 return 4;
-            default:
+            case SyncEntityTypes.RECURRING:
                 return 5;
+            default:
+                return 6;
         }
     }
 }

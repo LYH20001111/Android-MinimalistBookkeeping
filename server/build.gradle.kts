@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "com.skyanchor"
-version = "3.1.0"  // 与 common/ServerInfo.SERVER_VERSION 保持一致
+version = "4.0.0"  // 与 common/ServerInfo.SERVER_VERSION 保持一致
 
 java {
     toolchain {

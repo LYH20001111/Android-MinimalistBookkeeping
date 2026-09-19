@@ -27,7 +27,7 @@ echo   the App sync center AND the app.base-url line below.
 echo ============================================================
 echo.
 
-java -jar build\libs\bookkeeping-sync-server-3.1.0.jar --spring.datasource.url="jdbc:h2:file:./data/bookkeeping;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;CASE_INSENSITIVE_IDENTIFIERS=TRUE;DB_CLOSE_ON_EXIT=FALSE" --app.base-url="http://192.168.0.2:8080"
+java -jar build\libs\bookkeeping-sync-server-4.0.0.jar --spring.datasource.url="jdbc:h2:file:./data/bookkeeping;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;CASE_INSENSITIVE_IDENTIFIERS=TRUE;DB_CLOSE_ON_EXIT=FALSE" --app.base-url="http://192.168.0.2:8080"
 
 echo.
 echo Server exited.

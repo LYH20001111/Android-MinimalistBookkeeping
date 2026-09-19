@@ -6,7 +6,7 @@ import com.skyanchor.bookkeeping.server.sync.SyncPayload;
 
 import java.util.List;
 
-/** 同步协议请求/响应体（Sync Protocol Version 2：账本级隔离与共享，见开发计划第 3 章）。 */
+/** 同步协议请求/响应体（Sync Protocol Version 3：新增退款流水，见开发计划第 3 章）。 */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonIgnoreProperties(ignoreUnknown = true)
 public final class SyncDtos {
@@ -17,6 +17,8 @@ public final class SyncDtos {
     public static final String ENTITY_CATEGORY = "CATEGORY";
     public static final String ENTITY_ACCOUNT = "ACCOUNT";
     public static final String ENTITY_TRANSACTION = "TRANSACTION";
+    /** V4.0：账单退款流水。 */
+    public static final String ENTITY_REFUND = "REFUND";
     public static final String ENTITY_BUDGET = "BUDGET";
     public static final String ENTITY_RECURRING = "RECURRING";
     public static final String ENTITY_LEDGER = "LEDGER";

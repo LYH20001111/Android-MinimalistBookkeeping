@@ -18,9 +18,9 @@ android {
         applicationId = "com.skyanchor.bookkeeping"
         minSdk = 24
         targetSdk = 36
-        // V3：版本 3→4 / 2.1.0→3.0.0
-        versionCode = 6
-        versionName = "3.4.0"
+        // V4：退款功能，版本 6→7 / 3.4.0→4.0.0（Room 8→9、同步协议 2→3）
+        versionCode = 7
+        versionName = "4.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 

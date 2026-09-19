@@ -1,14 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 编辑账单页右上角三点菜单：查看当前账单的编辑记录（仅编辑模式挂载） -->
+<!--
+  编辑账单页右上角菜单（仅编辑模式挂载）。
+
+  V4.2：不再把「标记退款 / 退款记录 / 编辑记录」三项交给系统溢出菜单展示——
+  appcompat 会把溢出弹层的行拉到主题的首选条目宽度，短中文标题后面剩一大片空白。
+  这里只留一个 always 的三点按钮，点击后由 TransactionEditActivity.showEditMenuPopup()
+  弹出 popup_transaction_edit_menu.xml 自绘弹层，宽度随内容收窄，图标直接画在行里。
+-->
 <menu xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
     <item
-        android:id="@+id/action_edit_history"
+        android:id="@+id/action_more"
         android:icon="@drawable/ic_more_vert"
-        android:iconTint="?attr/colorOnSurface"
-        android:title="@string/edit_menu_history"
-        android:contentDescription="@string/cd_edit_history"
+        android:title="@string/edit_menu_more"
         app:showAsAction="always" />
 
 </menu>

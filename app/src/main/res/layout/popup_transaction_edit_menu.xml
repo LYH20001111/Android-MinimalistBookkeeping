@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  编辑账单页「更多」自绘弹层（TransactionEditActivity.showEditMenuPopup 使用）。
+  替代系统溢出菜单：宽度 wrap_content 随最长行收窄，不再有大片尾部空白。
+  根节点用 MaterialCardView 提供圆角 + 描边 + 阴影，PopupWindow 侧需配透明背景。
+-->
+<com.google.android.material.card.MaterialCardView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    app:cardBackgroundColor="@color/surface"
+    app:cardCornerRadius="@dimen/radius_md"
+    app:cardElevation="@dimen/spacing_xs"
+    app:strokeColor="@color/divider"
+    app:strokeWidth="@dimen/stroke_width">
+
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingTop="@dimen/spacing_sm"
+        android:paddingBottom="@dimen/spacing_sm">
+
+        <LinearLayout
+            android:id="@+id/action_refund"
+            style="@style/AppPopupMenuItem">
+
+            <ImageView
+                android:layout_width="@dimen/icon_size"
+                android:layout_height="@dimen/icon_size"
+                android:contentDescription="@null"
+                android:src="@drawable/ic_menu_refund" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="@dimen/spacing_lg"
+                android:text="@string/edit_menu_refund"
+                android:textAppearance="@style/TextAppearance.App.Body" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/action_refund_history"
+            style="@style/AppPopupMenuItem">
+
+            <ImageView
+                android:layout_width="@dimen/icon_size"
+                android:layout_height="@dimen/icon_size"
+                android:contentDescription="@null"
+                android:src="@drawable/ic_menu_refund_history" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="@dimen/spacing_lg"
+                android:text="@string/edit_menu_refund_records"
+                android:textAppearance="@style/TextAppearance.App.Body" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/action_edit_history"
+            style="@style/AppPopupMenuItem">
+
+            <ImageView
+                android:layout_width="@dimen/icon_size"
+                android:layout_height="@dimen/icon_size"
+                android:contentDescription="@string/cd_edit_history"
+                android:src="@drawable/ic_menu_edit_history" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="@dimen/spacing_lg"
+                android:text="@string/edit_menu_history"
+                android:textAppearance="@style/TextAppearance.App.Body" />
+        </LinearLayout>
+    </LinearLayout>
+</com.google.android.material.card.MaterialCardView>

@@ -2,11 +2,16 @@ package com.skyanchor.bookkeeping.ui.record;
 
 import android.content.Context;
 import android.content.Intent;
+import android.graphics.Color;
+import android.graphics.drawable.ColorDrawable;
 import android.os.Bundle;
 import android.text.Editable;
 import android.text.TextUtils;
 import android.text.TextWatcher;
+import android.view.Gravity;
 import android.view.View;
+import android.view.ViewGroup;
+import android.widget.PopupWindow;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
@@ -27,6 +32,7 @@ import com.skyanchor.bookkeeping.data.entity.CategoryEntity;
 import com.skyanchor.bookkeeping.data.entity.TransactionEntity;
 import com.skyanchor.bookkeeping.data.entity.TransactionItem;
 import com.skyanchor.bookkeeping.databinding.ActivityTransactionEditBinding;
+import com.skyanchor.bookkeeping.domain.refund.RefundPolicy;
 import com.skyanchor.bookkeeping.domain.transaction.TransferValidator;
 import com.skyanchor.bookkeeping.ui.adapter.CategoryGridAdapter;
 import com.skyanchor.bookkeeping.util.AccountTypes;
@@ -139,12 +145,13 @@ public class TransactionEditActivity extends AppCompatActivity {
         binding.toolbar.setTitle(transactionId == 0L
                 ? R.string.edit_title_new : R.string.edit_title_edit);
         binding.toolbar.setNavigationOnClickListener(v -> finish());
-        // V3.3：编辑模式下右上角挂三点菜单，进入「编辑记录」（新增模式无历史可看，不挂）
+        // V3.3 / V4.0：编辑模式下右上角挂三点按钮（新增模式既无历史可看也无可退账单，不挂）。
+        // V4.2：按钮点击改弹自绘弹层，替代系统溢出菜单（溢出弹层行宽被主题拉宽，尾部空白大）。
         if (transactionId != 0L) {
             binding.toolbar.inflateMenu(R.menu.menu_transaction_edit);
             binding.toolbar.setOnMenuItemClickListener(item -> {
-                if (item.getItemId() == R.id.action_edit_history) {
-                    TransactionHistoryActivity.start(this, transactionId);
+                if (item.getItemId() == R.id.action_more) {
+                    showEditMenuPopup();
                     return true;
                 }
                 return false;
@@ -235,10 +242,47 @@ public class TransactionEditActivity extends AppCompatActivity {
         if (transactionId != 0L) {
             binding.deleteButton.setOnClickListener(v -> showDeleteDialog());
             viewModel.getSource().observe(this, this::onSourceLoaded);
+            viewModel.getDraftRefunds().observe(this, drafts -> {
+                renderAmountDetail(sourceItem);
+                updateChangeIndicator();
+            });
             viewModel.loadTransaction(transactionId);
         }
 
         reattachPickerListeners();
+    }
+
+    /**
+     * 编辑页「更多」自绘弹层（popup_transaction_edit_menu.xml）。
+     *
+     * <p>不用系统溢出菜单：appcompat 会把弹层行拉到主题的首选条目宽度，
+     * 短中文标题后面剩一大片空白；自绘弹层宽度随内容收窄。
+     * 圆角、描边、阴影由根节点 MaterialCardView 负责，PopupWindow 侧只给透明背景
+     * （outsideTouchable 与阴影生效的前提）。
+     */
+    private void showEditMenuPopup() {
+        @Nullable View anchor = binding.toolbar.findViewById(R.id.action_more);
+        PopupWindow popup = new PopupWindow(
+                getLayoutInflater().inflate(R.layout.popup_transaction_edit_menu, null),
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, true);
+        popup.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+        popup.setOutsideTouchable(true);
+
+        View content = popup.getContentView();
+        content.findViewById(R.id.action_refund).setOnClickListener(v -> {
+            popup.dismiss();
+            showRefundSheet();
+        });
+        content.findViewById(R.id.action_refund_history).setOnClickListener(v -> {
+            popup.dismiss();
+            RefundRecordActivity.start(this, transactionId);
+        });
+        content.findViewById(R.id.action_edit_history).setOnClickListener(v -> {
+            popup.dismiss();
+            TransactionHistoryActivity.start(this, transactionId);
+        });
+        // END 对齐让弹层右缘贴三点按钮右缘，避免靠屏幕右边时超出可视区
+        popup.showAsDropDown(anchor == null ? binding.toolbar : anchor, 0, 0, Gravity.END);
     }
 
     /**
@@ -278,6 +322,21 @@ public class TransactionEditActivity extends AppCompatActivity {
         outState.putLong(STATE_TO_ACCOUNT_ID, selectedToAccountId);
         Integer type = viewModel.getType().getValue();
         outState.putInt(STATE_TYPE, type == null ? CategoryEntity.TYPE_EXPENSE : type);
+    }
+
+    /**
+     * 从退款记录页返回后刷新可退额度与金额明细。
+     *
+     * <p>待编辑账单是按需回读的快照、不是 LiveData 订阅，子页面里改退款状态不会自动通知本页，
+     * 不回读就会一直显示旧额度（看起来像「改了没生效」）。回读只更新额度展示：
+     * {@link #onSourceLoaded} 已被 {@code formApplied} 短路，不会覆盖用户正在编辑的表单。
+     */
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (transactionId != 0L) {
+            viewModel.reloadSource(transactionId);
+        }
     }
 
     // ------------------------------------------------------------------
@@ -542,6 +601,8 @@ public class TransactionEditActivity extends AppCompatActivity {
             return;
         }
         sourceItem = item;
+        // 明细要在 formApplied 短路之前刷新：退款后回读快照只需更新额度展示。
+        renderAmountDetail(item);
         deleteMessage = getString(R.string.record_delete_message,
                 item.displayIcon() + item.displayName(),
                 AmountUtil.formatSigned(item.amount, item.isIncome()));
@@ -595,6 +656,74 @@ public class TransactionEditActivity extends AppCompatActivity {
     }
 
     // ------------------------------------------------------------------
+    // 退款（V4.0）
+    // ------------------------------------------------------------------
+
+    /**
+     * 弹出退款表单：只允许对已落库的支出账单发起。
+     *
+     * <p>V4.1：确认退款不再直接写库，只追加一条草稿（见
+     * {@link TransactionEditViewModel#getDraftRefunds()}），保存账单时才逐笔落库。
+     * 因此这里的可退额度既不能只算库里的累计（会重复退），也不能算成已生效（会误显示角标）。
+     * 额度基数取表单当前金额——那才是保存后真正生效的原额。
+     */
+    private void showRefundSheet() {
+        TransactionItem source = sourceItem;
+        if (source == null || source.type != CategoryEntity.TYPE_EXPENSE) {
+            Snackbar.make(binding.editRoot, R.string.edit_refund_unsupported,
+                    Snackbar.LENGTH_SHORT).show();
+            return;
+        }
+        long baseAmount = AmountUtil.parseToCents(textOf(binding.amountInput.getText()));
+        if (baseAmount <= 0L) {
+            baseAmount = source.amount;
+        }
+        long quota = RefundPolicy.remainingQuota(
+                baseAmount,
+                source.refundedAmount + viewModel.draftReceivedTotal(),
+                source.pendingRefundAmount + viewModel.draftPendingTotal());
+        if (quota <= 0L) {
+            Snackbar.make(binding.editRoot, R.string.refund_error_exhausted,
+                    Snackbar.LENGTH_SHORT).show();
+            return;
+        }
+        new RefundSheetDialog(this, baseAmount, quota,
+                (amountCents, reason, toReceived) -> {
+                    viewModel.addDraftRefund(amountCents, reason, toReceived);
+                    Toast.makeText(this, R.string.refund_draft_added,
+                            Toast.LENGTH_SHORT).show();
+                }).show();
+    }
+
+    /**
+     * 展示「原始金额 / 已退款 / 待退款 / 实际支付」。
+     *
+     * <p>V4.1：尚未落库的退款草稿直接并入已退 / 待退两行，不单列提示——明细口径与
+     * 保存后完全一致，用户不必知道哪一笔还在草稿里，也就不会出现保存前后的第二次落差。
+     */
+    private void renderAmountDetail(@Nullable TransactionItem item) {
+        boolean hasRefund = item != null && (item.hasRefund() || !viewModel.currentDrafts()
+                .isEmpty());
+        binding.amountDetail.setVisibility(hasRefund ? View.VISIBLE : View.GONE);
+        if (!hasRefund) {
+            return;
+        }
+        long refunded = item.refundedAmount + viewModel.draftReceivedTotal();
+        long pending = item.pendingRefundAmount + viewModel.draftPendingTotal();
+        binding.amountDetailOrigin.setText(AmountUtil.format(item.amount));
+        binding.amountDetailRefundedRow.setVisibility(refunded > 0L ? View.VISIBLE : View.GONE);
+        if (refunded > 0L) {
+            binding.amountDetailRefunded.setText(AmountUtil.format(-refunded));
+        }
+        binding.amountDetailPendingRow.setVisibility(pending > 0L ? View.VISIBLE : View.GONE);
+        if (pending > 0L) {
+            binding.amountDetailPending.setText(AmountUtil.format(pending));
+        }
+        // 与 TransactionItem.netAmount() 同样的非负钳位：草稿并入后也不该显示成负数。
+        binding.amountDetailNet.setText(AmountUtil.format(Math.max(0L, item.amount - refunded)));
+    }
+
+    // ------------------------------------------------------------------
     // 保存
     // ------------------------------------------------------------------
 
@@ -603,6 +732,19 @@ public class TransactionEditActivity extends AppCompatActivity {
         // INVALID 为 -1，与「金额必须大于 0」共用同一条校验分支。
         if (cents <= 0L) {
             binding.amountLayout.setError(getString(R.string.edit_error_amount));
+            binding.amountInput.requestFocus();
+            return;
+        }
+        // V4.0：下调金额不得低于已发生的退款累计（含待到账），否则这些退款无源可退。
+        // V4.1：草稿退款也算在内——它保存后就会变成真正的退款，此时不挡就会存进超退状态。
+        TransactionItem source = sourceItem;
+        long committedRefunded = source == null ? 0L : source.refundedAmount;
+        long committedPending = source == null ? 0L : source.pendingRefundAmount;
+        long refundedTotal = committedRefunded + viewModel.draftReceivedTotal();
+        long pendingTotal = committedPending + viewModel.draftPendingTotal();
+        if (source != null && !RefundPolicy.isAmountEditAllowed(cents, refundedTotal, pendingTotal)) {
+            binding.amountLayout.setError(getString(R.string.edit_error_amount_below_refund,
+                    AmountUtil.format(refundedTotal + pendingTotal)));
             binding.amountInput.requestFocus();
             return;
         }
@@ -656,9 +798,17 @@ public class TransactionEditActivity extends AppCompatActivity {
     /** 保存前确认弹窗：逐条列出变更明细，确认后才真正写库。 */
     private void showChangeConfirmDialog(@NonNull TransactionEntity entity,
                                          @NonNull List<String> changes) {
+        List<String> lines = new ArrayList<>(changes);
+        // 草稿退款也会在这一次保存里落库，不并列出来就成了「弹窗说只改备注、实际还退了钱」。
+        List<TransactionEditViewModel.DraftRefund> drafts = viewModel.currentDrafts();
+        if (!drafts.isEmpty()) {
+            lines.add(getString(R.string.edit_amount_draft,
+                    AmountUtil.format(viewModel.draftReceivedTotal()
+                            + viewModel.draftPendingTotal()), drafts.size()));
+        }
         new MaterialAlertDialogBuilder(this)
                 .setTitle(R.string.edit_change_confirm_title)
-                .setMessage(TextUtils.join("\n", changes))
+                .setMessage(TextUtils.join("\n", lines))
                 .setNegativeButton(R.string.action_cancel, null)
                 .setPositiveButton(R.string.action_save, (dialog, which) -> performSave(entity))
                 .show();
@@ -666,10 +816,32 @@ public class TransactionEditActivity extends AppCompatActivity {
 
     private void performSave(@NonNull TransactionEntity entity) {
         binding.saveButton.setEnabled(false);
-        viewModel.save(entity, id -> {
-            Toast.makeText(this, R.string.edit_saved, Toast.LENGTH_SHORT).show();
+        List<TransactionEditViewModel.DraftRefund> drafts = viewModel.currentDrafts();
+        viewModel.save(entity, id -> commitDrafts(id == null ? 0L : id, drafts, 0, 0));
+    }
+
+    /**
+     * 账单落库后按顺序提交退款草稿，全部处理完再结束页面。
+     *
+     * <p>必须串行：每笔退款都要看到前一笔已写入的累计才能复核额度，并行提交会让超出原额
+     * 的草稿蒙混过关（仓库层是同一事务内的真值累加，串行才把它真正用上）。
+     * 被拒的草稿不重试，末尾统一提示，避免静默丢钱。
+     */
+    private void commitDrafts(long savedId,
+                              @NonNull List<TransactionEditViewModel.DraftRefund> drafts,
+                              int index, int failed) {
+        if (index >= drafts.size()) {
+            viewModel.clearDraftRefunds();
+            Toast.makeText(this, failed == 0
+                    ? R.string.edit_saved : R.string.edit_saved_refund_failed,
+                    Toast.LENGTH_SHORT).show();
             finish();
-        });
+            return;
+        }
+        TransactionEditViewModel.DraftRefund draft = drafts.get(index);
+        viewModel.requestRefund(savedId, draft.amount, draft.reason, draft.toReceived,
+                accepted -> commitDrafts(savedId, drafts, index + 1,
+                        accepted == null || !accepted ? failed + 1 : failed));
     }
 
     // ------------------------------------------------------------------
@@ -679,9 +851,9 @@ public class TransactionEditActivity extends AppCompatActivity {
     // 弹窗内容即落库日志的预览。仅编辑模式生效，新增模式恒为无变更。
     // ------------------------------------------------------------------
 
-    /** 按保存按钮上的「内容已修改」小圆点亮 / 灭。 */
+    /** 按保存按钮上的「内容已修改」小圆点亮 / 灭；待保存的退款草稿同样算未保存的改动。 */
     private void updateChangeIndicator() {
-        boolean changed = !computeChanges().isEmpty();
+        boolean changed = !computeChanges().isEmpty() || !viewModel.currentDrafts().isEmpty();
         binding.saveChangeDot.setVisibility(changed ? View.VISIBLE : View.GONE);
     }
 

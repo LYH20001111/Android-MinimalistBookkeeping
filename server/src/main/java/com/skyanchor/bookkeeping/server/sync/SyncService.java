@@ -18,6 +18,7 @@ import com.skyanchor.bookkeeping.server.sync.domain.BudgetRow;
 import com.skyanchor.bookkeeping.server.sync.domain.CategoryRow;
 import com.skyanchor.bookkeeping.server.sync.domain.ConflictLogRow;
 import com.skyanchor.bookkeeping.server.sync.domain.RecurringRow;
+import com.skyanchor.bookkeeping.server.sync.domain.RefundRow;
 import com.skyanchor.bookkeeping.server.sync.domain.SyncChangeRow;
 import com.skyanchor.bookkeeping.server.sync.domain.SyncRow;
 import com.skyanchor.bookkeeping.server.sync.domain.TransactionRow;
@@ -40,6 +41,7 @@ import com.skyanchor.bookkeeping.server.sync.repo.BudgetRowRepository;
 import com.skyanchor.bookkeeping.server.sync.repo.CategoryRowRepository;
 import com.skyanchor.bookkeeping.server.sync.repo.ConflictLogRepository;
 import com.skyanchor.bookkeeping.server.sync.repo.RecurringRowRepository;
+import com.skyanchor.bookkeeping.server.sync.repo.RefundRowRepository;
 import com.skyanchor.bookkeeping.server.sync.repo.SyncChangeRepository;
 import com.skyanchor.bookkeeping.server.sync.repo.SyncRowRepository;
 import com.skyanchor.bookkeeping.server.sync.repo.TransactionRowRepository;
@@ -65,7 +67,7 @@ import java.util.function.Function;
  * token → 用户可用 → 账本存在且未删 → 用户是成员 → 角色允许该操作，
  * 再做 baseVersion 乐观并发控制 → 无冲突直接 version+1；有冲突走 LWW 裁决
  * （接收序，见 {@link Lww}）并写 conflict log。每个实体写一条 sync_changes。
- * 处理顺序固定为 账本 → 分类 → 账户 → 交易/预算/周期，降低悬挂引用概率。
+ * 处理顺序固定为 账本 → 分类 → 账户 → 交易 → 退款 → 预算/周期，降低悬挂引用概率。
  * <p>Pull：请求必须携带 ledgerId，只返回该账本的变更（服务端隔离，禁客户端自滤）；
  * 同一账本的所有成员共享变更流，游标 = 账号 + 账本 + changeId。
  * <p>LEDGER 实体：创建 = 发起人自封 OWNER 并初始化一次默认分类/账户；
@@ -88,11 +90,13 @@ public class SyncService {
     private static final List<String> PUSH_ORDER = List.of(
             SyncDtos.ENTITY_LEDGER,
             SyncDtos.ENTITY_CATEGORY, SyncDtos.ENTITY_ACCOUNT, SyncDtos.ENTITY_TRANSACTION,
+            SyncDtos.ENTITY_REFUND,
             SyncDtos.ENTITY_BUDGET, SyncDtos.ENTITY_RECURRING);
 
     private final CategoryRowRepository categoryRepository;
     private final AccountRowRepository accountRepository;
     private final TransactionRowRepository transactionRepository;
+    private final RefundRowRepository refundRepository;
     private final BudgetRowRepository budgetRepository;
     private final RecurringRowRepository recurringRepository;
     private final SyncChangeRepository changeRepository;
@@ -107,6 +111,7 @@ public class SyncService {
     public SyncService(CategoryRowRepository categoryRepository,
                        AccountRowRepository accountRepository,
                        TransactionRowRepository transactionRepository,
+                       RefundRowRepository refundRepository,
                        BudgetRowRepository budgetRepository,
                        RecurringRowRepository recurringRepository,
                        SyncChangeRepository changeRepository,
@@ -120,6 +125,7 @@ public class SyncService {
         this.categoryRepository = categoryRepository;
         this.accountRepository = accountRepository;
         this.transactionRepository = transactionRepository;
+        this.refundRepository = refundRepository;
         this.budgetRepository = budgetRepository;
         this.recurringRepository = recurringRepository;
         this.changeRepository = changeRepository;
@@ -186,6 +192,7 @@ public class SyncService {
             case SyncDtos.ENTITY_CATEGORY -> applyCategory(user, item, access, now);
             case SyncDtos.ENTITY_ACCOUNT -> applyAccount(user, item, access, now);
             case SyncDtos.ENTITY_TRANSACTION -> applyTransaction(user, item, access, now);
+            case SyncDtos.ENTITY_REFUND -> applyRefund(user, item, access, now);
             case SyncDtos.ENTITY_BUDGET -> applyBudget(user, item, access, now);
             case SyncDtos.ENTITY_RECURRING -> applyRecurring(user, item, access, now);
             default -> rejected(item, ERR_VALIDATION);
@@ -314,6 +321,47 @@ public class SyncService {
         applyDeleteOrFields(row, item, () -> applyTransactionFields(row, item.payload()), now);
         return finishUpdate(user, item, row, now,
                 decision == Lww.Decision.CONFLICT_INCOMING_WINS, transactionRepository::save);
+    }
+
+    /**
+     * 退款流水（V4.0）。没有孪生合并语义：退款身份只有 syncId，不存在两台设备
+     * 各自初始化同名记录的情况。父账单尚未上云时返回 MISSING_REFERENCE，
+     * 客户端把该变更留在队列里退避重试，父账单到位后自然收敛。
+     */
+    private PushResultItem applyRefund(AuthUser user, PushItem item, LedgerAccess access,
+                                       Instant now) {
+        long ledgerId = access.ledger().getId();
+        RefundRow row = refundRepository.findByLedgerIdAndSyncId(ledgerId, item.syncId())
+                .orElse(null);
+        if (row == null) {
+            if (SyncChangeRow.OP_DELETE.equals(item.operation())) {
+                return noop(item, now);
+            }
+            String refError = validateRefundRefs(ledgerId, item.payload());
+            if (refError != null) {
+                return rejected(item, refError);
+            }
+            RefundRow created = new RefundRow();
+            created.setUserId(user.userId());
+            created.setLedgerId(ledgerId);
+            created.setSyncId(item.syncId());
+            created.setCreatedAt(now);
+            applyRefundFields(created, item.payload());
+            return finishCreate(user, item, created, now, refundRepository::save);
+        }
+        Lww.Decision decision = decide(user, item, row, now);
+        if (decision == Lww.Decision.CONFLICT_SERVER_WINS) {
+            return serverWon(user, item, row, now);
+        }
+        // DELETE 允许空载荷（软删墓碑），引用校验只针对 UPSERT
+        String refError = item.payload() == null ? null
+                : validateRefundRefs(ledgerId, item.payload());
+        if (refError != null) {
+            return rejected(item, refError);
+        }
+        applyDeleteOrFields(row, item, () -> applyRefundFields(row, item.payload()), now);
+        return finishUpdate(user, item, row, now,
+                decision == Lww.Decision.CONFLICT_INCOMING_WINS, refundRepository::save);
     }
 
     private PushResultItem applyBudget(AuthUser user, PushItem item, LedgerAccess access,
@@ -781,6 +829,18 @@ public class SyncService {
         return validateAccountRef(ledgerId, payload.transferAccountSyncId);
     }
 
+    /** 退款必须带父账单身份与状态，且父账单已在本账本上云（软删行仍算存在，与其他引用校验同语义）。 */
+    private String validateRefundRefs(Long ledgerId, SyncPayload payload) {
+        if (payload == null || payload.transactionSyncId == null
+                || payload.transactionSyncId.isBlank()
+                || payload.state == null || payload.state.isBlank()) {
+            return ERR_VALIDATION;
+        }
+        return transactionRepository
+                .findByLedgerIdAndSyncId(ledgerId, payload.transactionSyncId).isPresent()
+                ? null : ERR_MISSING_REFERENCE;
+    }
+
     private String validateRecurringRefs(Long ledgerId, SyncPayload payload) {
         String err = validateCategoryRef(ledgerId, payload.categorySyncId);
         if (err != null) {
@@ -846,6 +906,18 @@ public class SyncService {
         row.setDeletedAt(payload.deletedAt);
     }
 
+    private void applyRefundFields(RefundRow row, SyncPayload payload) {
+        row.setTransactionSyncId(require(payload.transactionSyncId, "transactionSyncId"));
+        row.setAmount(orZero(payload.amount));
+        row.setState(require(payload.state, "state"));
+        row.setReason(orEmpty(payload.reason));
+        row.setRequestedAt(orZero(payload.requestedAt));
+        row.setReceivedAt(payload.receivedAt);
+        row.setClientUpdatedAt(orZero(payload.clientUpdatedAt));
+        row.setDeleted(payload.isDeleted != null && payload.isDeleted);
+        row.setDeletedAt(payload.deletedAt);
+    }
+
     private void applyBudgetFields(BudgetRow row, SyncPayload payload) {
         row.setYear(requireInt(payload.year, "year"));
         row.setMonth(requireInt(payload.month, "month"));
@@ -906,6 +978,13 @@ public class SyncService {
             payload.accountSyncId = transaction.getAccountSyncId();
             payload.transferAccountSyncId = transaction.getTransferAccountSyncId();
             payload.clientCreatedAt = transaction.getClientCreatedAt();
+        } else if (row instanceof RefundRow refund) {
+            payload.transactionSyncId = refund.getTransactionSyncId();
+            payload.amount = refund.getAmount();
+            payload.state = refund.getState();
+            payload.reason = refund.getReason();
+            payload.requestedAt = refund.getRequestedAt();
+            payload.receivedAt = refund.getReceivedAt();
         } else if (row instanceof BudgetRow budget) {
             payload.year = budget.getYear();
             payload.month = budget.getMonth();
@@ -993,6 +1072,8 @@ public class SyncService {
                     accountRepository.findByLedgerIdAndSyncId(ledgerId, syncId).orElse(null);
             case SyncDtos.ENTITY_TRANSACTION ->
                     transactionRepository.findByLedgerIdAndSyncId(ledgerId, syncId).orElse(null);
+            case SyncDtos.ENTITY_REFUND ->
+                    refundRepository.findByLedgerIdAndSyncId(ledgerId, syncId).orElse(null);
             case SyncDtos.ENTITY_BUDGET ->
                     budgetRepository.findByLedgerIdAndSyncId(ledgerId, syncId).orElse(null);
             case SyncDtos.ENTITY_RECURRING ->

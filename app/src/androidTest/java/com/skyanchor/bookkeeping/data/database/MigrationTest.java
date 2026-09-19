@@ -21,6 +21,7 @@ import com.skyanchor.bookkeeping.data.entity.AccountEntity;
 import com.skyanchor.bookkeeping.data.entity.BudgetEntity;
 import com.skyanchor.bookkeeping.data.entity.CategoryEntity;
 import com.skyanchor.bookkeeping.data.entity.RecurringTransactionEntity;
+import com.skyanchor.bookkeeping.data.entity.RefundRecordEntity;
 import com.skyanchor.bookkeeping.data.entity.TransactionEntity;
 import com.skyanchor.bookkeeping.util.DateUtil;
 
@@ -113,7 +114,8 @@ public class MigrationTest {
         return Room.databaseBuilder(context, AppDatabase.class, DB_NAME)
                 .addMigrations(AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4,
                         AppDatabase.MIGRATION_4_5, AppDatabase.MIGRATION_5_6,
-                        AppDatabase.MIGRATION_6_7, AppDatabase.MIGRATION_7_8)
+                        AppDatabase.MIGRATION_6_7, AppDatabase.MIGRATION_7_8,
+                        AppDatabase.MIGRATION_8_9)
                 .allowMainThreadQueries()
                 .build();
     }
@@ -716,13 +718,20 @@ public class MigrationTest {
                 "index_account_sync_id", "index_budget_sync_id",
                 "index_recurring_transaction_sync_id",
                 "index_sync_change_queue_entity_type_sync_id",
-                "index_sync_change_queue_next_retry_at"}) {
+                "index_sync_change_queue_next_retry_at",
+                "index_refund_record_transaction_id", "index_refund_record_sync_id",
+                "index_refund_record_ledger_id"}) {
             Cursor cursor = db.getOpenHelper().getWritableDatabase().query(
                     "SELECT name FROM sqlite_master WHERE type = 'index' AND name = '"
                             + index + "'");
             assertEquals("缺少索引 " + index, 1, cursor.getCount());
             cursor.close();
         }
+        // V4.0：退款表只有一条指向账单的外键（RESTRICT），迁移漏掉它会导致退款悬挂
+        Cursor refundFk = db.getOpenHelper().getWritableDatabase().query(
+                "PRAGMA foreign_key_list(refund_record)");
+        assertEquals(1, refundFk.getCount());
+        refundFk.close();
         db.close();
     }
 
@@ -871,5 +880,67 @@ public class MigrationTest {
         // 2) 存量数据零丢失
         assertEquals(1, db.transactionDao().count());
         db.close();
+    }
+
+    // ------------------------------------------------------------------
+    // V4.0：8 → 9（refund_record 退款流水表 + 账单两个退款累计列）
+    // ------------------------------------------------------------------
+
+    @Test
+    public void migrate_v8_addsRefundTableAndZeroRefundTotals() {
+        SQLiteDatabase v7 = createV7Database();
+        Cursor accountRow = v7.rawQuery("SELECT id FROM account LIMIT 1", new String[0]);
+        assertTrue(accountRow.moveToFirst());
+        long accountId = accountRow.getLong(0);
+        accountRow.close();
+        insert(v7, "transactions", row(
+                "type", 1, "amount", 3500L, "category_id", null,
+                "account_id", accountId, "transfer_account_id", null,
+                "date", 1_700_000_000_000L, "time", "12:30", "ledger_id", 1L,
+                "created_at", 1_700_000_000_000L, "updated_at", 1_700_000_000_000L));
+        v7.close();
+
+        AppDatabase db = openLatest();
+        // Room 开库校验已保证 refund_record 的列、默认值、索引与 v9 schema 逐项一致，这里验证语义：
+        // 1) 存量账单的两个退款累计为 0：升级前无退款，净额必须仍等于原额
+        TransactionEntity legacy = db.transactionDao().getEntityById(1L);
+        assertNotNull(legacy);
+        assertEquals(0L, legacy.refundedAmount);
+        assertEquals(0L, legacy.pendingRefundAmount);
+        // 2) 退款表建好且初始为空
+        assertTrue(db.refundRecordDao().getByTransaction(1L).isEmpty());
+        assertEquals(0L, db.refundRecordDao().sumReceived(1L));
+        assertEquals(0L, db.refundRecordDao().sumPending(1L));
+        // 3) 缓存不是唯一真值：累计一律从流水重算（开发计划推论 1）
+        db.refundRecordDao().insert(refund(1L, 1500L, RefundRecordEntity.STATE_RECEIVED));
+        db.refundRecordDao().insert(refund(1L, 500L, RefundRecordEntity.STATE_PENDING));
+        db.transactionDao().recomputeRefundTotals();
+        TransactionEntity recomputed = db.transactionDao().getEntityById(1L);
+        assertEquals(1500L, recomputed.refundedAmount);
+        assertEquals(500L, recomputed.pendingRefundAmount);
+        // 4) 悬挂退款必须被外键拒绝：退款只能挂在存在的账单上
+        try {
+            db.refundRecordDao().insert(
+                    refund(9999L, 100L, RefundRecordEntity.STATE_PENDING));
+            fail("指向不存在账单的退款应被外键拒绝");
+        } catch (SQLiteConstraintException expected) {
+            // 预期：RESTRICT 生效
+        }
+        db.close();
+    }
+
+    private static RefundRecordEntity refund(long transactionId, long amount, String state) {
+        RefundRecordEntity refund = new RefundRecordEntity();
+        refund.syncId = "migration-refund-" + transactionId + "-" + amount;
+        refund.transactionId = transactionId;
+        refund.ledgerId = 1L;
+        refund.amount = amount;
+        refund.state = state;
+        refund.requestedAt = 1_700_000_500_000L;
+        refund.receivedAt = RefundRecordEntity.STATE_RECEIVED.equals(state)
+                ? Long.valueOf(1_700_000_600_000L) : null;
+        refund.createdAt = 1_700_000_500_000L;
+        refund.updatedAt = 1_700_000_600_000L;
+        return refund;
     }
 }

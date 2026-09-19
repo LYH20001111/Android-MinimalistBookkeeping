@@ -227,6 +227,21 @@
         <item name="navigationIconTint">@color/text_primary</item>
     </style>
 
+    <!-- 编辑页「更多」弹层里的菜单行：图标 + 文字，宽度随内容收窄。
+         系统溢出菜单会把行拉到主题的首选条目宽度（短中文标题后大片空白），故改用自绘弹层。 -->
+    <style name="AppPopupMenuItem">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:minHeight">@dimen/touch_target</item>
+        <item name="android:orientation">horizontal</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:paddingStart">@dimen/spacing_lg</item>
+        <item name="android:paddingEnd">@dimen/spacing_xl</item>
+        <item name="android:background">?attr/selectableItemBackground</item>
+        <item name="android:clickable">true</item>
+        <item name="android:focusable">true</item>
+    </style>
+
     <!-- 列表行内的图标动作按钮：44dp 触区 + 无边框水波纹 -->
     <!-- 显式 parent=""：点号命名会隐式继承 Widget.App，而该父样式并不存在 -->
     <style name="Widget.App.RowAction" parent="">

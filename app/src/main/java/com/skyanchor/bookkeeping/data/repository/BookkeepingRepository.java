@@ -15,6 +15,7 @@ import com.skyanchor.bookkeeping.data.entity.BudgetEntity;
 import com.skyanchor.bookkeeping.data.entity.CategoryEntity;
 import com.skyanchor.bookkeeping.data.entity.LedgerEntity;
 import com.skyanchor.bookkeeping.data.entity.RecurringTransactionEntity;
+import com.skyanchor.bookkeeping.data.entity.RefundRecordEntity;
 import com.skyanchor.bookkeeping.data.entity.SyncEntityTypes;
 import com.skyanchor.bookkeeping.data.entity.TransactionEditLogEntity;
 import com.skyanchor.bookkeeping.data.entity.TransactionEntity;
@@ -30,6 +31,7 @@ import com.skyanchor.bookkeeping.data.model.SearchFilter;
 import com.skyanchor.bookkeeping.domain.account.AccountBalanceValidator;
 import com.skyanchor.bookkeeping.domain.account.CalculateAccountBalanceUseCase;
 import com.skyanchor.bookkeeping.domain.recurring.GenerateRecurringTransactionsUseCase;
+import com.skyanchor.bookkeeping.domain.refund.RefundPolicy;
 import com.skyanchor.bookkeeping.sync.SyncEnqueuer;
 import com.skyanchor.bookkeeping.sync.SyncPayloadMapper;
 import com.skyanchor.bookkeeping.util.Callback;
@@ -115,6 +117,14 @@ public class BookkeepingRepository {
     }
 
     /**
+     * V4.0：同步轮次结束后对齐账单的退款累计缓存（真值在 {@code refund_record}）。
+     * 与账户余额校验同构，仅在 IO 线程调用、不回调 UI。
+     */
+    public void validateRefundTotalsInternal() {
+        database.transactionDao().recomputeRefundTotals();
+    }
+
+    /**
      * V3：事务内标记待同步变更。syncEnqueuer 未注入时为 no-op，
      * 本地优先语义完全不受影响。
      */
@@ -138,6 +148,11 @@ public class BookkeepingRepository {
             target.serverReceivedAt = existing.serverReceivedAt;
             target.isDeleted = existing.isDeleted;
             target.ledgerId = existing.ledgerId;
+            // V4.0：编辑表单不展示退款，UI 传来的半实体这两列恒为 0；整行 update 会把
+            // 「已退 / 待退」缓存清零，列表角标与金额明细当场消失，且再次退款的额度复核
+            // 会读到被清空的累计。真值虽在 refund_record（每轮同步重算），保存当刻必须带过来。
+            target.refundedAmount = existing.refundedAmount;
+            target.pendingRefundAmount = existing.pendingRefundAmount;
         }
     }
 
@@ -590,6 +605,14 @@ public class BookkeepingRepository {
                     existing.updatedAt = now;
                     database.transactionDao().update(existing);
                     enqueueSync(SyncEntityTypes.TRANSACTION, existing.syncId, true);
+                    // V4.0：退款流水随账单一并软删（基线第 13 章），恢复账单时一并置回
+                    List<RefundRecordEntity> refunds = database.refundRecordDao().getByTransaction(id);
+                    if (!refunds.isEmpty()) {
+                        database.refundRecordDao().softDeleteByTransaction(id, now);
+                        for (RefundRecordEntity refund : refunds) {
+                            enqueueSync(SyncEntityTypes.REFUND, refund.syncId, true);
+                        }
+                    }
                 }
                 recalcAccounts(affected, now);
             });
@@ -610,6 +633,205 @@ public class BookkeepingRepository {
             long balance = balanceUseCase.calculate(accountId);
             database.accountDao().updateBalance(accountId, balance, now);
         }
+    }
+
+    // ------------------------------------------------------------------
+    // 写：退款（V4.0，基线第 12、13 章）
+    //
+    // 三个写操作同构：改 refund_record → 从流水重算账单两个累计列 → 重算账户余额
+    // → 追加一条编辑日志 → 同一事务内入队 REFUND + TRANSACTION 变更。
+    // 累计列一律「重算」而非增量加减，任何异常路径都不会让账单与流水漂移。
+    // ------------------------------------------------------------------
+
+    /** 观察某账单的退款流水（新→旧），供退款记录页随状态变更实时刷新。 */
+    @NonNull
+    public LiveData<List<RefundRecordEntity>> observeRefunds(long transactionId) {
+        return database.refundRecordDao().observeByTransaction(transactionId);
+    }
+
+    /** 一次性读取退款流水，供退款表单展示当前额度与历史。 */
+    public void loadRefunds(long transactionId,
+                            @Nullable Callback<List<RefundRecordEntity>> callback) {
+        io.execute(() -> post(callback, database.refundRecordDao().getByTransaction(transactionId)));
+    }
+
+    /**
+     * 发起一笔退款（支持同一账单多次部分退款）。
+     *
+     * @param toReceived true 表示款项已到账，立即冲减统计与余额；false 记为待到账，只占额度
+     * @param callback   受理成功返回 true；账单不存在 / 非支出 / 已删除 / 超出剩余额度返回 false
+     */
+    public void requestRefund(long transactionId, long amountCents, @Nullable String reason,
+                              boolean toReceived, @Nullable Callback<Boolean> callback) {
+        io.execute(() -> {
+            boolean accepted = Boolean.TRUE.equals(database.runInTransaction(() -> {
+                long now = System.currentTimeMillis();
+                TransactionEntity tx = database.transactionDao().getEntityById(transactionId);
+                if (tx == null || tx.isDeleted || tx.type != CategoryEntity.TYPE_EXPENSE) {
+                    return false;
+                }
+                long refunded = database.refundRecordDao().sumReceived(transactionId);
+                long pending = database.refundRecordDao().sumPending(transactionId);
+                if (!RefundPolicy.isRequestValid(amountCents, tx.amount, refunded, pending)) {
+                    return false;
+                }
+                RefundRecordEntity refund = new RefundRecordEntity();
+                refund.syncId = UUID.randomUUID().toString();
+                refund.transactionId = transactionId;
+                refund.ledgerId = tx.ledgerId;
+                refund.amount = amountCents;
+                refund.state = toReceived
+                        ? RefundRecordEntity.STATE_RECEIVED : RefundRecordEntity.STATE_PENDING;
+                String trimmed = reason == null ? "" : reason.trim();
+                refund.reason = trimmed.isEmpty() ? null : trimmed;
+                refund.requestedAt = now;
+                refund.receivedAt = toReceived ? now : null;
+                refund.createdAt = now;
+                refund.updatedAt = now;
+                refund.id = database.refundRecordDao().insert(refund);
+                settleRefund(refund, tx, now, toReceived
+                        ? "退款到账：" + AmountUtil.format(amountCents)
+                        : "申请退款：" + AmountUtil.format(amountCents) + "（待到账）");
+                return true;
+            }));
+            post(callback, accepted);
+        });
+    }
+
+    /**
+     * 修改一笔已存在的退款：金额、原因与到账状态都可回改（含「已到账改回待到账」）。
+     *
+     * <p>额度复核必须排除该笔自身当前的贡献——可改上限 = 原额 −（其他退款的已到账 + 待到账），
+     * 因此这里的「其他累计」从 {@code refund_record} 累加得出，不读账单上的缓存列。
+     * 状态从已到账改回待到账会让此前冲减的统计与余额原路回退，与撤销同构。
+     *
+     * @param toReceived 目标到账状态
+     * @return 受理成功返回 true；流水不存在 / 已取消 / 父账单不可退 / 超出可改上限返回 false
+     */
+    public void updateRefund(long refundId, long amountCents, @Nullable String reason,
+                             boolean toReceived, @Nullable Callback<Boolean> callback) {
+        io.execute(() -> {
+            boolean accepted = Boolean.TRUE.equals(database.runInTransaction(() -> {
+                long now = System.currentTimeMillis();
+                RefundRecordEntity refund = database.refundRecordDao().getById(refundId);
+                if (refund == null || refund.isDeleted || refund.isCancelled()) {
+                    return false;
+                }
+                TransactionEntity tx = database.transactionDao().getEntityById(refund.transactionId);
+                if (tx == null || tx.isDeleted || tx.type != CategoryEntity.TYPE_EXPENSE) {
+                    return false;
+                }
+                long othersReceived = 0L;
+                long othersPending = 0L;
+                for (RefundRecordEntity other : database.refundRecordDao()
+                        .getByTransaction(refund.transactionId)) {
+                    if (other.id == refund.id) {
+                        continue;
+                    }
+                    if (other.isReceived()) {
+                        othersReceived += other.amount;
+                    } else if (other.isPending()) {
+                        othersPending += other.amount;
+                    }
+                }
+                if (!RefundPolicy.isRequestValid(amountCents, tx.amount,
+                        othersReceived, othersPending)) {
+                    return false;
+                }
+                long previousAmount = refund.amount;
+                boolean wasReceived = refund.isReceived();
+                String trimmed = reason == null ? "" : reason.trim();
+                refund.amount = amountCents;
+                refund.reason = trimmed.isEmpty() ? null : trimmed;
+                refund.state = toReceived
+                        ? RefundRecordEntity.STATE_RECEIVED : RefundRecordEntity.STATE_PENDING;
+                // 首次到账时间一旦确立就保留，改回待到账时清空、再次到账时重新写入。
+                refund.receivedAt = toReceived
+                        ? (wasReceived && refund.receivedAt != null ? refund.receivedAt : now)
+                        : null;
+                refund.updatedAt = now;
+                settleRefund(refund, tx, now, "修改退款：" + AmountUtil.format(previousAmount)
+                        + " → " + AmountUtil.format(amountCents)
+                        + "（" + (toReceived ? "已到账" : "待到账") + "）");
+                return true;
+            }));
+            post(callback, accepted);
+        });
+    }
+
+    /** 待到账退款标记为已到账，此刻起冲减统计与余额。 */
+    public void markRefundReceived(long refundId, @Nullable Callback<Boolean> callback) {
+        io.execute(() -> {
+            boolean changed = Boolean.TRUE.equals(database.runInTransaction(() -> {
+                long now = System.currentTimeMillis();
+                RefundRecordEntity refund = database.refundRecordDao().getById(refundId);
+                if (refund == null || refund.isDeleted || !refund.isPending()) {
+                    return false;
+                }
+                TransactionEntity tx = database.transactionDao().getEntityById(refund.transactionId);
+                if (tx == null) {
+                    return false;
+                }
+                refund.state = RefundRecordEntity.STATE_RECEIVED;
+                refund.receivedAt = now;
+                refund.updatedAt = now;
+                settleRefund(refund, tx, now, "退款已到账：" + AmountUtil.format(refund.amount));
+                return true;
+            }));
+            post(callback, changed);
+        });
+    }
+
+    /**
+     * 取消退款（待到账或已到账均可）。流水保留为 CANCELLED 以供追溯，
+     * 不再计入任何累计，因此已到账的取消会把此前冲减的统计与余额还原。
+     */
+    public void cancelRefund(long refundId, @Nullable Callback<Boolean> callback) {
+        io.execute(() -> {
+            boolean changed = Boolean.TRUE.equals(database.runInTransaction(() -> {
+                long now = System.currentTimeMillis();
+                RefundRecordEntity refund = database.refundRecordDao().getById(refundId);
+                if (refund == null || refund.isDeleted || refund.isCancelled()) {
+                    return false;
+                }
+                TransactionEntity tx = database.transactionDao().getEntityById(refund.transactionId);
+                if (tx == null) {
+                    return false;
+                }
+                boolean wasReceived = refund.isReceived();
+                refund.state = RefundRecordEntity.STATE_CANCELLED;
+                refund.receivedAt = null;
+                refund.updatedAt = now;
+                settleRefund(refund, tx, now, "取消退款：" + AmountUtil.format(refund.amount)
+                        + "（" + (wasReceived ? "原已到账" : "原本待到账") + "）");
+                return true;
+            }));
+            post(callback, changed);
+        });
+    }
+
+    /**
+     * 退款状态变更的落账收尾（调用方需处于 DB 事务内，且 {@code refund} 已写好目标状态）。
+     * 只重算余额相关账户：退款发生在付款账户上，转账不可能被退款。
+     */
+    private void settleRefund(@NonNull RefundRecordEntity refund, @NonNull TransactionEntity tx,
+                              long now, @NonNull String detail) {
+        database.refundRecordDao().update(refund);
+        applyRefundTotals(tx, now);
+        Set<Long> affected = new LinkedHashSet<>();
+        collectAccount(affected, tx.accountId);
+        recalcAccounts(affected, now);
+        appendEditLog(tx.id, TransactionEditLogEntity.OP_UPDATE, detail, now);
+        enqueueSync(SyncEntityTypes.REFUND, refund.syncId, false);
+        enqueueSync(SyncEntityTypes.TRANSACTION, tx.syncId, false);
+    }
+
+    /** 从退款流水重算账单的两个累计列并写回（调用方需处于 DB 事务内）。 */
+    private void applyRefundTotals(@NonNull TransactionEntity tx, long now) {
+        tx.refundedAmount = database.refundRecordDao().sumReceived(tx.id);
+        tx.pendingRefundAmount = database.refundRecordDao().sumPending(tx.id);
+        tx.updatedAt = now;
+        database.transactionDao().update(tx);
     }
 
     // ------------------------------------------------------------------
@@ -825,6 +1047,12 @@ public class BookkeepingRepository {
         return database.recurringTransactionDao().getAll();
     }
 
+    /** 当前账本的全部有效退款流水，供备份序列化。仅在 IO 线程调用。 */
+    @NonNull
+    public List<RefundRecordEntity> readAllRefunds() {
+        return database.refundRecordDao().getBackupRows();
+    }
+
     /** 本地设置单例；从未写过设置时为 null。仅在 IO 线程调用。 */
     @Nullable
     public UserSettingsEntity readSettings() {
@@ -833,16 +1061,17 @@ public class BookkeepingRepository {
 
     /**
      * 覆盖恢复：在单个 DB 事务内清空各表 → 按备份数据重插（保留原 id）→
-     * 重算全部账户的余额缓存列。统计与列表经 LiveData 自动刷新。
+     * 重算全部账户的余额缓存列与账单的退款累计列。统计与列表经 LiveData 自动刷新。
      *
-     * <p>插入顺序满足外键约束（账户 / 分类先于交易）；任一步失败（如备份数据跨表
+     * <p>插入顺序满足外键约束（账户 / 分类先于交易、交易先于退款）；任一步失败（如备份数据跨表
      * 引用失效触发外键校验）整体回滚并抛出运行时异常，当前数据不受影响。
-     * 余额缓存列是派生数据，恢复后一律从交易重算，不信任备份里的缓存值。
+     * 余额与退款累计都是派生缓存列，恢复后一律从真值表重算，不信任备份里的缓存值。
      * 仅在 IO 线程调用（{@link #runOnIo} 内）。
      */
     public void replaceAllData(@NonNull List<AccountEntity> accounts,
                                @NonNull List<CategoryEntity> categories,
                                @NonNull List<TransactionEntity> transactions,
+                               @NonNull List<RefundRecordEntity> refunds,
                                @NonNull List<BudgetEntity> budgets,
                                @NonNull List<RecurringTransactionEntity> recurring,
                                @Nullable UserSettingsEntity settings) {
@@ -850,6 +1079,8 @@ public class BookkeepingRepository {
             // V3.2：本地备份恢复 = 覆盖「当前账本」的数据集，其他账本不受影响
             long ledgerId = currentLedgerId();
             // 先删交易再删账户 / 分类以满足外键约束，与 clearAllData 同序
+            // V4.0：退款流水既是账单的外键子表，描述的又是恢复前的数据，随覆盖一并清空
+            database.refundRecordDao().clearCurrentLedger();
             database.transactionDao().clearCurrentLedger();
             database.recurringTransactionDao().clearCurrentLedger();
             database.budgetDao().clearCurrentLedger();
@@ -888,6 +1119,25 @@ public class BookkeepingRepository {
                 database.transactionDao().insert(transaction);
                 enqueueSync(SyncEntityTypes.TRANSACTION, transaction.syncId, false);
             }
+            // V4.0：退款挂在账单本地 id 上（外键 RESTRICT），父账单不在本次备份内只能跳过，
+            // 否则一条悬挂引用会让整笔恢复回滚
+            Set<Long> restoredTransactionIds = new LinkedHashSet<>();
+            for (TransactionEntity transaction : transactions) {
+                restoredTransactionIds.add(transaction.id);
+            }
+            for (RefundRecordEntity refund : refunds) {
+                if (!restoredTransactionIds.contains(refund.transactionId)) {
+                    continue;
+                }
+                SyncPayloadMapper.ensureSyncId(refund);
+                refund.version = 0;
+                refund.serverReceivedAt = 0;
+                refund.isDeleted = false;
+                refund.deletedAt = null;
+                refund.ledgerId = ledgerId;
+                database.refundRecordDao().insert(refund);
+                enqueueSync(SyncEntityTypes.REFUND, refund.syncId, false);
+            }
             for (BudgetEntity budget : budgets) {
                 SyncPayloadMapper.ensureSyncId(budget);
                 budget.version = 0;
@@ -916,6 +1166,8 @@ public class BookkeepingRepository {
                 database.accountDao().updateBalance(account.id,
                         balanceUseCase.calculate(account.id), now);
             }
+            // V4.0：退款累计列同理——真值在 refund_record，一律从流水重算而非沿用备份值
+            database.transactionDao().recomputeRefundTotals();
         });
         if (syncEnqueuer != null) {
             syncEnqueuer.notifyPendingChanges();
@@ -1403,6 +1655,14 @@ public class BookkeepingRepository {
                 existing.updatedAt = now;
                 database.transactionDao().update(existing);
                 enqueueSync(SyncEntityTypes.TRANSACTION, existing.syncId, false);
+                // V4.0：随账单一并恢复退款流水，并按流水重算账单累计（与删除前一致）
+                if (database.refundRecordDao().restoreByTransaction(id, now) > 0) {
+                    for (RefundRecordEntity refund
+                            : database.refundRecordDao().getByTransaction(id)) {
+                        enqueueSync(SyncEntityTypes.REFUND, refund.syncId, false);
+                    }
+                }
+                applyRefundTotals(existing, now);
                 recalcAccounts(affected, now);
                 return Boolean.TRUE;
             });
@@ -1625,6 +1885,8 @@ public class BookkeepingRepository {
         io.execute(() -> {
             database.runInTransaction(() -> {
                 long ledgerId = currentLedgerId();
+                // V4.0：退款流水外键指向账单，必须先于账单删除
+                database.refundRecordDao().clearCurrentLedger();
                 database.transactionDao().clearCurrentLedger();
                 database.recurringTransactionDao().clearCurrentLedger();
                 database.budgetDao().clearCurrentLedger();

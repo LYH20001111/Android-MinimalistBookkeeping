@@ -18,6 +18,7 @@ import com.skyanchor.bookkeeping.server.backup.BackupDtos.LedgerEntry;
 import com.skyanchor.bookkeeping.server.backup.BackupDtos.LedgerMemberEntry;
 import com.skyanchor.bookkeeping.server.backup.BackupDtos.RestoreReport;
 import com.skyanchor.bookkeeping.server.backup.BackupDtos.RecurringEntry;
+import com.skyanchor.bookkeeping.server.backup.BackupDtos.RefundEntry;
 import com.skyanchor.bookkeeping.server.backup.BackupDtos.TransactionEntry;
 import com.skyanchor.bookkeeping.server.backup.BackupDtos.UserEntry;
 import com.skyanchor.bookkeeping.server.common.ApiException;
@@ -32,6 +33,7 @@ import com.skyanchor.bookkeeping.server.sync.domain.BudgetRow;
 import com.skyanchor.bookkeeping.server.sync.domain.CategoryRow;
 import com.skyanchor.bookkeeping.server.sync.domain.ConflictLogRow;
 import com.skyanchor.bookkeeping.server.sync.domain.RecurringRow;
+import com.skyanchor.bookkeeping.server.sync.domain.RefundRow;
 import com.skyanchor.bookkeeping.server.sync.domain.SyncChangeRow;
 import com.skyanchor.bookkeeping.server.sync.domain.SyncRow;
 import com.skyanchor.bookkeeping.server.sync.domain.TransactionRow;
@@ -40,6 +42,7 @@ import com.skyanchor.bookkeeping.server.sync.repo.BudgetRowRepository;
 import com.skyanchor.bookkeeping.server.sync.repo.CategoryRowRepository;
 import com.skyanchor.bookkeeping.server.sync.repo.ConflictLogRepository;
 import com.skyanchor.bookkeeping.server.sync.repo.RecurringRowRepository;
+import com.skyanchor.bookkeeping.server.sync.repo.RefundRowRepository;
 import com.skyanchor.bookkeeping.server.sync.repo.SyncChangeRepository;
 import com.skyanchor.bookkeeping.server.sync.repo.TransactionRowRepository;
 import org.slf4j.Logger;
@@ -83,6 +86,7 @@ public class BackupRestoreService {
     private final CategoryRowRepository categoryRepository;
     private final AccountRowRepository accountRepository;
     private final TransactionRowRepository transactionRepository;
+    private final RefundRowRepository refundRepository;
     private final BudgetRowRepository budgetRepository;
     private final RecurringRowRepository recurringRepository;
     private final SyncChangeRepository changeRepository;
@@ -100,6 +104,7 @@ public class BackupRestoreService {
                                 CategoryRowRepository categoryRepository,
                                 AccountRowRepository accountRepository,
                                 TransactionRowRepository transactionRepository,
+                                RefundRowRepository refundRepository,
                                 BudgetRowRepository budgetRepository,
                                 RecurringRowRepository recurringRepository,
                                 SyncChangeRepository changeRepository,
@@ -116,6 +121,7 @@ public class BackupRestoreService {
         this.categoryRepository = categoryRepository;
         this.accountRepository = accountRepository;
         this.transactionRepository = transactionRepository;
+        this.refundRepository = refundRepository;
         this.budgetRepository = budgetRepository;
         this.recurringRepository = recurringRepository;
         this.changeRepository = changeRepository;
@@ -146,6 +152,7 @@ public class BackupRestoreService {
         allRows.addAll(insertCategories(file.categories(), userMap, ledgerResolver));
         allRows.addAll(insertAccounts(file.accounts(), userMap, ledgerResolver));
         allRows.addAll(insertTransactions(file.transactions(), userMap, ledgerResolver));
+        allRows.addAll(insertRefunds(file.refunds(), userMap, ledgerResolver));
         allRows.addAll(insertBudgets(file.budgets(), userMap, ledgerResolver));
         allRows.addAll(insertRecurring(file.recurring(), userMap, ledgerResolver));
         insertConflictLogs(file.conflictLogs(), userMap, ledgerResolver);
@@ -159,6 +166,7 @@ public class BackupRestoreService {
                 file.categories() == null ? 0 : file.categories().size(),
                 file.accounts() == null ? 0 : file.accounts().size(),
                 file.transactions() == null ? 0 : file.transactions().size(),
+                file.refunds() == null ? 0 : file.refunds().size(),
                 file.budgets() == null ? 0 : file.budgets().size(),
                 file.recurring() == null ? 0 : file.recurring().size(),
                 file.conflictLogs() == null ? 0 : file.conflictLogs().size());
@@ -191,6 +199,7 @@ public class BackupRestoreService {
         categoryRepository.deleteAllInBatch();
         accountRepository.deleteAllInBatch();
         transactionRepository.deleteAllInBatch();
+        refundRepository.deleteAllInBatch();
         budgetRepository.deleteAllInBatch();
         recurringRepository.deleteAllInBatch();
         memberRepository.deleteAllInBatch();
@@ -452,6 +461,35 @@ public class BackupRestoreService {
         return rows;
     }
 
+    private List<SyncRow> insertRefunds(List<RefundEntry> entries,
+                                        Map<Long, UserEntity> userMap,
+                                        LedgerResolver ledgers) {
+        List<SyncRow> rows = new ArrayList<>();
+        if (entries == null) {
+            return rows;
+        }
+        List<RefundRow> saved = new ArrayList<>();
+        for (RefundEntry entry : entries) {
+            RefundRow row = new RefundRow();
+            applySyncMeta(row, userMap, ledgers, entry.userRefId(), entry.ledgerRefId(),
+                    entry.syncId(), entry.version(), entry.serverReceivedAt(),
+                    entry.clientUpdatedAt(), entry.deleted(), entry.deletedAt(),
+                    entry.createdAt());
+            row.setTransactionSyncId(orEmpty(entry.transactionSyncId()));
+            row.setAmount(entry.amount());
+            row.setState(entry.state() == null || entry.state().isBlank()
+                    ? RefundRow.STATE_PENDING : entry.state());
+            row.setReason(orEmpty(entry.reason()));
+            row.setRequestedAt(entry.requestedAt());
+            row.setReceivedAt(entry.receivedAt());
+            saved.add(row);
+            rows.add(row);
+        }
+        refundRepository.saveAll(saved);
+        refundRepository.flush();
+        return rows;
+    }
+
     private List<SyncRow> insertBudgets(List<BudgetEntry> entries,
                                         Map<Long, UserEntity> userMap,
                                         LedgerResolver ledgers) {
@@ -588,6 +626,9 @@ public class BackupRestoreService {
         }
         if (row instanceof TransactionRow) {
             return "TRANSACTION";
+        }
+        if (row instanceof RefundRow) {
+            return "REFUND";
         }
         if (row instanceof BudgetRow) {
             return "BUDGET";

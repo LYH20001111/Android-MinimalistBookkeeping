@@ -52,7 +52,7 @@ public final class StatisticsCalculator {
                 if (item.type == CategoryEntity.TYPE_INCOME) {
                     income += item.amount;
                 } else if (item.type == CategoryEntity.TYPE_EXPENSE) {
-                    expense += item.amount;
+                    expense += item.netAmount();
                 }
                 // type == TYPE_TRANSFER：转账不计收入也不计支出（V2）。
             }
@@ -99,7 +99,7 @@ public final class StatisticsCalculator {
                 int month = DateUtil.monthOf(item.date);
                 Integer index = indexByMonth.get((long) month);
                 if (index != null) {
-                    values[index] += item.amount;
+                    values[index] += item.netAmount();
                 }
             }
         }
@@ -124,7 +124,7 @@ public final class StatisticsCalculator {
             }
             Integer index = indexByKey.get(item.date);
             if (index != null) {
-                values[index] += item.amount;
+                values[index] += item.netAmount();
             }
         }
     }
@@ -153,8 +153,8 @@ public final class StatisticsCalculator {
                 aggregate = new Aggregate(item.categoryId, item.displayName(), item.displayIcon());
                 aggregates.put(item.categoryId, aggregate);
             }
-            aggregate.amount += item.amount;
-            total += item.amount;
+            aggregate.amount += item.netAmount();
+            total += item.netAmount();
         }
         if (total <= 0L) {
             return Collections.emptyList();
@@ -246,7 +246,7 @@ public final class StatisticsCalculator {
             if (item.type == CategoryEntity.TYPE_INCOME) {
                 income += item.amount;
             } else if (item.type == CategoryEntity.TYPE_EXPENSE) {
-                expense += item.amount;
+                expense += item.netAmount();
             }
             // 转账不计入当日收支合计，但仍作为一行展示、计入笔数（V2）。
             count++;

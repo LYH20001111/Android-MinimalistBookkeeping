@@ -6,9 +6,9 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import java.util.List;
 
 /**
- * 服务器备份文件格式（V3.2 基线第 18 章，formatVersion 2）。
+ * 服务器备份文件格式（V3.2 基线第 18 章；V4.0 升级为 formatVersion 3）。
  *
- * <p>范围：users、devices、ledgers、ledger_members、5 张业务表、conflict_logs。安全边界：
+ * <p>范围：users、devices、ledgers、ledger_members、6 张业务表、conflict_logs。安全边界：
  * <ul>
  *   <li>不含 refresh_tokens / email_verification_tokens —— 恢复后所有设备
  *       必须重新登录，降低备份文件泄露后的冒用风险（基线第 14 章建议）；</li>
@@ -21,6 +21,7 @@ import java.util.List;
  * 恢复时按插入顺序重新分配自增 id 并重映射 userRefId / ledgerRefId；业务行之间的引用
  * 一律是 syncId，不受重映射影响。时间一律 epoch millis。
  * v1 备份（无 ledgers 段）仍可恢复：恢复时按用户补建默认账本并回填。
+ * v2 及更早备份（无 refunds 段）仍可恢复：缺段即「无退款」，v3 只是多出退款流水一张表。
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -30,14 +31,14 @@ public final class BackupDtos {
     }
 
     public static final String FORMAT = "bookkeeping-server-backup";
-    public static final int FORMAT_VERSION = 2;
+    public static final int FORMAT_VERSION = 3;
     public static final String TRIGGER_MANUAL = "MANUAL";
     public static final String TRIGGER_SCHEDULED = "SCHEDULED";
     public static final String TRIGGER_API = "API";
 
     public record BackupCounts(long users, long devices, long ledgers, long ledgerMembers,
                                long categories, long accounts,
-                               long transactions, long budgets, long recurring,
+                               long transactions, long refunds, long budgets, long recurring,
                                long conflictLogs) {
     }
 
@@ -84,6 +85,14 @@ public final class BackupDtos {
                                    long clientCreatedAt, Long ledgerRefId) {
     }
 
+    /** V4.0 退款流水：父账单以 syncId 引用，state 三态语义由客户端解释。 */
+    public record RefundEntry(long userRefId, String syncId, long version,
+                              long serverReceivedAt, long clientUpdatedAt, boolean deleted,
+                              Long deletedAt, long createdAt, String transactionSyncId,
+                              long amount, String state, String reason, long requestedAt,
+                              Long receivedAt, Long ledgerRefId) {
+    }
+
     public record BudgetEntry(long userRefId, String syncId, long version,
                               long serverReceivedAt, long clientUpdatedAt, boolean deleted,
                               Long deletedAt, long createdAt, int year, int month,
@@ -110,7 +119,8 @@ public final class BackupDtos {
                              BackupCounts counts, List<UserEntry> users, List<DeviceEntry> devices,
                              List<LedgerEntry> ledgers, List<LedgerMemberEntry> ledgerMembers,
                              List<CategoryEntry> categories, List<AccountEntry> accounts,
-                             List<TransactionEntry> transactions, List<BudgetEntry> budgets,
+                             List<TransactionEntry> transactions, List<RefundEntry> refunds,
+                             List<BudgetEntry> budgets,
                              List<RecurringEntry> recurring, List<ConflictEntry> conflictLogs) {
     }
 

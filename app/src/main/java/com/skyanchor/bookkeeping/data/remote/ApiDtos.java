@@ -147,6 +147,19 @@ public final class ApiDtos {
         public String currency;
         /** 账本所有者的服务器用户 id：仅服务端下发，客户端只读展示。 */
         public Long ownerUserId;
+        // Refund（entityType=REFUND 专用；amount / clientUpdatedAt / isDeleted / deletedAt 复用通用字段）
+        /** 所属账单的 syncId：跨实体引用一律走 syncId，账单未落地时该变更暂存重试。 */
+        @Nullable
+        public String transactionSyncId;
+        /** 退款状态：PENDING / RECEIVED / CANCELLED，与客户端 RefundRecordEntity.state 同名。 */
+        public String state;
+        @Nullable
+        public String reason;
+        /** 发起时间（epoch millis）。 */
+        public Long requestedAt;
+        /** 到账时间（epoch millis），仅 RECEIVED 有值。 */
+        @Nullable
+        public Long receivedAt;
         // 通用
         public Long clientUpdatedAt;
         public Boolean isDeleted;

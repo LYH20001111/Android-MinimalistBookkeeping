@@ -17,6 +17,7 @@ import com.skyanchor.bookkeeping.data.entity.TransactionItem;
 import com.skyanchor.bookkeeping.data.model.RecordListItem;
 import com.skyanchor.bookkeeping.databinding.ItemRecordHeaderBinding;
 import com.skyanchor.bookkeeping.databinding.ItemTransactionRowBinding;
+import com.skyanchor.bookkeeping.ui.widget.RefundBadge;
 import com.skyanchor.bookkeeping.util.AmountUtil;
 
 /**
@@ -155,6 +156,8 @@ public class TransactionListAdapter extends ListAdapter<RecordListItem, Recycler
             }
 
             binding.rowTime.setText(item.time);
+            // V4.0：金额位仍显示原额，退款信息由标题右侧角标承载（三处列表共用本适配器）。
+            RefundBadge.bind(binding.rowRefundBadge, item);
 
             itemView.setOnClickListener(v -> {
                 if (listener != null) {

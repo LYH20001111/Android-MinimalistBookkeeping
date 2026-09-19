@@ -9,6 +9,7 @@ import com.skyanchor.bookkeeping.data.entity.AccountEntity;
 import com.skyanchor.bookkeeping.data.entity.BudgetEntity;
 import com.skyanchor.bookkeeping.data.entity.CategoryEntity;
 import com.skyanchor.bookkeeping.data.entity.RecurringTransactionEntity;
+import com.skyanchor.bookkeeping.data.entity.RefundRecordEntity;
 import com.skyanchor.bookkeeping.data.entity.TransactionEntity;
 import com.skyanchor.bookkeeping.data.entity.UserSettingsEntity;
 import com.skyanchor.bookkeeping.data.model.BackupData;
@@ -67,6 +68,21 @@ public class BackupSerializerTest {
         return transaction;
     }
 
+    private static RefundRecordEntity refund() {
+        RefundRecordEntity refund = new RefundRecordEntity();
+        refund.id = 21L;
+        refund.syncId = "sync-refund-21";
+        refund.transactionId = 11L;
+        refund.amount = 800L;
+        refund.state = RefundRecordEntity.STATE_RECEIVED;
+        refund.reason = "商品破损";
+        refund.requestedAt = 1_700_000_500_000L;
+        refund.receivedAt = 1_700_000_600_000L;
+        refund.createdAt = 1_700_000_500_000L;
+        refund.updatedAt = 1_700_000_600_000L;
+        return refund;
+    }
+
     private static BudgetEntity budget() {
         BudgetEntity budget = new BudgetEntity();
         budget.id = 3L;
@@ -119,6 +135,8 @@ public class BackupSerializerTest {
         data.categories.add(category());
         data.transactions = new ArrayList<>();
         data.transactions.add(transaction());
+        data.refunds = new ArrayList<>();
+        data.refunds.add(refund());
         data.budgets = new ArrayList<>();
         data.budgets.add(budget());
         data.recurring = new ArrayList<>();
@@ -141,6 +159,7 @@ public class BackupSerializerTest {
         assertEquals(1, root.optJSONArray("accounts").length());
         assertEquals(1, root.optJSONArray("categories").length());
         assertEquals(1, root.optJSONArray("transactions").length());
+        assertEquals(1, root.optJSONArray("refunds").length());
         assertEquals(1, root.optJSONArray("budgets").length());
         assertEquals(1, root.optJSONArray("recurring").length());
         assertTrue(root.optJSONObject("settings").length() > 0);
@@ -184,6 +203,20 @@ public class BackupSerializerTest {
         assertEquals(1_700_000_400_000L, transaction.date);
         assertEquals("12:30", transaction.time);
         assertEquals("午餐,加\"冰\"", transaction.note);
+
+        assertEquals(1, restored.refunds.size());
+        RefundRecordEntity refund = restored.refunds.get(0);
+        assertEquals(21L, refund.id);
+        assertEquals("sync-refund-21", refund.syncId);
+        assertEquals(11L, refund.transactionId);
+        assertEquals(800L, refund.amount);
+        assertEquals(RefundRecordEntity.STATE_RECEIVED, refund.state);
+        assertEquals("商品破损", refund.reason);
+        assertEquals(1_700_000_500_000L, refund.requestedAt);
+        assertEquals(Long.valueOf(1_700_000_600_000L), refund.receivedAt);
+        assertEquals(1_700_000_600_000L, refund.updatedAt);
+        // 账本归属不写进备份文件：恢复时统一挂到当前账本，故还原后仍是实体默认值。
+        assertEquals(1L, refund.ledgerId);
 
         assertEquals(1, restored.budgets.size());
         BudgetEntity budget = restored.budgets.get(0);
@@ -253,6 +286,7 @@ public class BackupSerializerTest {
         assertTrue(restored.accounts.isEmpty());
         assertTrue(restored.categories.isEmpty());
         assertTrue(restored.transactions.isEmpty());
+        assertTrue(restored.refunds.isEmpty());
         assertTrue(restored.budgets.isEmpty());
         assertTrue(restored.recurring.isEmpty());
         assertNull(restored.settings);
@@ -286,5 +320,39 @@ public class BackupSerializerTest {
         BackupData restored = BackupSerializer.fromJson(BackupSerializer.toJson(data));
 
         assertEquals(31, restored.recurring.get(0).anchorDayOfMonth);
+    }
+
+    /**
+     * V4.0 之前的备份（version 5）没有 refunds 段：缺段即「该账本无退款」，解析照常成功，
+     * 账单上的退款累计列由恢复侧从流水重算为 0，不沿用备份值。
+     */
+    @Test
+    public void fromJson_v5BackupWithoutRefundSectionIsStillRestorable() throws JSONException {
+        String json = "{\"schemaVersion\":5,\"accounts\":[],\"categories\":[],"
+                + "\"transactions\":[{\"id\":11,\"type\":1,\"amount\":3500,"
+                + "\"date\":1700000400000,\"time\":\"12:30\"}],\"budgets\":[],\"recurring\":[]}";
+        BackupData restored = BackupSerializer.fromJson(json);
+
+        assertTrue(restored.refunds.isEmpty());
+        assertEquals(1, restored.transactions.size());
+    }
+
+    /** 待到账退款没有原因、也没有到账时间：两个可空字段省略后必须还原为 null。 */
+    @Test
+    public void roundTrip_pendingRefundKeepsNullReasonAndReceivedAt() throws JSONException {
+        RefundRecordEntity pending = refund();
+        pending.state = RefundRecordEntity.STATE_PENDING;
+        pending.reason = null;
+        pending.receivedAt = null;
+        BackupData data = fullData();
+        data.refunds = new ArrayList<>();
+        data.refunds.add(pending);
+
+        RefundRecordEntity back = BackupSerializer.fromJson(BackupSerializer.toJson(data))
+                .refunds.get(0);
+
+        assertEquals(RefundRecordEntity.STATE_PENDING, back.state);
+        assertNull(back.reason);
+        assertNull(back.receivedAt);
     }
 }

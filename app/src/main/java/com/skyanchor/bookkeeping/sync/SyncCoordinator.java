@@ -11,6 +11,7 @@ import com.skyanchor.bookkeeping.data.entity.BudgetEntity;
 import com.skyanchor.bookkeeping.data.entity.CategoryEntity;
 import com.skyanchor.bookkeeping.data.entity.LedgerEntity;
 import com.skyanchor.bookkeeping.data.entity.RecurringTransactionEntity;
+import com.skyanchor.bookkeeping.data.entity.RefundRecordEntity;
 import com.skyanchor.bookkeeping.data.entity.SyncChangeQueueEntity;
 import com.skyanchor.bookkeeping.data.entity.SyncCursorEntity;
 import com.skyanchor.bookkeeping.data.entity.SyncEntityTypes;
@@ -470,6 +471,30 @@ public class SyncCoordinator {
                         entity.isDeleted ? SyncEntityTypes.OP_DELETE : SyncEntityTypes.OP_UPSERT,
                         entity.version, ledgerSyncId, payload);
             }
+            case SyncEntityTypes.REFUND: {
+                RefundRecordEntity entity = database.refundRecordDao().getBySyncId(syncId);
+                if (entity == null) {
+                    return dropOrDelete(entry, snapshots);
+                }
+                String ledgerSyncId = ledgerSyncIdOf(entity.ledgerId);
+                if (ledgerSyncId == null) {
+                    database.syncChangeQueueDao().clearFor(entry.entityType, syncId);
+                    return null;
+                }
+                ApiDtos.SyncPayload payload = SyncPayloadMapper.toPayload(entity, database);
+                if (payload.transactionSyncId == null) {
+                    // 父账单尚未落地（本地已物理清除）：按退避留在队列，不与悬挂引用较劲
+                    database.syncChangeQueueDao().markFailed(entry.entityType, syncId, 1,
+                            "PARENT_TRANSACTION_MISSING",
+                            System.currentTimeMillis() + RetryPolicy.delayFor(1));
+                    return null;
+                }
+                snapshots.put(key(entry), new PushSnapshot(entry.entityType, syncId,
+                        entity.version, payload, entity.isDeleted, entity.ledgerId));
+                return new ApiDtos.PushItem(entry.entityType, syncId,
+                        entity.isDeleted ? SyncEntityTypes.OP_DELETE : SyncEntityTypes.OP_UPSERT,
+                        entity.version, ledgerSyncId, payload);
+            }
             default:
                 database.syncChangeQueueDao().clearFor(entry.entityType, syncId);
                 return null;
@@ -600,6 +625,19 @@ public class SyncCoordinator {
                     current.version = result.version;
                     current.serverReceivedAt = result.serverReceivedAt;
                     database.budgetDao().upsert(current);
+                }
+                break;
+            }
+            case SyncEntityTypes.REFUND: {
+                RefundRecordEntity current = database.refundRecordDao().getBySyncId(syncId);
+                unchanged = current != null && current.version == snapshot.baseVersion
+                        && current.isDeleted == snapshot.isDeleted
+                        && payloadEquals(SyncPayloadMapper.toPayload(current, database),
+                        snapshot.payload);
+                if (unchanged) {
+                    current.version = result.version;
+                    current.serverReceivedAt = result.serverReceivedAt;
+                    database.refundRecordDao().update(current);
                 }
                 break;
             }
@@ -997,6 +1035,40 @@ public class SyncCoordinator {
                 database.recurringTransactionDao().update(local);
                 return true;
             }
+            case SyncEntityTypes.REFUND: {
+                RefundRecordEntity local = database.refundRecordDao().getBySyncId(syncId);
+                Long transactionId = SyncPayloadMapper.localTransactionId(
+                        database, payload.transactionSyncId);
+                if (transactionId == null) {
+                    if (isDelete && local == null) {
+                        return true; // 本地没有、云端已删：无需建墓碑
+                    }
+                    return false; // 父账单未就绪，暂存重试
+                }
+                if (local == null) {
+                    RefundRecordEntity created = new RefundRecordEntity();
+                    created.syncId = syncId;
+                    created.transactionId = transactionId;
+                    created.ledgerId = ledgerRowId;
+                    created.requestedAt = payload.requestedAt != null
+                            ? payload.requestedAt : System.currentTimeMillis();
+                    created.createdAt = created.requestedAt;
+                    applyRefundFields(created, payload);
+                    created.version = serverVersion;
+                    created.serverReceivedAt = serverReceivedAt;
+                    database.refundRecordDao().insert(created);
+                    return true;
+                }
+                if (serverVersion <= local.version) {
+                    return true;
+                }
+                local.transactionId = transactionId;
+                applyRefundFields(local, payload);
+                local.version = serverVersion;
+                local.serverReceivedAt = serverReceivedAt;
+                database.refundRecordDao().update(local);
+                return true;
+            }
             default:
                 return true;
         }
@@ -1091,6 +1163,22 @@ public class SyncCoordinator {
                 ? payload.anchorDayOfMonth : entity.anchorDayOfMonth;
         entity.isEnabled = payload.isEnabled != null ? payload.isEnabled : entity.isEnabled;
         entity.note = payload.note;
+        entity.updatedAt = payload.clientUpdatedAt != null
+                ? payload.clientUpdatedAt : entity.updatedAt;
+        entity.isDeleted = payload.isDeleted != null && payload.isDeleted;
+        entity.deletedAt = payload.deletedAt;
+    }
+
+    /**
+     * 退款字段应用（Pull 侧）。状态缺省时保留本地值，新建行的默认值即 PENDING；
+     * 账单上的两个累计列由同步轮次结束后的统一重算对齐（真值在退款流水）。
+     */
+    private void applyRefundFields(RefundRecordEntity entity, ApiDtos.SyncPayload payload) {
+        entity.amount = payload.amount != null ? payload.amount : entity.amount;
+        entity.state = payload.state != null ? payload.state : entity.state;
+        entity.reason = payload.reason;
+        entity.requestedAt = payload.requestedAt != null ? payload.requestedAt : entity.requestedAt;
+        entity.receivedAt = payload.receivedAt;
         entity.updatedAt = payload.clientUpdatedAt != null
                 ? payload.clientUpdatedAt : entity.updatedAt;
         entity.isDeleted = payload.isDeleted != null && payload.isDeleted;
@@ -1218,6 +1306,7 @@ public class SyncCoordinator {
             database.accountDao().repointLedger(local.id, twin.id);
             database.budgetDao().repointLedger(local.id, twin.id);
             database.recurringTransactionDao().repointLedger(local.id, twin.id);
+            database.refundRecordDao().repointLedger(local.id, twin.id);
             database.ledgerDao().deleteById(local.id);
             if (wasCurrent) {
                 database.ledgerDao().setCurrent(twin.id);
@@ -1414,6 +1503,13 @@ public class SyncCoordinator {
                     database.transactionDao().update(entity);
                 }
             }
+            for (RefundRecordEntity entity : database.refundRecordDao()
+                    .getAllEntitiesIncludingDeleted()) {
+                if (entity.syncId == null || entity.syncId.isEmpty()) {
+                    SyncPayloadMapper.ensureSyncId(entity);
+                    database.refundRecordDao().update(entity);
+                }
+            }
             for (BudgetEntity entity : database.budgetDao().getAllIncludingDeleted()) {
                 if (entity.syncId == null || entity.syncId.isEmpty()) {
                     SyncPayloadMapper.ensureSyncId(entity);
@@ -1452,6 +1548,11 @@ public class SyncCoordinator {
             for (TransactionEntity entity : database.transactionDao()
                     .getAllEntitiesIncludingDeleted()) {
                 database.syncChangeQueueDao().upsert(queueRow(SyncEntityTypes.TRANSACTION,
+                        entity.syncId, entity.isDeleted));
+            }
+            for (RefundRecordEntity entity : database.refundRecordDao()
+                    .getAllEntitiesIncludingDeleted()) {
+                database.syncChangeQueueDao().upsert(queueRow(SyncEntityTypes.REFUND,
                         entity.syncId, entity.isDeleted));
             }
             for (BudgetEntity entity : database.budgetDao().getAllIncludingDeleted()) {
@@ -1502,8 +1603,12 @@ public class SyncCoordinator {
         postStatus(success);
         persistState(success, null, counters.conflicts);
         recordEvent(startedAt, success, counters, null);
-        // Pull 后统一重算账户余额缓存（继承 V2「缓存不是唯一真值」）
-        repository.runOnIo(repository::validateAccountBalancesInternal);
+        // Pull 后统一重算缓存列（继承 V2「缓存不是唯一真值」）：
+        // 账户余额真值在交易，账单退款累计真值在退款流水。
+        repository.runOnIo(() -> {
+            repository.validateAccountBalancesInternal();
+            repository.validateRefundTotalsInternal();
+        });
     }
 
     private void persistState(Status statusName, @Nullable String error, int conflicts) {
@@ -1641,6 +1746,11 @@ public class SyncCoordinator {
                 && java.util.Objects.equals(a.description, b.description)
                 && java.util.Objects.equals(a.currency, b.currency)
                 && java.util.Objects.equals(a.ownerUserId, b.ownerUserId)
+                && java.util.Objects.equals(a.transactionSyncId, b.transactionSyncId)
+                && java.util.Objects.equals(a.state, b.state)
+                && java.util.Objects.equals(a.reason, b.reason)
+                && java.util.Objects.equals(a.requestedAt, b.requestedAt)
+                && java.util.Objects.equals(a.receivedAt, b.receivedAt)
                 && java.util.Objects.equals(a.clientUpdatedAt, b.clientUpdatedAt)
                 && java.util.Objects.equals(a.isDeleted, b.isDeleted)
                 && java.util.Objects.equals(a.deletedAt, b.deletedAt);

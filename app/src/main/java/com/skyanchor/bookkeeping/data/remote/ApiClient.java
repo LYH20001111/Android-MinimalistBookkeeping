@@ -27,9 +27,9 @@ import retrofit2.converter.gson.GsonConverterFactory;
  */
 public class ApiClient {
 
-    /** API Version / Sync Protocol Version（与服务端 ApiVersionFilter 对齐）。V3.2 升级到 2。 */
-    public static final int API_VERSION = 2;
-    public static final int SYNC_PROTOCOL_VERSION = 2;
+    /** API Version / Sync Protocol Version（与服务端 ApiVersionFilter 对齐）。V4.0 升级到 3（新增退款）。 */
+    public static final int API_VERSION = 3;
+    public static final int SYNC_PROTOCOL_VERSION = 3;
 
     public interface AuthStateListener {
         /** refresh token 已失效，需要重新登录；不影响本地使用。 */

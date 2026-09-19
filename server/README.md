@@ -95,6 +95,7 @@ POST /api/v1/server/backup/{name}/restore    恢复备份（管理员；epoch+1�
 保留策略为最近 7 天每日一份 + 4 周每周一份 + 12 个月每月一份；备份不含任何登录令牌。
 ```
 
-所有 `/api/v1/**` 请求需带请求头 `X-Api-Version: 1` 与 `X-Sync-Protocol-Version: 1`；
+所有 `/api/v1/**` 请求需带请求头 `X-Api-Version: 3` 与 `X-Sync-Protocol-Version: 3`
+（协议 3 = V4.0 新增退款流水 `REFUND` 实体；协议 2 及更早客户端会收到 `VERSION_MISMATCH`，需升级 App）；
 受保护接口另带 `Authorization: Bearer <accessToken>`。豁免版本头的例外：`/api/v1/auth/verify-email`
 （浏览器打开）与 `/api/v1/server/health`（浏览器 / curl 排障）。

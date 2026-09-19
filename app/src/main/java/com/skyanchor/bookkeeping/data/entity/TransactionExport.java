@@ -71,6 +71,14 @@ public class TransactionExport {
     @ColumnInfo(name = "updatedAt")
     public long updatedAt;
 
+    /** V4.0：已到账退款合计（分），导出用缓存列，转账 / 收入恒为 0。 */
+    @ColumnInfo(name = "refundedAmount")
+    public long refundedAmount;
+
+    /** V4.0：待到账退款合计（分）。 */
+    @ColumnInfo(name = "pendingRefundAmount")
+    public long pendingRefundAmount;
+
     @NonNull
     public String displayCategoryName() {
         return categoryName == null ? "" : categoryName;

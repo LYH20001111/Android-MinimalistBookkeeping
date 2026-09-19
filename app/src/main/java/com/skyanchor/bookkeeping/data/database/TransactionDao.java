@@ -26,7 +26,15 @@ public interface TransactionDao {
             + "t.time AS time, t.note AS note, COALESCE(t.category_id, 0) AS categoryId, "
             + "c.name AS categoryName, c.icon AS categoryIcon, "
             + "t.account_id AS accountId, a.name AS accountName, "
-            + "t.transfer_account_id AS transferAccountId, ta.name AS transferAccountName";
+            + "t.transfer_account_id AS transferAccountId, ta.name AS transferAccountName, "
+            + "t.refunded_amount AS refundedAmount, t.pending_refund_amount AS pendingRefundAmount";
+
+    /**
+     * V4.0 净额口径的 SQL 侧实现：支出按「原额 - 已到账退款」聚合，收入 / 转账按原额。
+     * 与 {@code TransactionItem.netAmount()} 是同一规则的两个出口，两侧必须同步修改。
+     * 待到账退款不冲减，且 {@code refunded_amount} 恒满足 0 ≤ 已退 ≤ 原额，故无需再取非负钳位。
+     */
+    String NET_SUM = "SUM(CASE WHEN type = 1 THEN amount - refunded_amount ELSE amount END)";
 
     String ITEM_FROM = " FROM transactions t "
             + "LEFT JOIN category c ON t.category_id = c.id "
@@ -109,6 +117,8 @@ public interface TransactionDao {
             + "t.account_id AS accountId, a.name AS accountName, "
             + "t.transfer_account_id AS transferAccountId, ta.name AS transferAccountName, "
             + "t.date AS date, t.time AS time, t.note AS note, "
+            + "t.refunded_amount AS refundedAmount, "
+            + "t.pending_refund_amount AS pendingRefundAmount, "
             + "t.created_at AS createdAt, t.updated_at AS updatedAt";
 
     /**
@@ -130,6 +140,22 @@ public interface TransactionDao {
     /** V3：跨设备身份定位（同步 Pull 应用用）。 */
     @Query("SELECT * FROM transactions WHERE sync_id = :syncId LIMIT 1")
     TransactionEntity getBySyncId(String syncId);
+
+    /**
+     * V4.0：从退款流水整体重算账单的两个累计列（同步轮次结束后的缓存对齐）。
+     *
+     * <p>退款累计的真值在 {@code refund_record}，账单上的两列只是缓存——与账户余额同构，
+     * 因此不做增量加减，直接覆写。WHERE 只覆盖「有退款痕迹」或「缓存非零」的行，避免全表写。
+     * 仅在 IO 线程调用。
+     */
+    @Query("UPDATE transactions SET "
+            + "refunded_amount = COALESCE((SELECT SUM(r.amount) FROM refund_record r "
+            + "  WHERE r.transaction_id = transactions.id AND r.is_deleted = 0 AND r.state = 'RECEIVED'), 0), "
+            + "pending_refund_amount = COALESCE((SELECT SUM(r.amount) FROM refund_record r "
+            + "  WHERE r.transaction_id = transactions.id AND r.is_deleted = 0 AND r.state = 'PENDING'), 0) "
+            + "WHERE refunded_amount > 0 OR pending_refund_amount > 0 "
+            + "OR id IN (SELECT transaction_id FROM refund_record)")
+    int recomputeRefundTotals();
 
     /** V3：重名实体合并——把分类引用从重复行改指向保留行。 */
     @Query("UPDATE transactions SET category_id = :toId, updated_at = :updatedAt "
@@ -158,8 +184,8 @@ public interface TransactionDao {
     @Query("DELETE FROM transactions")
     void deleteAll();
 
-    /** 区间内某一类型的金额合计（单位：分）。V3 排除软删行。 */
-    @Query("SELECT COALESCE(SUM(amount), 0) FROM transactions "
+    /** 区间内某一类型的金额合计（单位：分）。V3 排除软删行；V4.0 支出按净额（原额 - 已到账退款）。 */
+    @Query("SELECT COALESCE(" + NET_SUM + ", 0) FROM transactions "
             + "WHERE is_deleted = 0 AND ledger_id = (SELECT id FROM ledger WHERE is_current = 1 LIMIT 1) AND type = :type AND date BETWEEN :startDay AND :endDay")
     LiveData<Long> observeSum(int type, long startDay, long endDay);
 
@@ -171,8 +197,8 @@ public interface TransactionDao {
     // V2 新增：账户余额重算所需的分类聚合（CalculateAccountBalanceUseCase 使用）
     // ------------------------------------------------------------------
 
-    /** 某账户下指定类型（1=支出 / 2=收入）的金额合计（分）。V3 排除软删。 */
-    @Query("SELECT COALESCE(SUM(amount), 0) FROM transactions "
+    /** 某账户下指定类型（1=支出 / 2=收入）的金额合计（分）。V3 排除软删；V4.0 支出按净额。 */
+    @Query("SELECT COALESCE(" + NET_SUM + ", 0) FROM transactions "
             + "WHERE is_deleted = 0 AND type = :type AND account_id = :accountId")
     long sumByTypeAndAccount(int type, long accountId);
 
@@ -232,7 +258,7 @@ public interface TransactionDao {
      * 只返回有账单的日期，无流水日期不出现在结果中（V1.1 基线第 6.2 节）。
      */
     @Query("SELECT date AS day, "
-            + "COALESCE(SUM(CASE WHEN type = 1 THEN amount ELSE 0 END), 0) AS expense, "
+            + "COALESCE(SUM(CASE WHEN type = 1 THEN amount - refunded_amount ELSE 0 END), 0) AS expense, "
             + "COALESCE(SUM(CASE WHEN type = 2 THEN amount ELSE 0 END), 0) AS income, "
             + "COUNT(*) AS transactionCount "
             + "FROM transactions "

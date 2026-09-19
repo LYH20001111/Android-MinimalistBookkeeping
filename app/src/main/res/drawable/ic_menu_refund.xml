@@ -1,0 +1,40 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+
+    <!-- 1. 吊牌外轮廓 -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M11.5,3.5 L17.5,3.5 C19.16,3.5 20.5,4.84 20.5,6.5 L20.5,12.5 C20.5,13.3 20.18,14.06 19.62,14.62 L12.62,21.62 C11.45,22.79 9.55,22.79 8.38,21.62 L2.38,15.62 C1.21,14.45 1.21,12.55 2.38,11.38 L9.38,4.38 C9.94,3.82 10.7,3.5 11.5,3.5 Z"
+        android:strokeColor="#1F2937"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+
+    <!-- 2. 右上角圆孔 -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M16.5,7.5m-1.2,0a1.2,1.2 0,1 0,2.4 0a1.2,1.2 0,1 0,-2.4 0"
+        android:strokeColor="#1F2937"
+        android:strokeWidth="1.6" />
+
+    <!-- 3. ¥ 人民币符号 - V型与主竖线 -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M8.5,10.2 L11,13.2 L11,17 M13.5,10.2 L11,13.2"
+        android:strokeColor="#1F2937"
+        android:strokeWidth="1.6"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+
+    <!-- 4. ¥ 人民币符号 - 双横杠 -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M9,13.2 L13,13.2 M9.3,15.2 L12.7,15.2"
+        android:strokeColor="#1F2937"
+        android:strokeWidth="1.6"
+        android:strokeLineCap="round" />
+
+</vector>

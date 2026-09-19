@@ -18,11 +18,13 @@ import com.skyanchor.bookkeeping.server.ledger.repo.LedgerRowRepository;
 import com.skyanchor.bookkeeping.server.sync.SyncPayload;
 import com.skyanchor.bookkeeping.server.sync.SyncService;
 import com.skyanchor.bookkeeping.server.sync.domain.CategoryRow;
+import com.skyanchor.bookkeeping.server.sync.domain.RefundRow;
 import com.skyanchor.bookkeeping.server.sync.dto.SyncDtos.PullRequest;
 import com.skyanchor.bookkeeping.server.sync.dto.SyncDtos.PullResponse;
 import com.skyanchor.bookkeeping.server.sync.dto.SyncDtos.PushItem;
 import com.skyanchor.bookkeeping.server.sync.dto.SyncDtos.PushRequest;
 import com.skyanchor.bookkeeping.server.sync.repo.CategoryRowRepository;
+import com.skyanchor.bookkeeping.server.sync.repo.RefundRowRepository;
 import com.skyanchor.bookkeeping.server.sync.repo.SyncChangeRepository;
 import com.skyanchor.bookkeeping.server.sync.repo.TransactionRowRepository;
 import org.junit.jupiter.api.AfterAll;
@@ -81,6 +83,8 @@ class BackupRestoreIntegrationTest {
     @Autowired
     TransactionRowRepository transactionRepository;
     @Autowired
+    RefundRowRepository refundRepository;
+    @Autowired
     SyncChangeRepository changeRepository;
     @Autowired
     RefreshTokenRepository refreshTokenRepository;
@@ -97,6 +101,7 @@ class BackupRestoreIntegrationTest {
     private static final String LEDGER_SYNC_ID = "aaaaaaaa-0000-0000-0000-000000000003";
     private static final String CATEGORY_SYNC_ID = "aaaaaaaa-1111-1111-1111-111111111111";
     private static final String TRANSACTION_SYNC_ID = "aaaaaaaa-2222-2222-2222-222222222222";
+    private static final String REFUND_SYNC_ID = "aaaaaaaa-4444-4444-4444-444444444444";
 
     @BeforeAll
     static void cleanBackupDir() throws IOException {
@@ -245,6 +250,74 @@ class BackupRestoreIntegrationTest {
         List<BackupMeta> backups = backupService.listBackups();
         assertEquals(1, backups.size());
         assertEquals(meta.name(), backups.get(0).name());
+    }
+
+    /**
+     * V4.0：退款随服务器备份往返。父账单未上云时退款会被 MISSING_REFERENCE 拒绝，
+     * 因此按「账单 → 退款」顺序推；恢复后退款必须回到备份点的状态与引用，并重新进入变更日志。
+     */
+    @Test
+    void refund_survives_backup_and_restore() {
+        AuthUser user = verifiedUserWithLedger();
+        SyncPayload tx = new SyncPayload();
+        tx.type = 1;
+        tx.amount = 1280L;
+        tx.date = 1_700_000_000_000L;
+        tx.time = "12:30";
+        tx.clientUpdatedAt = 1_700_000_000_000L;
+        asUser(user, () -> syncService.push(user, new PushRequest(List.of(
+                new PushItem("TRANSACTION", TRANSACTION_SYNC_ID, "UPSERT", 0, LEDGER_SYNC_ID,
+                        tx)))));
+
+        SyncPayload refund = new SyncPayload();
+        refund.transactionSyncId = TRANSACTION_SYNC_ID;
+        refund.amount = 300L;
+        refund.state = "RECEIVED";
+        refund.reason = "菜品替换";
+        refund.requestedAt = 1_700_000_100_000L;
+        refund.receivedAt = 1_700_000_200_000L;
+        refund.clientUpdatedAt = 1_700_000_200_000L;
+        var pushed = asUser(user, () -> syncService.push(user, new PushRequest(List.of(
+                new PushItem("REFUND", REFUND_SYNC_ID, "UPSERT", 0, LEDGER_SYNC_ID,
+                        refund))))).results().get(0);
+        assertTrue(pushed.accepted(), () -> "退款推送失败: " + pushed.errorCode());
+
+        BackupMeta meta = backupService.createBackup(BackupDtos.TRIGGER_API);
+        assertEquals(1, meta.counts().refunds());
+        long ledgerId = ledgerRepository.findBySyncId(LEDGER_SYNC_ID).orElseThrow().getId();
+        assertTrue(refundRepository.findByLedgerIdAndSyncId(ledgerId, REFUND_SYNC_ID).isPresent());
+
+        // 备份之后撤销该退款：恢复应把它拉回备份点的「已到账」
+        SyncPayload cancelled = new SyncPayload();
+        cancelled.transactionSyncId = TRANSACTION_SYNC_ID;
+        cancelled.amount = 300L;
+        cancelled.state = "CANCELLED";
+        cancelled.reason = "菜品替换";
+        cancelled.requestedAt = 1_700_000_100_000L;
+        cancelled.clientUpdatedAt = 1_700_000_300_000L;
+        asUser(user, () -> syncService.push(user, new PushRequest(List.of(
+                new PushItem("REFUND", REFUND_SYNC_ID, "UPSERT", 1, LEDGER_SYNC_ID,
+                        cancelled)))));
+        assertEquals("CANCELLED", refundRepository
+                .findByLedgerIdAndSyncId(ledgerId, REFUND_SYNC_ID).orElseThrow().getState());
+
+        restoreService.restore(meta.name());
+
+        // 恢复重建了用户与账本（自增 id 改变），按 syncId 重新定位
+        long restoredLedgerId = ledgerRepository.findBySyncId(LEDGER_SYNC_ID)
+                .orElseThrow().getId();
+        RefundRow restored = refundRepository
+                .findByLedgerIdAndSyncId(restoredLedgerId, REFUND_SYNC_ID).orElseThrow();
+        assertEquals("RECEIVED", restored.getState());
+        assertEquals(300L, restored.getAmount());
+        assertEquals(TRANSACTION_SYNC_ID, restored.getTransactionSyncId());
+        assertEquals("菜品替换", restored.getReason());
+        assertFalse(restored.isDeleted());
+        assertEquals(Long.valueOf(1_700_000_200_000L), restored.getReceivedAt());
+        // 退款行参与恢复后的变更日志重建，客户端游标可全量重拉到它
+        assertTrue(changeRepository.findAll().stream()
+                .anyMatch(change -> "REFUND".equals(change.getEntityType())
+                        && REFUND_SYNC_ID.equals(change.getSyncId())));
     }
 
     @Test

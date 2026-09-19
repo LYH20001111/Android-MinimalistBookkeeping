@@ -744,5 +744,65 @@
     <string name="invitation_accepted">已加入账本「%1$s」，正在同步</string>
     <string name="invitation_item_title">加入「%1$s」</string>
     <string name="invitation_item_subtitle">%1$s 邀请你以「%2$s」身份加入 · %3$s 前有效</string>
+
+    <!-- ===== V4.0 账单退款（编辑账单 → 右上角菜单） ===== -->
+    <string name="edit_menu_more">更多</string>
+    <string name="edit_menu_refund">标记退款</string>
+    <string name="edit_menu_refund_records">退款记录</string>
+    <string name="edit_refund_unsupported">只有支出账单可以标记退款</string>
+
+    <!-- 退款表单（BottomSheet） -->
+    <string name="refund_sheet_title">标记退款</string>
+    <string name="refund_sheet_amount_hint">退款金额</string>
+    <string name="refund_sheet_full_refund">全部退款</string>
+    <string name="refund_sheet_quota_format">账单 %1$s · 最多可退 %2$s</string>
+    <string name="refund_sheet_reason_hint">退款原因（选填，最多 100 字）</string>
+    <string name="refund_sheet_state_title">到账状态</string>
+    <string name="refund_sheet_state_pending">待到账</string>
+    <string name="refund_sheet_state_received">已到账</string>
+    <string name="refund_sheet_pending_tip">待到账只占用可退额度，不减记支出与账户余额</string>
+    <string name="refund_sheet_submit">确认退款</string>
+    <string name="refund_edit_title">编辑退款</string>
+    <string name="refund_edit_submit">保存修改</string>
+    <string name="refund_updated">退款已更新</string>
+    <string name="refund_error_amount">请输入有效的退款金额</string>
+    <string name="refund_error_quota">退款金额不能超过可退额度 %1$s</string>
+    <string name="refund_error_exhausted">这笔账单已全部退完，没有可退额度</string>
+    <string name="refund_failed">退款未生效，请刷新后重试</string>
+
+    <!-- 退款记录页 -->
+    <string name="refund_record_title">退款记录</string>
+    <string name="refund_record_empty">暂无退款记录</string>
+    <string name="refund_record_state_pending">待到账</string>
+    <string name="refund_record_state_received">已到账</string>
+    <string name="refund_record_state_cancelled">已取消</string>
+    <string name="refund_record_requested_format">申请于 %1$s</string>
+    <string name="refund_record_received_format">%1$s · 到账于 %2$s</string>
+    <string name="refund_record_cancelled_format">%1$s · 取消于 %2$s</string>
+    <string name="refund_record_reason_format">原因：%1$s</string>
+    <string name="refund_record_action_edit">编辑</string>
+    <string name="refund_record_action_mark_received">标记到账</string>
+    <string name="refund_record_action_cancel">撤销退款</string>
+    <string name="refund_record_cancel_title">撤销这笔退款？</string>
+    <string name="refund_record_cancel_message">撤销 %1$s 的退款后，可退额度与统计、余额都会还原。</string>
+    <string name="refund_record_cancelled">已撤销退款</string>
+    <string name="refund_record_received">已标记退款到账</string>
+    <string name="refund_record_summary_format">已退 %1$s · 待退 %2$s · 账单原额 %3$s</string>
+
+    <!-- 列表角标与账单详情「金额明细」 -->
+    <string name="refund_badge_pending">退款中</string>
+    <string name="refund_badge_partial">已退 %1$s</string>
+    <string name="refund_badge_full">已全额退款</string>
+    <string name="edit_amount_detail_title">金额明细</string>
+    <string name="edit_amount_origin">原始金额</string>
+    <string name="edit_amount_refunded">已退款</string>
+    <string name="edit_amount_pending">待退款</string>
+    <string name="edit_amount_net">实际支付</string>
+    <string name="edit_error_amount_below_refund">这笔账单已退款 %1$s，金额不能低于已退总额</string>
+
+    <!-- ===== V4.1 编辑页退款改为暂存（点保存才落库） ===== -->
+    <string name="refund_draft_added">已加入待保存退款，点保存后生效</string>
+    <string name="edit_amount_draft">待保存退款 %1$s（%2$d 笔）· 点保存后生效</string>
+    <string name="edit_saved_refund_failed">账单已保存，但有退款因额度不足未生效</string>
 </resources>
 

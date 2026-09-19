@@ -7,6 +7,7 @@ import com.skyanchor.bookkeeping.data.entity.AccountEntity;
 import com.skyanchor.bookkeeping.data.entity.BudgetEntity;
 import com.skyanchor.bookkeeping.data.entity.CategoryEntity;
 import com.skyanchor.bookkeeping.data.entity.RecurringTransactionEntity;
+import com.skyanchor.bookkeeping.data.entity.RefundRecordEntity;
 import com.skyanchor.bookkeeping.data.entity.TransactionEntity;
 import com.skyanchor.bookkeeping.data.entity.UserSettingsEntity;
 import com.skyanchor.bookkeeping.data.model.BackupData;
@@ -24,8 +25,8 @@ import java.util.List;
  *
  * <p>用平台内置 {@code org.json} 实现版本化 JSON（不引入第三方运行时依赖）：
  * <pre>{@code
- * {"schemaVersion":4,"accounts":[...],"categories":[...],"transactions":[...],
- *  "budgets":[...],"recurring":[...],"settings":{...}}
+ * {"schemaVersion":6,"accounts":[...],"categories":[...],"transactions":[...],
+ *  "refunds":[...],"budgets":[...],"recurring":[...],"settings":{...}}
  * }</pre>
  *
  * <p>实体字段一一对应、保留原始 id，恢复时按原 id 重插才能维持跨表引用；
@@ -35,17 +36,16 @@ import java.util.List;
 public final class BackupSerializer {
 
     /**
-     * 备份文件格式版本，当前与 {@code AppDatabase} 的 version 4 对齐（V2.1 增加
-     * 周期账单锚点日 {@code anchorDayOfMonth}）。
-     * 恢复时拒绝高于当前版本的文件（schema 未知，混写有风险）；
-     * V2 的 version 3 备份仍可恢复，缺失的锚点日由序列化侧按开始日期推导补齐。
+     * 备份文件格式版本。恢复时拒绝高于当前版本的文件（schema 未知，混写有风险）：
+     * <ul>
+     *   <li>3 = V2 基线，缺周期账单锚点日，由序列化侧按开始日期推导补齐；</li>
+     *   <li>5 = V3，每个实体增补 {@code syncId}（跨设备身份），恢复时保留身份、重置版本号
+     *       并全量重推，云端以 LWW 收敛；旧文件缺 syncId 时恢复侧自动补发新身份；</li>
+     *   <li>6 = V4.0，新增 {@code refunds} 段（退款流水）。旧文件缺该段即「该账本无退款」，
+     *       账单上的退款累计列随之为 0，语义自洽。</li>
+     * </ul>
      */
-    /**
-     * V3 = 5：每个实体增补 {@code syncId}（跨设备身份）。恢复时保留身份、
-     * 重置版本号并全量重推，云端以 LWW 收敛（开发计划备注 9）。
-     * 旧备份缺 syncId 时恢复侧自动补发新身份。
-     */
-    public static final int SCHEMA_VERSION = 5;
+    public static final int SCHEMA_VERSION = 6;
 
     /** 仍可恢复的最低备份格式版本：3 = V2 基线（无锚点日字段）。 */
     public static final int MIN_SUPPORTED_VERSION = 3;
@@ -89,6 +89,16 @@ public final class BackupSerializer {
         }
         root.put("transactions", transactions);
 
+        JSONArray refunds = new JSONArray();
+        if (data.refunds != null) {
+            for (RefundRecordEntity refund : data.refunds) {
+                if (refund != null) {
+                    refunds.put(refundToJson(refund));
+                }
+            }
+        }
+        root.put("refunds", refunds);
+
         JSONArray budgets = new JSONArray();
         if (data.budgets != null) {
             for (BudgetEntity budget : data.budgets) {
@@ -126,6 +136,7 @@ public final class BackupSerializer {
         data.accounts = accountList(root.optJSONArray("accounts"));
         data.categories = categoryList(root.optJSONArray("categories"));
         data.transactions = transactionList(root.optJSONArray("transactions"));
+        data.refunds = refundList(root.optJSONArray("refunds"));
         data.budgets = budgetList(root.optJSONArray("budgets"));
         data.recurring = recurringList(root.optJSONArray("recurring"));
         data.settings = settingsFrom(root.optJSONObject("settings"));
@@ -182,6 +193,23 @@ public final class BackupSerializer {
         json.put("createdAt", transaction.createdAt);
         json.put("updatedAt", transaction.updatedAt);
         json.put("syncId", transaction.syncId);
+        return json;
+    }
+
+    @NonNull
+    private static JSONObject refundToJson(@NonNull RefundRecordEntity refund)
+            throws JSONException {
+        JSONObject json = new JSONObject();
+        json.put("id", refund.id);
+        json.put("transactionId", refund.transactionId);
+        json.put("amount", refund.amount);
+        json.put("state", refund.state);
+        putNullableString(json, "reason", refund.reason);
+        json.put("requestedAt", refund.requestedAt);
+        putNullableLong(json, "receivedAt", refund.receivedAt);
+        json.put("createdAt", refund.createdAt);
+        json.put("updatedAt", refund.updatedAt);
+        json.put("syncId", refund.syncId);
         return json;
     }
 
@@ -320,6 +348,34 @@ public final class BackupSerializer {
             transaction.createdAt = json.optLong("createdAt");
             transaction.updatedAt = json.optLong("updatedAt");
             list.add(transaction);
+        }
+        return list;
+    }
+
+    @NonNull
+    private static List<RefundRecordEntity> refundList(@Nullable JSONArray array) {
+        List<RefundRecordEntity> list = new ArrayList<>();
+        if (array == null) {
+            return list;
+        }
+        for (int i = 0; i < array.length(); i++) {
+            JSONObject json = array.optJSONObject(i);
+            if (json == null) {
+                continue;
+            }
+            RefundRecordEntity refund = new RefundRecordEntity();
+            refund.id = json.optLong("id");
+            refund.syncId = json.optString("syncId", "");
+            refund.transactionId = json.optLong("transactionId");
+            refund.amount = json.optLong("amount");
+            // 未知状态原样保留：合计只认 RECEIVED / PENDING，异常值不会污染金额但仍可查
+            refund.state = json.optString("state", RefundRecordEntity.STATE_PENDING);
+            refund.reason = nullableString(json, "reason");
+            refund.requestedAt = json.optLong("requestedAt");
+            refund.receivedAt = nullableLong(json, "receivedAt");
+            refund.createdAt = json.optLong("createdAt");
+            refund.updatedAt = json.optLong("updatedAt");
+            list.add(refund);
         }
         return list;
     }

@@ -19,7 +19,7 @@ import java.util.Locale;
  * Android 框架调用，因此可在 JVM 单元测试里直接验证金额格式、RFC4180 转义与列顺序。
  *
  * <p>导出列固定为：
- * {@code 交易ID,类型,金额(元),分类,账户,转入账户,日期(yyyy-MM-dd),时间(HH:mm),备注,创建时间,更新时间}。
+ * {@code 交易ID,类型,金额(元),分类,账户,转入账户,日期(yyyy-MM-dd),时间(HH:mm),备注,创建时间,更新时间,已退款(元),待退款(元)}。
  * 金额以「元」两位小数输出（无千分位、无货币符号，避免逗号污染字段）；日期本地 {@code yyyy-MM-dd}；
  * 创建 / 更新时间 {@code yyyy-MM-dd HH:mm:ss}。文件以 UTF-8 BOM 起头，行分隔用 CRLF，
  * 含逗号 / 引号 / 换行的字段按 RFC4180 加引号并把内部引号翻倍。
@@ -51,10 +51,18 @@ public final class CsvFormatter {
     public static final String COL_CREATED = "创建时间";
     public static final String COL_UPDATED = "更新时间";
 
+    /**
+     * V4.0 退款列。追加在末尾是对既有导出文件唯一的向后兼容位置；
+     * 导入侧按「未知列忽略」处理，退款事实只经本地备份 / 云同步往返，不从 CSV 重建。
+     */
+    public static final String COL_REFUNDED = "已退款(元)";
+    public static final String COL_PENDING_REFUND = "待退款(元)";
+
     /** 表头列，顺序即导出列顺序。 */
     public static final String[] HEADER = {
             COL_ID, COL_TYPE, COL_AMOUNT, COL_CATEGORY, COL_ACCOUNT, COL_TRANSFER_ACCOUNT,
-            COL_DATE, COL_TIME, COL_NOTE, COL_CREATED, COL_UPDATED
+            COL_DATE, COL_TIME, COL_NOTE, COL_CREATED, COL_UPDATED,
+            COL_REFUNDED, COL_PENDING_REFUND
     };
 
     // 类型词表：中文标签是导出用的规范 token，导入同时兼容数字码。
@@ -184,6 +192,10 @@ public final class CsvFormatter {
         appendField(sb, row.displayNote());
         appendField(sb, formatTimestamp(row.createdAt));
         appendField(sb, formatTimestamp(row.updatedAt));
+        // 与转账空列同风格：没有退款就留空，报表里一眼只看有退款的行
+        appendField(sb, row.refundedAmount > 0L ? amountText(row.refundedAmount) : "");
+        appendField(sb, row.pendingRefundAmount > 0L
+                ? amountText(row.pendingRefundAmount) : "");
         return sb.toString();
     }
 

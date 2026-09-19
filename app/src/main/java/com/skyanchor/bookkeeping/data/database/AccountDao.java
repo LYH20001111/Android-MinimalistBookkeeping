@@ -23,11 +23,13 @@ public interface AccountDao {
     /**
      * 余额重算投影：initial_balance + 收入 - 支出 + 转入 - 转出。
      * V3：聚合排除软删交易（is_deleted = 0），删除不再影响余额。
+     * V4.0：支出项按净额（原额 - 已到账退款）聚合，退款回到付款账户即余额相应增加；
+     *       待到账退款不改变余额。
      */
     String BALANCE_EXPR = "(a.initial_balance"
             + " + COALESCE((SELECT SUM(t.amount) FROM transactions t"
             + "   WHERE t.is_deleted = 0 AND t.type = 2 AND t.account_id = a.id), 0)"
-            + " - COALESCE((SELECT SUM(t.amount) FROM transactions t"
+            + " - COALESCE((SELECT SUM(t.amount - t.refunded_amount) FROM transactions t"
             + "   WHERE t.is_deleted = 0 AND t.type = 1 AND t.account_id = a.id), 0)"
             + " + COALESCE((SELECT SUM(t.amount) FROM transactions t"
             + "   WHERE t.is_deleted = 0 AND t.type = 3 AND t.transfer_account_id = a.id), 0)"

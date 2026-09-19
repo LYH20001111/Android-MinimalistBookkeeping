@@ -69,6 +69,14 @@ public class TransactionItem {
     @ColumnInfo(name = "transferAccountName")
     public String transferAccountName;
 
+    /** V4.0：已到账退款累计（分）。仅支出非零，统计与余额按 {@link #netAmount()} 计算。 */
+    @ColumnInfo(name = "refundedAmount")
+    public long refundedAmount;
+
+    /** V4.0：待到账退款累计（分）。不冲减统计与余额，仅用于状态展示与额度守卫。 */
+    @ColumnInfo(name = "pendingRefundAmount")
+    public long pendingRefundAmount;
+
     public boolean isExpense() {
         return type == CategoryEntity.TYPE_EXPENSE;
     }
@@ -80,6 +88,21 @@ public class TransactionItem {
     /** 是否为转账：既不计收入也不计支出。 */
     public boolean isTransfer() {
         return type == CategoryEntity.TYPE_TRANSFER;
+    }
+
+    /**
+     * 实际支付额（分）：原始金额减去已到账退款。
+     *
+     * <p>V4.0 冻结口径：Java 侧全部统计经由此方法取数，SQL 侧对应 {@code amount - refunded_amount}，
+     * 保证列表合计、图表、预算、账户余额与账单详情「实际支付」同源。待到账退款不参与净额。
+     */
+    public long netAmount() {
+        return isExpense() ? Math.max(0L, amount - refundedAmount) : amount;
+    }
+
+    /** 是否已发生退款（含待到账），用于列表角标与金额明细区显隐。 */
+    public boolean hasRefund() {
+        return isExpense() && (refundedAmount > 0L || pendingRefundAmount > 0L);
     }
 
     @NonNull
@@ -123,12 +146,15 @@ public class TransactionItem {
                 && Objects.equals(accountId, other.accountId)
                 && Objects.equals(accountName, other.accountName)
                 && Objects.equals(transferAccountId, other.transferAccountId)
-                && Objects.equals(transferAccountName, other.transferAccountName);
+                && Objects.equals(transferAccountName, other.transferAccountName)
+                && refundedAmount == other.refundedAmount
+                && pendingRefundAmount == other.pendingRefundAmount;
     }
 
     @Override
     public int hashCode() {
         return Objects.hash(id, type, amount, date, time, note, categoryId, categoryName,
-                categoryIcon, accountId, accountName, transferAccountId, transferAccountName);
+                categoryIcon, accountId, accountName, transferAccountId, transferAccountName,
+                refundedAmount, pendingRefundAmount);
     }
 }

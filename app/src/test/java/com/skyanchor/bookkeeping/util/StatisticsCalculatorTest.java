@@ -586,4 +586,117 @@ public class StatisticsCalculatorTest {
         assertTrue(StatisticsCalculator.groupByDay(
                 Collections.<TransactionItem>emptyList(), null).isEmpty());
     }
+
+    // ------------------------------------------------------------------
+    // 退款净额（V4.0 基线第 12、13 章）：支出统计取净额，待到账不冲减
+    // ------------------------------------------------------------------
+
+    /** 带退款累计的支出。仅用于验证统计口径（冻结决策第 1、7 条）。 */
+    private static TransactionItem expenseRefunded(long id, long amount, long refunded,
+                                                   long pending, long date, long categoryId,
+                                                   String name) {
+        TransactionItem item = expense(id, amount, date, categoryId, name);
+        item.refundedAmount = refunded;
+        item.pendingRefundAmount = pending;
+        return item;
+    }
+
+    /** 概览支出按净额：已到账冲减、待到账不冲减，但账单本身仍计入笔数。 */
+    @Test
+    public void summary_countsExpenseAtNetOfReceivedRefundOnly() {
+        List<TransactionItem> items = Arrays.asList(
+                // 原额 100.00，已退 30.00、待退 20.00 → 统计支出应为 70.00
+                expenseRefunded(1L, 10000L, 3000L, 2000L, MAY_13, CAT_FOOD, "餐饮"),
+                income(2L, 50000L, MAY_13, CAT_SALARY, "工资"));
+
+        PeriodSummary summary = StatisticsCalculator.summary(items, MAY_13, MAY_19);
+
+        assertEquals(7000L, summary.expense);
+        assertEquals(50000L, summary.income);
+        assertEquals(43000L, summary.balance());
+        assertEquals(2, summary.count);
+    }
+
+    /** 全额退款后该账单对统计的净贡献为 0，但它仍是记录页上真实的一行。 */
+    @Test
+    public void summary_fullyRefundedExpenseContributesZero() {
+        List<TransactionItem> items = Arrays.asList(
+                expenseRefunded(1L, 8800L, 8800L, 0L, MAY_13, CAT_FOOD, "餐饮"),
+                expense(2L, 1200L, MAY_14, CAT_TRAFFIC, "交通"));
+
+        PeriodSummary summary = StatisticsCalculator.summary(items, MAY_13, MAY_19);
+
+        assertEquals(1200L, summary.expense);
+        assertEquals(2, summary.count);
+    }
+
+    /**
+     * 净额口径的可回归不变式：统计下降的幅度恰好等于「已到账」退款额，
+     * 与待到账的多少无关。
+     */
+    @Test
+    public void summary_expenseDropsByExactlyTheReceivedRefund() {
+        long before = StatisticsCalculator.summary(Collections.singletonList(
+                expense(1L, 6000L, MAY_13, CAT_SHOPPING, "购物")), MAY_13, MAY_19).expense;
+        // 已到账 20.00 + 待到账 15.00，只有前者冲减统计
+        long after = StatisticsCalculator.summary(Collections.singletonList(
+                expenseRefunded(1L, 6000L, 2000L, 1500L, MAY_13, CAT_SHOPPING, "购物")),
+                MAY_13, MAY_19).expense;
+
+        assertEquals(6000L, before);
+        assertEquals(4000L, after);
+    }
+
+    /** 净额只对支出生效（冻结决策第 3 条：仅支出可退款），收入与转账原样取数。 */
+    @Test
+    public void netAmount_onlyExpenseIsReduced() {
+        TransactionItem income = income(1L, 5000L, MAY_13, CAT_SALARY, "工资");
+        income.refundedAmount = 2000L;
+        income.pendingRefundAmount = 500L;
+        assertFalse(income.isExpense());
+        assertEquals(5000L, income.netAmount());
+
+        TransactionItem transfer = transfer(2L, 50000L, MAY_13, ACCOUNT_CASH, ACCOUNT_WECHAT);
+        transfer.refundedAmount = 9999L;
+        assertEquals(50000L, transfer.netAmount());
+    }
+
+    /** 退款态标记只在支出上成立，且待到账也算「有退款」，供列表角标与编辑页菜单使用。 */
+    @Test
+    public void hasRefund_onlyExpenseAndPendingCounts() {
+        assertTrue(expenseRefunded(1L, 3000L, 0L, 1000L, MAY_13, CAT_FOOD, "餐饮").hasRefund());
+        assertFalse(expense(2L, 3000L, MAY_13, CAT_FOOD, "餐饮").hasRefund());
+
+        TransactionItem income = income(3L, 3000L, MAY_13, CAT_SALARY, "工资");
+        income.refundedAmount = 1000L;
+        assertFalse("收入不应出现退款态", income.hasRefund());
+    }
+
+    /** 净额下限为 0：即便脏数据让退款额超过原额，统计也不会变成负支出。 */
+    @Test
+    public void netAmount_clampsAtZero() {
+        TransactionItem item = expenseRefunded(1L, 1000L, 2500L, 0L, MAY_13, CAT_FOOD, "餐饮");
+        assertEquals(0L, item.netAmount());
+        assertEquals(0L, StatisticsCalculator.summary(Collections.singletonList(item),
+                MAY_13, MAY_19).expense);
+    }
+
+    /**
+     * 分类占比、当日合计、日趋势、月趋势四处聚合必须与概览同口径——
+     * 只要有一处漏走净额，图表与概览就会出现对不上的数字。
+     */
+    @Test
+    public void allExpenseAggregations_useNetAmount() {
+        List<TransactionItem> items = Collections.singletonList(
+                expenseRefunded(1L, 10000L, 4000L, 0L, MAY_15, CAT_FOOD, "餐饮"));
+
+        assertEquals(6000L, StatisticsCalculator.categoryBreakdown(items,
+                CategoryEntity.TYPE_EXPENSE, MAY_1, MAY_31).get(0).amount);
+        assertEquals(6000L, ((RecordListItem.Header)
+                StatisticsCalculator.groupByDay(items, null).get(0)).expense);
+        // 周视图里 MAY_15 落在第 3 个点，年视图里 5 月落在第 5 个点
+        assertEquals(6000L, StatisticsCalculator.dailyTrend(items, DateUtil.ofWeek(MAY_15))
+                .get(2).value);
+        assertEquals(6000L, StatisticsCalculator.monthlyTrend(items, 2024).get(4).value);
+    }
 }

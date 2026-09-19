@@ -16,6 +16,7 @@ import com.skyanchor.bookkeeping.server.backup.BackupDtos.DeviceEntry;
 import com.skyanchor.bookkeeping.server.backup.BackupDtos.LedgerEntry;
 import com.skyanchor.bookkeeping.server.backup.BackupDtos.LedgerMemberEntry;
 import com.skyanchor.bookkeeping.server.backup.BackupDtos.RecurringEntry;
+import com.skyanchor.bookkeeping.server.backup.BackupDtos.RefundEntry;
 import com.skyanchor.bookkeeping.server.backup.BackupDtos.TransactionEntry;
 import com.skyanchor.bookkeeping.server.backup.BackupDtos.UserEntry;
 import com.skyanchor.bookkeeping.server.backup.BackupRetentionPolicy.BackupRef;
@@ -33,6 +34,7 @@ import com.skyanchor.bookkeeping.server.sync.domain.BudgetRow;
 import com.skyanchor.bookkeeping.server.sync.domain.CategoryRow;
 import com.skyanchor.bookkeeping.server.sync.domain.ConflictLogRow;
 import com.skyanchor.bookkeeping.server.sync.domain.RecurringRow;
+import com.skyanchor.bookkeeping.server.sync.domain.RefundRow;
 import com.skyanchor.bookkeeping.server.sync.domain.SyncRow;
 import com.skyanchor.bookkeeping.server.sync.domain.TransactionRow;
 import com.skyanchor.bookkeeping.server.sync.repo.AccountRowRepository;
@@ -40,6 +42,7 @@ import com.skyanchor.bookkeeping.server.sync.repo.BudgetRowRepository;
 import com.skyanchor.bookkeeping.server.sync.repo.CategoryRowRepository;
 import com.skyanchor.bookkeeping.server.sync.repo.ConflictLogRepository;
 import com.skyanchor.bookkeeping.server.sync.repo.RecurringRowRepository;
+import com.skyanchor.bookkeeping.server.sync.repo.RefundRowRepository;
 import com.skyanchor.bookkeeping.server.sync.repo.TransactionRowRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -83,6 +86,7 @@ public class BackupService {
     private final CategoryRowRepository categoryRepository;
     private final AccountRowRepository accountRepository;
     private final TransactionRowRepository transactionRepository;
+    private final RefundRowRepository refundRepository;
     private final BudgetRowRepository budgetRepository;
     private final RecurringRowRepository recurringRepository;
     private final ConflictLogRepository conflictRepository;
@@ -97,6 +101,7 @@ public class BackupService {
                          CategoryRowRepository categoryRepository,
                          AccountRowRepository accountRepository,
                          TransactionRowRepository transactionRepository,
+                         RefundRowRepository refundRepository,
                          BudgetRowRepository budgetRepository,
                          RecurringRowRepository recurringRepository,
                          ConflictLogRepository conflictRepository,
@@ -110,6 +115,7 @@ public class BackupService {
         this.categoryRepository = categoryRepository;
         this.accountRepository = accountRepository;
         this.transactionRepository = transactionRepository;
+        this.refundRepository = refundRepository;
         this.budgetRepository = budgetRepository;
         this.recurringRepository = recurringRepository;
         this.conflictRepository = conflictRepository;
@@ -207,6 +213,14 @@ public class BackupService {
                     row.getAccountSyncId(), row.getTransferAccountSyncId(),
                     row.getClientCreatedAt(), row.getLedgerId()));
         }
+        List<RefundEntry> refunds = new ArrayList<>();
+        for (RefundRow row : refundRepository.findAll()) {
+            refunds.add(new RefundEntry(row.getUserId(), row.getSyncId(), row.getVersion(),
+                    row.getServerReceivedAt().toEpochMilli(), row.getClientUpdatedAt(),
+                    row.isDeleted(), row.getDeletedAt(), toMillis(row.getCreatedAt()),
+                    row.getTransactionSyncId(), row.getAmount(), row.getState(), row.getReason(),
+                    row.getRequestedAt(), row.getReceivedAt(), row.getLedgerId()));
+        }
         List<BudgetEntry> budgets = new ArrayList<>();
         for (BudgetRow row : budgetRepository.findAll()) {
             budgets.add(new BudgetEntry(row.getUserId(), row.getSyncId(), row.getVersion(),
@@ -236,11 +250,11 @@ public class BackupService {
         }
         BackupCounts counts = new BackupCounts(users.size(), devices.size(), ledgers.size(),
                 ledgerMembers.size(), categories.size(), accounts.size(), transactions.size(),
-                budgets.size(), recurring.size(), conflicts.size());
+                refunds.size(), budgets.size(), recurring.size(), conflicts.size());
         return new BackupFile(BackupDtos.FORMAT, BackupDtos.FORMAT_VERSION,
                 ServerInfo.SERVER_VERSION, now, recoveryEpoch(), trigger, counts,
                 users, devices, ledgers, ledgerMembers, categories, accounts, transactions,
-                budgets, recurring, conflicts);
+                refunds, budgets, recurring, conflicts);
     }
 
     private long recoveryEpoch() {

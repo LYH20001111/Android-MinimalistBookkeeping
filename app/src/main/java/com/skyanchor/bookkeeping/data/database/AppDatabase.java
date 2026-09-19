@@ -16,6 +16,7 @@ import com.skyanchor.bookkeeping.data.entity.BudgetEntity;
 import com.skyanchor.bookkeeping.data.entity.CategoryEntity;
 import com.skyanchor.bookkeeping.data.entity.LedgerEntity;
 import com.skyanchor.bookkeeping.data.entity.RecurringTransactionEntity;
+import com.skyanchor.bookkeeping.data.entity.RefundRecordEntity;
 import com.skyanchor.bookkeeping.data.entity.SyncChangeQueueEntity;
 import com.skyanchor.bookkeeping.data.entity.SyncCursorEntity;
 import com.skyanchor.bookkeeping.data.entity.SyncEventEntity;
@@ -62,9 +63,10 @@ import java.util.UUID;
                 SyncCursorEntity.class,
                 SyncStateEntity.class,
                 SyncEventEntity.class,
-                TransactionEditLogEntity.class
+                TransactionEditLogEntity.class,
+                RefundRecordEntity.class
         },
-        version = 8,
+        version = 9,
         exportSchema = true)
 public abstract class AppDatabase extends RoomDatabase {
 
@@ -95,6 +97,9 @@ public abstract class AppDatabase extends RoomDatabase {
     public abstract SyncEventDao syncEventDao();
 
     public abstract TransactionEditLogDao transactionEditLogDao();
+
+    /** V4.0：退款流水（一笔账单 → 多条退款记录）。 */
+    public abstract RefundRecordDao refundRecordDao();
 
     /**
      * V1.1 基线第 36 章：将 transactions 表的外键从 CASCADE 改为 RESTRICT，
@@ -473,6 +478,49 @@ public abstract class AppDatabase extends RoomDatabase {
         }
     };
 
+    /**
+     * V4.0 升级 8 → 9：退款功能（基线第 10 章）。
+     *
+     * <ol>
+     *   <li>transactions 增加 refunded_amount / pending_refund_amount 两个累计金额列，
+     *       存量账单默认 0（即无退款），统计与余额口径随之变为净额；</li>
+     *   <li>新建 refund_record 表：一笔账单对应 0..N 条退款流水，参与云同步，
+     *       因此带 sync_id / version / server_received_at / 软删列与 ledger_id。</li>
+     * </ol>
+     *
+     * <p>列定义、默认值、可空性与索引必须与实体推导出的 v9 schema 完全一致。
+     */
+    static final Migration MIGRATION_8_9 = new Migration(8, 9) {
+        @Override
+        public void migrate(@NonNull SupportSQLiteDatabase db) {
+            db.execSQL("ALTER TABLE transactions ADD COLUMN refunded_amount INTEGER NOT NULL DEFAULT 0");
+            db.execSQL("ALTER TABLE transactions ADD COLUMN pending_refund_amount INTEGER NOT NULL DEFAULT 0");
+            db.execSQL("CREATE TABLE IF NOT EXISTS refund_record ("
+                    + "id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, "
+                    + "sync_id TEXT NOT NULL DEFAULT '', "
+                    + "transaction_id INTEGER NOT NULL, "
+                    + "ledger_id INTEGER NOT NULL DEFAULT 1, "
+                    + "amount INTEGER NOT NULL, "
+                    + "state TEXT NOT NULL, "
+                    + "reason TEXT, "
+                    + "requested_at INTEGER NOT NULL, "
+                    + "received_at INTEGER, "
+                    + "version INTEGER NOT NULL DEFAULT 0, "
+                    + "server_received_at INTEGER NOT NULL DEFAULT 0, "
+                    + "is_deleted INTEGER NOT NULL DEFAULT 0, "
+                    + "deleted_at INTEGER, "
+                    + "created_at INTEGER NOT NULL, "
+                    + "updated_at INTEGER NOT NULL, "
+                    + "FOREIGN KEY(transaction_id) REFERENCES transactions(id) ON DELETE RESTRICT)");
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_refund_record_transaction_id "
+                    + "ON refund_record(transaction_id)");
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_refund_record_sync_id "
+                    + "ON refund_record(sync_id)");
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_refund_record_ledger_id "
+                    + "ON refund_record(ledger_id)");
+        }
+    };
+
     public static AppDatabase getInstance(@NonNull Context context) {
         AppDatabase local = instance;
         if (local == null) {
@@ -482,7 +530,8 @@ public abstract class AppDatabase extends RoomDatabase {
                     local = Room.databaseBuilder(
                                     context.getApplicationContext(), AppDatabase.class, DB_NAME)
                             .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4,
-                                    MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+                                    MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8,
+                                    MIGRATION_8_9)
                             .addCallback(SEED_CALLBACK)
                             .build();
                     instance = local;

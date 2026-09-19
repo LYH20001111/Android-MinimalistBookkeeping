@@ -19,7 +19,7 @@ import java.util.List;
  *
  * <p>{@link CsvFormatter} 是导出 / 导入共用的「格式契约唯一真值」，这里锁定三件最关键的事：
  * <ol>
- *   <li><b>列顺序</b>：表头严格等于计划规定的 11 列，顺序不能漂移；</li>
+ *   <li><b>列顺序</b>：表头严格等于计划规定的 13 列（V4.0 起末尾追加退款两列），顺序不能漂移；</li>
  *   <li><b>金额格式</b>：以「元」两位小数输出、无千分位逗号（否则逗号会污染 CSV 字段）；</li>
  *   <li><b>RFC4180 转义</b>：含逗号 / 引号 / 换行的字段加引号且内部引号翻倍，纯字段不加引号。</li>
  * </ol>
@@ -41,15 +41,18 @@ public class CsvExportFormatterTest {
                 CsvFormatter.COL_ID, CsvFormatter.COL_TYPE, CsvFormatter.COL_AMOUNT,
                 CsvFormatter.COL_CATEGORY, CsvFormatter.COL_ACCOUNT, CsvFormatter.COL_TRANSFER_ACCOUNT,
                 CsvFormatter.COL_DATE, CsvFormatter.COL_TIME, CsvFormatter.COL_NOTE,
-                CsvFormatter.COL_CREATED, CsvFormatter.COL_UPDATED
+                CsvFormatter.COL_CREATED, CsvFormatter.COL_UPDATED,
+                CsvFormatter.COL_REFUNDED, CsvFormatter.COL_PENDING_REFUND
         }, CsvFormatter.HEADER);
     }
 
     @Test
     public void headerRow_isExactPlanColumnOrder() {
-        // 计划规定列顺序：交易ID,类型,金额(元),分类,账户,转入账户,日期,时间,备注,创建时间,更新时间。
+        // 计划规定列顺序：交易ID,类型,金额(元),分类,账户,转入账户,日期,时间,备注,创建时间,更新时间,
+        // 已退款(元),待退款(元)。退款两列固定在末尾，旧文件缺列即「无退款」。
         assertEquals("交易ID,类型,金额(元),分类,账户,转入账户,"
-                        + "日期(yyyy-MM-dd),时间(HH:mm),备注,创建时间,更新时间",
+                        + "日期(yyyy-MM-dd),时间(HH:mm),备注,创建时间,更新时间,"
+                        + "已退款(元),待退款(元)",
                 CsvFormatter.headerRow());
     }
 
@@ -151,7 +154,7 @@ public class CsvExportFormatterTest {
 
     @Test
     public void dataRow_expense_putsCategoryAndAccount_transferAccountEmpty() {
-        assertEquals("1,支出,35.80,餐饮,现金,,2024-05-15,12:30,午餐,,",
+        assertEquals("1,支出,35.80,餐饮,现金,,2024-05-15,12:30,午餐,,,,",
                 CsvFormatter.dataRow(expense()));
     }
 
@@ -173,7 +176,7 @@ public class CsvExportFormatterTest {
         transfer.createdAt = 0L;
         transfer.updatedAt = 0L;
 
-        assertEquals("2,转账,100.00,,现金,微信,2024-05-16,09:00,,,",
+        assertEquals("2,转账,100.00,,现金,微信,2024-05-16,09:00,,,,,",
                 CsvFormatter.dataRow(transfer));
     }
 
@@ -181,7 +184,16 @@ public class CsvExportFormatterTest {
     public void dataRow_escapesNoteContainingComma() {
         TransactionExport row = expense();
         row.note = "打车,加班";
-        assertEquals("1,支出,35.80,餐饮,现金,,2024-05-15,12:30,\"打车,加班\",,",
+        assertEquals("1,支出,35.80,餐饮,现金,,2024-05-15,12:30,\"打车,加班\",,,,",
+                CsvFormatter.dataRow(row));
+    }
+
+    @Test
+    public void dataRow_refundTotals_appendAsAmounts() {
+        TransactionExport row = expense();
+        row.refundedAmount = 1000L;
+        row.pendingRefundAmount = 50L;
+        assertEquals("1,支出,35.80,餐饮,现金,,2024-05-15,12:30,午餐,,,10.00,0.50",
                 CsvFormatter.dataRow(row));
     }
 

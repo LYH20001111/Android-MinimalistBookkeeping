@@ -102,6 +102,8 @@ public class CsvImportParserTest {
         assertEquals(8, columns.note);
         assertEquals(9, columns.created);
         assertEquals(10, columns.updated);
+        // V4.0 退款两列排在末尾，不参与映射：退款事实只经本地备份 / 云同步往返，不从 CSV 重建。
+        assertEquals(13, CsvFormatter.HEADER.length);
     }
 
     @Test

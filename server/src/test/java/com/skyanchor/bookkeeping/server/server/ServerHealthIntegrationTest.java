@@ -26,9 +26,10 @@ class ServerHealthIntegrationTest {
         mvc.perform(get("/api/v1/server/health"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("UP"))
-                .andExpect(jsonPath("$.serverVersion").value("3.2.0"))
-                .andExpect(jsonPath("$.apiVersion").value(2))
-                .andExpect(jsonPath("$.syncProtocolVersion").value(2))
+                // 版本号刻意写成字面量：每次升版都必须显式改这三行，作为一道人工确认闸门。
+                .andExpect(jsonPath("$.serverVersion").value("4.0.0"))
+                .andExpect(jsonPath("$.apiVersion").value(3))
+                .andExpect(jsonPath("$.syncProtocolVersion").value(3))
                 .andExpect(jsonPath("$.database").value("UP"))
                 .andExpect(jsonPath("$.storage.status").exists())
                 .andExpect(jsonPath("$.recoveryEpoch").isNumber())
