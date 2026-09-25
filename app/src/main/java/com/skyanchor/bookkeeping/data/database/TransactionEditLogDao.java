@@ -8,7 +8,7 @@ import com.skyanchor.bookkeeping.data.entity.TransactionEditLogEntity;
 
 import java.util.List;
 
-/** 账单编辑日志读写。仅本机使用，不参与同步。 */
+/** 账单编辑日志读写。不参与云同步（V4.1 起随本地备份 / 恢复走）。 */
 @Dao
 public interface TransactionEditLogDao {
 
@@ -23,4 +23,12 @@ public interface TransactionEditLogDao {
     /** 清空全部日志。数据被整体覆盖恢复（旧日志与恢复后的内容不再对应）时使用。 */
     @Query("DELETE FROM transaction_edit_log")
     void deleteAll();
+
+    /** 备份用：当前账本全部有效账单的编辑日志，V4.1 起随备份走。仅在 IO 线程调用。 */
+    @Query("SELECT l.* FROM transaction_edit_log l "
+            + "JOIN transactions t ON t.id = l.transaction_id "
+            + "WHERE t.is_deleted = 0 "
+            + "AND t.ledger_id = (SELECT id FROM ledger WHERE is_current = 1 LIMIT 1) "
+            + "ORDER BY l.transaction_id, l.id")
+    List<TransactionEditLogEntity> getBackupRows();
 }

@@ -1053,6 +1053,12 @@ public class BookkeepingRepository {
         return database.refundRecordDao().getBackupRows();
     }
 
+    /** 当前账本全部有效账单的编辑日志，供备份序列化（V4.1 起随备份走）。仅在 IO 线程调用。 */
+    @NonNull
+    public List<TransactionEditLogEntity> readAllEditLogs() {
+        return database.transactionEditLogDao().getBackupRows();
+    }
+
     /** 本地设置单例；从未写过设置时为 null。仅在 IO 线程调用。 */
     @Nullable
     public UserSettingsEntity readSettings() {
@@ -1066,6 +1072,8 @@ public class BookkeepingRepository {
      * <p>插入顺序满足外键约束（账户 / 分类先于交易、交易先于退款）；任一步失败（如备份数据跨表
      * 引用失效触发外键校验）整体回滚并抛出运行时异常，当前数据不受影响。
      * 余额与退款累计都是派生缓存列，恢复后一律从真值表重算，不信任备份里的缓存值。
+     * 编辑日志（V4.1 起随备份走）挂在账单本地 id 上：父账单不在本次恢复集内的日志跳过，
+     * 否则一条悬挂引用会让整笔恢复回滚；日志保留原 id 重插，与保留原 id 的账单对齐。
      * 仅在 IO 线程调用（{@link #runOnIo} 内）。
      */
     public void replaceAllData(@NonNull List<AccountEntity> accounts,
@@ -1074,7 +1082,8 @@ public class BookkeepingRepository {
                                @NonNull List<RefundRecordEntity> refunds,
                                @NonNull List<BudgetEntity> budgets,
                                @NonNull List<RecurringTransactionEntity> recurring,
-                               @Nullable UserSettingsEntity settings) {
+                               @Nullable UserSettingsEntity settings,
+                               @NonNull List<TransactionEditLogEntity> editLogs) {
         database.runInTransaction(() -> {
             // V3.2：本地备份恢复 = 覆盖「当前账本」的数据集，其他账本不受影响
             long ledgerId = currentLedgerId();
@@ -1087,7 +1096,7 @@ public class BookkeepingRepository {
             database.accountDao().clearCurrentLedger();
             database.categoryDao().clearCurrentLedger();
             database.userSettingsDao().deleteAll();
-            // 编辑日志描述的是恢复前的数据，随覆盖一并清空（该表不进备份）
+            // 编辑日志描述的是恢复前的数据，随覆盖一并清空后按备份重插
             database.transactionEditLogDao().deleteAll();
 
             // V3：恢复行保留备份中的 syncId（身份连续，云端 LWW 收敛）；
@@ -1137,6 +1146,14 @@ public class BookkeepingRepository {
                 refund.ledgerId = ledgerId;
                 database.refundRecordDao().insert(refund);
                 enqueueSync(SyncEntityTypes.REFUND, refund.syncId, false);
+            }
+            // V4.1：编辑日志同样挂在账单本地 id 上，父账单不在恢复集内的跳过；
+            // 本表不参与同步，只落库不动同步队列
+            for (TransactionEditLogEntity log : editLogs) {
+                if (!restoredTransactionIds.contains(log.transactionId)) {
+                    continue;
+                }
+                database.transactionEditLogDao().insert(log);
             }
             for (BudgetEntity budget : budgets) {
                 SyncPayloadMapper.ensureSyncId(budget);

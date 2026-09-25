@@ -73,7 +73,7 @@ public class RestoreUseCase {
 
         try {
             repository.replaceAllData(data.accounts, data.categories, data.transactions,
-                    data.refunds, data.budgets, data.recurring, data.settings);
+                    data.refunds, data.budgets, data.recurring, data.settings, data.editLogs);
         } catch (RuntimeException e) {
             // 事务已回滚；引用失效（外键校验失败）等按数据非法处理
             return RestoreResult.failed(RestoreResult.REASON_INVALID);

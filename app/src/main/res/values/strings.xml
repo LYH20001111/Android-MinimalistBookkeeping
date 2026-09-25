@@ -356,12 +356,12 @@
 
     <!-- ============ V2 本地备份 / 恢复（Phase 7） ============ -->
     <string name="backup_title">本地备份</string>
-    <string name="backup_desc">把全部本地数据（账单、账户、分类、预算、周期账单与设置）备份为一个 JSON 文件，可用于换机或防误删。保存位置由你选择，App 不联网、不申请存储权限。</string>
+    <string name="backup_desc">把全部本地数据（账单、账户、分类、预算、周期账单、编辑记录与设置）备份为一个 JSON 文件，可用于换机或防误删。保存位置由你选择，App 不联网、不申请存储权限。</string>
     <string name="backup_count_format">当前共 %1$d 笔账单可备份</string>
     <string name="backup_action">备份到文件</string>
     <string name="backup_running">正在备份…</string>
     <string name="backup_success_title">备份完成</string>
-    <string name="backup_success_message">已备份 %1$d 笔账单，以及全部账户、分类、预算、周期账单与设置。</string>
+    <string name="backup_success_message">已备份 %1$d 笔账单，以及全部账户、分类、预算、周期账单、编辑记录与设置。</string>
     <string name="backup_failed">备份失败，请重试或换个保存位置</string>
     <!-- 备份默认文件名前缀，后面拼接 -v版本-时间戳 与 .json -->
     <string name="backup_file_prefix">minimalist-bookkeeping-backup</string>
@@ -371,13 +371,13 @@
     <string name="restore_action">选择备份文件并恢复</string>
     <string name="restore_running">正在恢复…</string>
     <string name="restore_confirm_title">恢复将覆盖当前数据</string>
-    <string name="restore_confirm_message">将先清空当前本地全部数据（账单、账户、分类、预算、周期账单与设置），再写入所选备份文件的内容。此操作不可撤销，建议先执行一次本地备份。</string>
+    <string name="restore_confirm_message">将先清空当前本地全部数据（账单、账户、分类、预算、周期账单、编辑记录与设置），再写入所选备份文件的内容。此操作不可撤销，建议先执行一次本地备份。</string>
     <string name="restore_confirm_backup_first">先备份当前数据</string>
     <string name="restore_confirm_proceed">仍要恢复</string>
     <string name="restore_backup_done_title">当前数据已备份</string>
     <string name="restore_backup_done_message">备份完成。是否继续用所选文件恢复？</string>
     <string name="restore_success_title">恢复完成</string>
-    <string name="restore_success_message">已恢复 %1$d 笔账单、%2$d 个账户、%3$d 个分类、%4$d 条预算、%5$d 条周期账单。</string>
+    <string name="restore_success_message">已恢复 %1$d 笔账单、%2$d 个账户、%3$d 个分类、%4$d 条预算、%5$d 条周期账单及对应编辑记录。</string>
     <string name="restore_reason_io">读取备份文件失败，请重新选择文件</string>
     <string name="restore_reason_malformed">无法解析备份文件：不是本 App 导出的有效 JSON</string>
     <string name="restore_reason_version">备份格式版本不受支持：请使用与本 App 版本匹配的备份文件</string>

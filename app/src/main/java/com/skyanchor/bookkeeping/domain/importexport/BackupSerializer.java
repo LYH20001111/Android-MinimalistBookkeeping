@@ -8,6 +8,7 @@ import com.skyanchor.bookkeeping.data.entity.BudgetEntity;
 import com.skyanchor.bookkeeping.data.entity.CategoryEntity;
 import com.skyanchor.bookkeeping.data.entity.RecurringTransactionEntity;
 import com.skyanchor.bookkeeping.data.entity.RefundRecordEntity;
+import com.skyanchor.bookkeeping.data.entity.TransactionEditLogEntity;
 import com.skyanchor.bookkeeping.data.entity.TransactionEntity;
 import com.skyanchor.bookkeeping.data.entity.UserSettingsEntity;
 import com.skyanchor.bookkeeping.data.model.BackupData;
@@ -25,8 +26,8 @@ import java.util.List;
  *
  * <p>用平台内置 {@code org.json} 实现版本化 JSON（不引入第三方运行时依赖）：
  * <pre>{@code
- * {"schemaVersion":6,"accounts":[...],"categories":[...],"transactions":[...],
- *  "refunds":[...],"budgets":[...],"recurring":[...],"settings":{...}}
+ * {"schemaVersion":7,"accounts":[...],"categories":[...],"transactions":[...],
+ *  "refunds":[...],"editLogs":[...],"budgets":[...],"recurring":[...],"settings":{...}}
  * }</pre>
  *
  * <p>实体字段一一对应、保留原始 id，恢复时按原 id 重插才能维持跨表引用；
@@ -42,10 +43,13 @@ public final class BackupSerializer {
      *   <li>5 = V3，每个实体增补 {@code syncId}（跨设备身份），恢复时保留身份、重置版本号
      *       并全量重推，云端以 LWW 收敛；旧文件缺 syncId 时恢复侧自动补发新身份；</li>
      *   <li>6 = V4.0，新增 {@code refunds} 段（退款流水）。旧文件缺该段即「该账本无退款」，
-     *       账单上的退款累计列随之为 0，语义自洽。</li>
+     *       账单上的退款累计列随之为 0，语义自洽；</li>
+     *   <li>7 = V4.1，新增 {@code editLogs} 段（账单编辑日志，编辑记录页的数据源）。
+     *       旧文件缺该段即「恢复后账单没有编辑记录」，与旧行为一致；
+     *       日志挂在账单本地 id 上，恢复时跳过父账单不在恢复集内的悬挂引用。</li>
      * </ul>
      */
-    public static final int SCHEMA_VERSION = 6;
+    public static final int SCHEMA_VERSION = 7;
 
     /** 仍可恢复的最低备份格式版本：3 = V2 基线（无锚点日字段）。 */
     public static final int MIN_SUPPORTED_VERSION = 3;
@@ -99,6 +103,16 @@ public final class BackupSerializer {
         }
         root.put("refunds", refunds);
 
+        JSONArray editLogs = new JSONArray();
+        if (data.editLogs != null) {
+            for (TransactionEditLogEntity log : data.editLogs) {
+                if (log != null) {
+                    editLogs.put(editLogToJson(log));
+                }
+            }
+        }
+        root.put("editLogs", editLogs);
+
         JSONArray budgets = new JSONArray();
         if (data.budgets != null) {
             for (BudgetEntity budget : data.budgets) {
@@ -137,6 +151,7 @@ public final class BackupSerializer {
         data.categories = categoryList(root.optJSONArray("categories"));
         data.transactions = transactionList(root.optJSONArray("transactions"));
         data.refunds = refundList(root.optJSONArray("refunds"));
+        data.editLogs = editLogList(root.optJSONArray("editLogs"));
         data.budgets = budgetList(root.optJSONArray("budgets"));
         data.recurring = recurringList(root.optJSONArray("recurring"));
         data.settings = settingsFrom(root.optJSONObject("settings"));
@@ -376,6 +391,41 @@ public final class BackupSerializer {
             refund.createdAt = json.optLong("createdAt");
             refund.updatedAt = json.optLong("updatedAt");
             list.add(refund);
+        }
+        return list;
+    }
+
+    @NonNull
+    private static JSONObject editLogToJson(@NonNull TransactionEditLogEntity log)
+            throws JSONException {
+        JSONObject json = new JSONObject();
+        json.put("id", log.id);
+        json.put("transactionId", log.transactionId);
+        json.put("operation", log.operation);
+        json.put("detail", log.detail);
+        json.put("changedAt", log.changedAt);
+        return json;
+    }
+
+    @NonNull
+    private static List<TransactionEditLogEntity> editLogList(@Nullable JSONArray array) {
+        List<TransactionEditLogEntity> list = new ArrayList<>();
+        if (array == null) {
+            return list;
+        }
+        for (int i = 0; i < array.length(); i++) {
+            JSONObject json = array.optJSONObject(i);
+            if (json == null) {
+                continue;
+            }
+            TransactionEditLogEntity log = new TransactionEditLogEntity();
+            log.id = json.optLong("id");
+            log.transactionId = json.optLong("transactionId");
+            // 未知操作类型原样保留：展示时非 CREATE 一律按「修改」处理，异常值不丢行
+            log.operation = json.optString("operation", TransactionEditLogEntity.OP_CREATE);
+            log.detail = json.optString("detail", "");
+            log.changedAt = json.optLong("changedAt");
+            list.add(log);
         }
         return list;
     }

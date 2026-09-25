@@ -23,9 +23,10 @@ import java.nio.charset.StandardCharsets;
 /**
  * 本地备份用例（V2 新增，开发计划 Phase 7）。
  *
- * <p>在仓库的单线程 IO 上同步读取全部本地数据（账户 / 分类 / 交易 / 退款 / 预算 / 周期账单 / 设置），
- * 经 {@link BackupSerializer} 序列化为版本化 JSON，写入用户经 SAF 选定的 {@link Uri}。
- * 读写全程在 IO 线程，结果回主线程回调。不申请存储权限、不联网。
+ * <p>在仓库的单线程 IO 上同步读取全部本地数据（账户 / 分类 / 交易 / 退款 / 编辑日志 /
+ * 预算 / 周期账单 / 设置），经 {@link BackupSerializer} 序列化为版本化 JSON，
+ * 写入用户经 SAF 选定的 {@link Uri}。读写全程在 IO 线程，结果回主线程回调。
+ * 不申请存储权限、不联网。
  */
 public class BackupUseCase {
 
@@ -53,6 +54,7 @@ public class BackupUseCase {
             data.categories = repository.readAllCategories();
             data.transactions = repository.readAllTransactionEntities();
             data.refunds = repository.readAllRefunds();
+            data.editLogs = repository.readAllEditLogs();
             data.budgets = repository.readAllBudgets();
             data.recurring = repository.readAllRecurring();
             data.settings = repository.readSettings();

@@ -7,6 +7,7 @@ import com.skyanchor.bookkeeping.data.entity.BudgetEntity;
 import com.skyanchor.bookkeeping.data.entity.CategoryEntity;
 import com.skyanchor.bookkeeping.data.entity.RecurringTransactionEntity;
 import com.skyanchor.bookkeeping.data.entity.RefundRecordEntity;
+import com.skyanchor.bookkeeping.data.entity.TransactionEditLogEntity;
 import com.skyanchor.bookkeeping.data.entity.TransactionEntity;
 import com.skyanchor.bookkeeping.data.entity.UserSettingsEntity;
 
@@ -37,6 +38,13 @@ public final class BackupData {
     /** V4.0 退款流水；旧版本备份缺该段时为空，即「该账本没有退款」。 */
     @Nullable
     public List<RefundRecordEntity> refunds = new ArrayList<>();
+
+    /**
+     * V4.1 账单编辑日志（编辑记录页的数据源）；旧版本备份缺该段时为空，
+     * 即「恢复后账单没有编辑记录」。日志挂在账单本地 id 上，恢复时跳过悬挂引用。
+     */
+    @Nullable
+    public List<TransactionEditLogEntity> editLogs = new ArrayList<>();
 
     @Nullable
     public List<BudgetEntity> budgets = new ArrayList<>();

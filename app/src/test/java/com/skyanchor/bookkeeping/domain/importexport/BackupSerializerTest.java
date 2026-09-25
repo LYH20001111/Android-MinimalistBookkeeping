@@ -10,6 +10,7 @@ import com.skyanchor.bookkeeping.data.entity.BudgetEntity;
 import com.skyanchor.bookkeeping.data.entity.CategoryEntity;
 import com.skyanchor.bookkeeping.data.entity.RecurringTransactionEntity;
 import com.skyanchor.bookkeeping.data.entity.RefundRecordEntity;
+import com.skyanchor.bookkeeping.data.entity.TransactionEditLogEntity;
 import com.skyanchor.bookkeeping.data.entity.TransactionEntity;
 import com.skyanchor.bookkeeping.data.entity.UserSettingsEntity;
 import com.skyanchor.bookkeeping.data.model.BackupData;
@@ -83,6 +84,16 @@ public class BackupSerializerTest {
         return refund;
     }
 
+    private static TransactionEditLogEntity editLog() {
+        TransactionEditLogEntity log = new TransactionEditLogEntity();
+        log.id = 31L;
+        log.transactionId = 11L;
+        log.operation = TransactionEditLogEntity.OP_UPDATE;
+        log.detail = "金额：3500 → 4200";
+        log.changedAt = 1_700_000_700_000L;
+        return log;
+    }
+
     private static BudgetEntity budget() {
         BudgetEntity budget = new BudgetEntity();
         budget.id = 3L;
@@ -137,6 +148,8 @@ public class BackupSerializerTest {
         data.transactions.add(transaction());
         data.refunds = new ArrayList<>();
         data.refunds.add(refund());
+        data.editLogs = new ArrayList<>();
+        data.editLogs.add(editLog());
         data.budgets = new ArrayList<>();
         data.budgets.add(budget());
         data.recurring = new ArrayList<>();
@@ -160,6 +173,7 @@ public class BackupSerializerTest {
         assertEquals(1, root.optJSONArray("categories").length());
         assertEquals(1, root.optJSONArray("transactions").length());
         assertEquals(1, root.optJSONArray("refunds").length());
+        assertEquals(1, root.optJSONArray("editLogs").length());
         assertEquals(1, root.optJSONArray("budgets").length());
         assertEquals(1, root.optJSONArray("recurring").length());
         assertTrue(root.optJSONObject("settings").length() > 0);
@@ -217,6 +231,14 @@ public class BackupSerializerTest {
         assertEquals(1_700_000_600_000L, refund.updatedAt);
         // 账本归属不写进备份文件：恢复时统一挂到当前账本，故还原后仍是实体默认值。
         assertEquals(1L, refund.ledgerId);
+
+        assertEquals(1, restored.editLogs.size());
+        TransactionEditLogEntity editLog = restored.editLogs.get(0);
+        assertEquals(31L, editLog.id);
+        assertEquals(11L, editLog.transactionId);
+        assertEquals(TransactionEditLogEntity.OP_UPDATE, editLog.operation);
+        assertEquals("金额：3500 → 4200", editLog.detail);
+        assertEquals(1_700_000_700_000L, editLog.changedAt);
 
         assertEquals(1, restored.budgets.size());
         BudgetEntity budget = restored.budgets.get(0);
@@ -287,6 +309,7 @@ public class BackupSerializerTest {
         assertTrue(restored.categories.isEmpty());
         assertTrue(restored.transactions.isEmpty());
         assertTrue(restored.refunds.isEmpty());
+        assertTrue(restored.editLogs.isEmpty());
         assertTrue(restored.budgets.isEmpty());
         assertTrue(restored.recurring.isEmpty());
         assertNull(restored.settings);
@@ -334,6 +357,22 @@ public class BackupSerializerTest {
         BackupData restored = BackupSerializer.fromJson(json);
 
         assertTrue(restored.refunds.isEmpty());
+        assertEquals(1, restored.transactions.size());
+    }
+
+    /**
+     * V4.1 之前的备份（version 6）没有 editLogs 段：缺段即「恢复后账单没有编辑记录」，
+     * 解析照常成功，与旧行为一致。
+     */
+    @Test
+    public void fromJson_v6BackupWithoutEditLogSectionIsStillRestorable() throws JSONException {
+        String json = "{\"schemaVersion\":6,\"accounts\":[],\"categories\":[],"
+                + "\"transactions\":[{\"id\":11,\"type\":1,\"amount\":3500,"
+                + "\"date\":1700000400000,\"time\":\"12:30\"}],\"refunds\":[],"
+                + "\"budgets\":[],\"recurring\":[]}";
+        BackupData restored = BackupSerializer.fromJson(json);
+
+        assertTrue(restored.editLogs.isEmpty());
         assertEquals(1, restored.transactions.size());
     }
 
