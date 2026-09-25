@@ -1,8 +1,10 @@
 package com.skyanchor.bookkeeping.ui.smart;
 
+import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
+import android.provider.MediaStore;
 import android.view.View;
 
 import androidx.activity.result.ActivityResultLauncher;
@@ -65,20 +67,34 @@ public class ScanBillActivity extends AppCompatActivity {
                 }
             });
 
-    private final ActivityResultLauncher<PickVisualMediaRequest> pickImageLauncher =
-            registerForActivityResult(new ActivityResultContracts.PickVisualMedia(), uri -> {
-                if (uri != null) {
-                    // 相册授权是瞬时的，先在本进程内复制为临时文件再识别，
-                    // 避免「识别中切后台 → 授权失效」的边界情况。
-                    Uri local = copyToCache(uri);
-                    if (local != null) {
-                        viewModel.process(local, categories);
-                    } else {
-                        showError(new AiException(AiException.Kind.IMAGE_UNREADABLE,
-                                "图片读取失败"));
-                    }
-                }
+    private final ActivityResultLauncher<Intent> pickImageLauncher =
+            registerForActivityResult(new ActivityResultContracts.StartActivityForResult(),
+                    result -> {
+                Intent data = result.getData();
+                Uri picked = result.getResultCode() == RESULT_OK && data != null
+                        ? data.getData() : null;
+                handlePickedImage(picked);
             });
+
+    /** 兜底选图：极少数没有相册应用的机型，退回系统 Photo Picker。 */
+    private final ActivityResultLauncher<PickVisualMediaRequest> pickImageFallbackLauncher =
+            registerForActivityResult(new ActivityResultContracts.PickVisualMedia(),
+                    this::handlePickedImage);
+
+    private void handlePickedImage(@Nullable Uri uri) {
+        if (uri == null) {
+            return;
+        }
+        // 相册授权是瞬时的，先在本进程内复制为临时文件再识别，
+        // 避免「识别中切后台 → 授权失效」的边界情况。
+        Uri local = copyToCache(uri);
+        if (local != null) {
+            viewModel.process(local, categories);
+        } else {
+            showError(new AiException(AiException.Kind.IMAGE_UNREADABLE,
+                    "图片读取失败"));
+        }
+    }
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
@@ -119,9 +135,17 @@ public class ScanBillActivity extends AppCompatActivity {
     }
 
     private void pickImage() {
-        pickImageLauncher.launch(new PickVisualMediaRequest.Builder()
-                .setMediaType(ActivityResultContracts.PickVisualMedia.ImageOnly.INSTANCE)
-                .build());
+        // 相册 App 统一响应 ACTION_PICK（微信选图同款路径）；
+        // Photo Picker 在无 GMS 媒体模块的国产 ROM 上会退化成文件管理器，
+        // 故以相册为主入口，仅在没有应用响应时才退回 Photo Picker。
+        try {
+            pickImageLauncher.launch(new Intent(Intent.ACTION_PICK,
+                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI));
+        } catch (ActivityNotFoundException e) {
+            pickImageFallbackLauncher.launch(new PickVisualMediaRequest.Builder()
+                    .setMediaType(ActivityResultContracts.PickVisualMedia.ImageOnly.INSTANCE)
+                    .build());
+        }
     }
 
     /** 拍照临时文件：cacheDir/smart_images，识别完成后由 AiRepository 删除。 */
