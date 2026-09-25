@@ -804,5 +804,80 @@
     <string name="refund_draft_added">已加入待保存退款，点保存后生效</string>
     <string name="edit_amount_draft">待保存退款 %1$s（%2$d 笔）· 点保存后生效</string>
     <string name="edit_saved_refund_failed">账单已保存，但有退款因额度不足未生效</string>
+
+    <!-- ============ V5 智能记账 ============ -->
+
+    <!-- 记一笔页右上角智能入口与弹层 -->
+    <string name="edit_menu_smart">智能记账</string>
+    <string name="smart_menu_scan_title">扫描账单</string>
+    <string name="smart_menu_scan_subtitle">从图片中识别金额、日期和商家</string>
+    <string name="smart_menu_ai_title">AI 智能记账</string>
+    <string name="smart_menu_ai_subtitle">输入或说出你的消费</string>
+    <string name="smart_hint_message">试试智能记账：可扫描小票，也可以直接告诉我你花了什么</string>
+    <string name="smart_hint_action">知道了</string>
+
+    <!-- 扫描账单页 -->
+    <string name="scan_title">扫描账单</string>
+    <string name="scan_tip_align">对准账单，尽量保持清晰完整</string>
+    <string name="scan_tips">请保持账单完整 · 避免反光 · 确保金额清晰</string>
+    <string name="scan_take_photo">拍照</string>
+    <string name="scan_pick_image">相册选择图片</string>
+    <string name="scan_processing">正在识别账单…</string>
+    <string name="scan_privacy_note">图片仅用于本次识别，生成草稿后即删除，不会保存</string>
+    <string name="scan_error_unreadable">图片不够清晰，未识别到内容，请重新拍摄</string>
+    <string name="scan_error_parse">未能从图片中识别出账单信息</string>
+    <string name="scan_action_retake">重新拍摄</string>
+    <string name="scan_action_pick_other">选择其他图片</string>
+    <string name="cd_scan_take_photo">拍摄账单照片</string>
+    <string name="cd_scan_pick_image">从相册选择账单图片</string>
+
+    <!-- AI 智能记账页 -->
+    <string name="ai_title">AI 智能记账</string>
+    <string name="ai_headline">告诉我你刚刚花了什么</string>
+    <string name="ai_input_hint">例如：今天中午吃饭花了32块</string>
+    <string name="ai_examples_label">试试这样描述：</string>
+    <string name="ai_example_1">今天早上地铁花了6块</string>
+    <string name="ai_example_2">昨天买了个耳机599</string>
+    <string name="ai_example_3">工资到账8500</string>
+    <string name="ai_parse_button">开始识别</string>
+    <string name="ai_parsing">正在解析…</string>
+    <string name="ai_error_empty">请先描述一下这笔消费</string>
+    <string name="ai_error_parse">未能识别出账单信息，请换个说法试试</string>
+    <string name="ai_error_network">暂时无法使用智能识别，请稍后再试</string>
+    <string name="ai_privacy_note">识别内容仅用于生成账单草稿；未配置 AI 服务时使用离线识别</string>
+
+    <!-- 通用动作 -->
+    <string name="action_fill_manually">手动填写</string>
+    <string name="action_retry">重新尝试</string>
+
+    <!-- 账单确认页 -->
+    <string name="confirm_title">确认账单</string>
+    <string name="confirm_banner_ai">AI 已根据你的描述生成账单草稿，请确认信息是否正确</string>
+    <string name="confirm_banner_ocr">已根据扫描结果生成账单草稿，请确认信息是否正确</string>
+    <string name="confirm_banner_low">部分信息未能准确识别，请逐项确认后再记账</string>
+    <string name="confirm_note_hint">备注（识别出的商家也在此处确认）</string>
+    <string name="confirm_amount_attention">未能准确识别，请手动填写</string>
+    <string name="confirm_category_attention">请确认</string>
+    <string name="confirm_action_book">确认记账</string>
+    <string name="confirm_action_rescan">重新识别</string>
+    <string name="confirm_saved">已记账</string>
+    <string name="edit_save_failed">保存失败，请重试</string>
+
+    <!-- AI 服务设置 -->
+    <string name="ai_settings_title">AI 服务设置</string>
+    <string name="ai_settings_intro">配置 OpenAI 兼容的智能服务后，扫描账单与 AI 智能记账将使用云端模型解析，识别更准确；未配置时使用内置离线识别。API Key 仅保存在本机，随识别请求发往你配置的服务商。</string>
+    <string name="ai_settings_base_url">接口地址（Base URL）</string>
+    <string name="ai_settings_base_url_hint">https://api.deepseek.com/v1</string>
+    <string name="ai_settings_api_key">API Key</string>
+    <string name="ai_settings_model">模型名称（可选）</string>
+    <string name="ai_settings_model_hint">deepseek-chat</string>
+    <string name="ai_settings_error_base_url">请填写以 http(s):// 开头的接口地址</string>
+    <string name="ai_settings_error_api_key">启用云端识别需要填写 API Key</string>
+    <string name="ai_settings_saved">已保存 AI 服务配置</string>
+
+    <!-- 我的页 -->
+    <string name="mine_section_smart">智能记账</string>
+    <string name="mine_smart">AI 服务设置</string>
+    <string name="mine_smart_subtitle">配置智能记账使用的 AI 服务，未配置时离线识别</string>
 </resources>
 

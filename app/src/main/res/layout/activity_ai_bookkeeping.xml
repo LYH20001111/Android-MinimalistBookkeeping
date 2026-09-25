@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- V5 AI 智能记账：一句话描述消费 → 解析 → 账单确认 -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/aiRoot"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/background"
+    android:orientation="vertical">
+
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/toolbar"
+        style="@style/Widget.App.Toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        app:navigationContentDescription="@string/cd_navigate_up"
+        app:navigationIcon="@drawable/ic_arrow_left"
+        app:title="@string/ai_title" />
+
+    <ScrollView
+        android:id="@+id/aiScroll"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:clipToPadding="false"
+        android:fillViewport="true">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingStart="@dimen/page_margin"
+            android:paddingEnd="@dimen/page_margin"
+            android:paddingBottom="@dimen/spacing_xl">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/spacing_xl"
+                android:text="@string/ai_headline"
+                android:textAppearance="@style/TextAppearance.App.PageTitle" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/spacing_sm"
+                android:text="@string/ai_privacy_note"
+                android:textAppearance="@style/TextAppearance.App.Caption"
+                android:textColor="@color/text_secondary" />
+
+            <com.google.android.material.textfield.TextInputLayout
+                android:id="@+id/aiInputLayout"
+                style="@style/Widget.App.TextInputLayout"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/spacing_lg"
+                android:hint="@string/ai_input_hint"
+                app:errorEnabled="true">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/aiInput"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="top"
+                    android:inputType="textMultiLine|textCapSentences"
+                    android:maxLines="4"
+                    android:minLines="2"
+                    android:textSize="@dimen/font_body" />
+
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <!-- 示例：点击直接填入输入框，降低上手门槛（基线第 12、15 章示例） -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/spacing_md"
+                android:text="@string/ai_examples_label"
+                android:textAppearance="@style/TextAppearance.App.Secondary"
+                android:textColor="@color/text_secondary" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/example1"
+                style="@style/Widget.App.Button.Quiet"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/spacing_xs"
+                android:gravity="start|center_vertical"
+                android:text="@string/ai_example_1" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/example2"
+                style="@style/Widget.App.Button.Quiet"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="start|center_vertical"
+                android:text="@string/ai_example_2" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/example3"
+                style="@style/Widget.App.Button.Quiet"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="start|center_vertical"
+                android:text="@string/ai_example_3" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/parseButton"
+                style="@style/Widget.App.Button.Primary"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/spacing_xl"
+                android:text="@string/ai_parse_button" />
+
+            <TextView
+                android:id="@+id/aiErrorText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/spacing_md"
+                android:gravity="center"
+                android:textAppearance="@style/TextAppearance.App.Secondary"
+                android:textColor="@color/danger"
+                android:visibility="gone" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/aiFillManuallyButton"
+                style="@style/Widget.App.Button.Quiet"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/spacing_sm"
+                android:text="@string/action_fill_manually"
+                android:visibility="gone" />
+
+        </LinearLayout>
+    </ScrollView>
+
+</LinearLayout>

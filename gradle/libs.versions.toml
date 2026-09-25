@@ -19,6 +19,8 @@ retrofit = "2.11.0"
 okhttp = "4.12.0"
 gson = "2.11.0"
 workmanager = "2.9.1"
+# V5：端侧中文文字识别（模型随 APK 打包，离线可用、不依赖 GMS）
+mlkitTextRecognition = "16.0.1"
 
 [libraries]
 junit = { group = "junit", name = "junit", version.ref = "junit" }
@@ -37,6 +39,8 @@ retrofit-gson = { group = "com.squareup.retrofit2", name = "converter-gson", ver
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
 gson = { group = "com.google.code.gson", name = "gson", version.ref = "gson" }
 workmanager = { group = "androidx.work", name = "work-runtime", version.ref = "workmanager" }
+# V5：智能记账——端侧中文 OCR（模型打包进 APK，离线可用、不依赖 GMS）
+mlkit-text-recognition-chinese = { group = "com.google.mlkit", name = "text-recognition-chinese", version.ref = "mlkitTextRecognition" }
 lifecycle-viewmodel = { group = "androidx.lifecycle", name = "lifecycle-viewmodel", version.ref = "lifecycle" }
 lifecycle-livedata = { group = "androidx.lifecycle", name = "lifecycle-livedata", version.ref = "lifecycle" }
 recyclerview = { group = "androidx.recyclerview", name = "recyclerview", version.ref = "recyclerview" }

@@ -7,6 +7,7 @@ import android.content.res.Configuration;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
+import com.skyanchor.bookkeeping.ai.AiRepository;
 import com.skyanchor.bookkeeping.data.database.AppDatabase;
 import com.skyanchor.bookkeeping.data.remote.ApiClient;
 import com.skyanchor.bookkeeping.data.remote.ServerConfigStore;
@@ -58,6 +59,10 @@ public class BookkeepingApp extends Application {
     private ServerRepository serverRepository;
     private SyncEnqueuer syncEnqueuer;
     private SyncCoordinator syncCoordinator;
+
+    // ===== V5：智能记账（扫描账单 / AI 文本记账）组合根 =====
+
+    private AiRepository aiRepository;
 
     @NonNull
     public static BookkeepingApp get(@NonNull Context context) {
@@ -124,6 +129,12 @@ public class BookkeepingApp extends Application {
         return serverRepository;
     }
 
+    /** V5：智能记账仓库（OCR + AI 解析管线），扫描账单与 AI 记账共用。 */
+    @NonNull
+    public AiRepository getAiRepository() {
+        return aiRepository;
+    }
+
     @Override
     public void onCreate() {
         super.onCreate();
@@ -165,6 +176,8 @@ public class BookkeepingApp extends Application {
         repository.warmUp();
         // 余额缓存一致性兜底：启动时全量「缓存 vs 重算」，偏差以重算纠正（V2 Phase 9）
         repository.validateAccountBalances(null);
+        // V5：智能记账（可选增强，识别失败不阻断手动记账）
+        aiRepository = new AiRepository(this);
         SyncScheduler.get().onAppStarted();
     }
 

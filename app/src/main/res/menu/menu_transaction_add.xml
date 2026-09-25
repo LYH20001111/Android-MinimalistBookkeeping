@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  记一笔页右上角「智能记账」入口菜单（仅新增模式挂载，V5）。
+  与 menu_transaction_edit 同款自绘策略：点击后弹 popup_smart_menu.xml 弹层。
+-->
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <item
+        android:id="@+id/action_smart"
+        android:icon="@drawable/ic_sparkle"
+        android:title="@string/edit_menu_smart"
+        app:showAsAction="always" />
+
+</menu>

@@ -43,6 +43,26 @@
             android:name=".ui.record.TransactionHistoryActivity"
             android:exported="false"
             android:parentActivityName=".MainActivity" />
+
+        <!-- V5：智能记账（记一笔页右上角 ✨ 进入；识别失败不阻断手动记账） -->
+        <activity
+            android:name=".ui.smart.ScanBillActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity" />
+        <activity
+            android:name=".ui.smart.AiBookkeepingActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity"
+            android:windowSoftInputMode="adjustResize" />
+        <activity
+            android:name=".ui.smart.ConfirmBillActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity" />
+        <activity
+            android:name=".ui.smart.AiSettingsActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity"
+            android:windowSoftInputMode="adjustResize" />
         <!-- V4.0：账单退款记录（编辑账单页右上角菜单进入） -->
         <activity
             android:name=".ui.record.RefundRecordActivity"
@@ -141,6 +161,17 @@
             android:name=".ui.sync.ConflictHistoryActivity"
             android:exported="false"
             android:parentActivityName=".MainActivity" />
+
+        <!-- V5：扫描账单拍照的临时文件共享（系统相机写入、本应用读取后即删） -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
 
 </manifest>

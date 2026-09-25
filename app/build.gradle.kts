@@ -18,9 +18,9 @@ android {
         applicationId = "com.skyanchor.bookkeeping"
         minSdk = 24
         targetSdk = 36
-        // V4：退款功能，版本 6→7 / 3.4.0→4.0.0（Room 8→9、同步协议 2→3）
-        versionCode = 7
-        versionName = "4.0.0"
+        // V5：智能记账（扫描账单 OCR + AI 文本记账），版本 7→8 / 4.0.0→5.0.0（无 Room 迁移）
+        versionCode = 8
+        versionName = "5.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -89,6 +89,8 @@ dependencies {
     implementation(libs.workmanager)
     implementation(libs.room.runtime)
     annotationProcessor(libs.room.compiler)
+    // V5：智能记账——端侧中文 OCR（模型打包进 APK，离线可用）
+    implementation(libs.mlkit.text.recognition.chinese)
     testImplementation(libs.junit)
     // 供 BackupSerializer 的 JVM 单测使用真实 org.json 实现（仅测试作用域，不进 APK）
     testImplementation(libs.json)

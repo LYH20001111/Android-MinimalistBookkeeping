@@ -31,6 +31,7 @@ import com.skyanchor.bookkeeping.ui.recurring.RecurringManageActivity;
 import com.skyanchor.bookkeeping.ui.settings.AboutActivity;
 import com.skyanchor.bookkeeping.ui.settings.AppearanceActivity;
 import com.skyanchor.bookkeeping.ui.settings.DataManageActivity;
+import com.skyanchor.bookkeeping.ui.smart.AiSettingsActivity;
 import com.skyanchor.bookkeeping.ui.sync.DeviceManageActivity;
 import com.skyanchor.bookkeeping.ui.sync.SyncCenterActivity;
 import com.skyanchor.bookkeeping.ui.sync.SyncCenterViewModel;
@@ -134,6 +135,11 @@ public class MineFragment extends Fragment {
         bindRow(binding.menuAppearance, R.drawable.ic_palette,
                 R.string.mine_appearance, R.string.mine_appearance_subtitle,
                 v -> startActivity(new Intent(requireContext(), AppearanceActivity.class)));
+
+        // ===== V5 智能记账 =====
+        bindRow(binding.menuAiSettings, R.drawable.ic_sparkle,
+                R.string.mine_smart, R.string.mine_smart_subtitle,
+                v -> startActivity(new Intent(requireContext(), AiSettingsActivity.class)));
 
         // ===== 账户与安全 =====
         bindRow(binding.menuDevice, R.drawable.ic_device,

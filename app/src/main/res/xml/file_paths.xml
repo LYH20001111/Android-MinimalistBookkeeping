@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  V5 智能记账：扫描账单的拍照临时文件通过 FileProvider 共享给系统相机。
+  文件放在 cacheDir/smart_images/，识别生成草稿后立即删除（基线第 32 章）。
+-->
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <cache-path
+        name="smart_images"
+        path="smart_images/" />
+</paths>

@@ -14,6 +14,8 @@ import android.view.ViewGroup;
 import android.widget.PopupWindow;
 import android.widget.Toast;
 
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
@@ -26,7 +28,9 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.snackbar.Snackbar;
 import com.google.android.material.timepicker.MaterialTimePicker;
 import com.google.android.material.timepicker.TimeFormat;
+import com.skyanchor.bookkeeping.BookkeepingApp;
 import com.skyanchor.bookkeeping.R;
+import com.skyanchor.bookkeeping.ai.AiConfigStore;
 import com.skyanchor.bookkeeping.data.entity.AccountEntity;
 import com.skyanchor.bookkeeping.data.entity.CategoryEntity;
 import com.skyanchor.bookkeeping.data.entity.TransactionEntity;
@@ -35,6 +39,8 @@ import com.skyanchor.bookkeeping.databinding.ActivityTransactionEditBinding;
 import com.skyanchor.bookkeeping.domain.refund.RefundPolicy;
 import com.skyanchor.bookkeeping.domain.transaction.TransferValidator;
 import com.skyanchor.bookkeeping.ui.adapter.CategoryGridAdapter;
+import com.skyanchor.bookkeeping.ui.smart.AiBookkeepingActivity;
+import com.skyanchor.bookkeeping.ui.smart.ScanBillActivity;
 import com.skyanchor.bookkeeping.util.AccountTypes;
 import com.skyanchor.bookkeeping.util.AmountUtil;
 import com.skyanchor.bookkeeping.util.DateLabels;
@@ -109,6 +115,18 @@ public class TransactionEditActivity extends AppCompatActivity {
     @Nullable
     private String deleteMessage;
 
+    /**
+     * V5 智能记账流（扫描账单 / AI 智能记账）的结果通道：确认页成功落库后逐级
+     * setResult，本页收到 OK 即关闭，回到记录页看新账单。
+     */
+    private final ActivityResultLauncher<Intent> smartFlowLauncher =
+            registerForActivityResult(
+                    new ActivityResultContracts.StartActivityForResult(), result -> {
+                if (result.getResultCode() == RESULT_OK) {
+                    finish();
+                }
+            });
+
     public static void startAdd(@NonNull Context context, long businessDate) {
         Intent intent = new Intent(context, TransactionEditActivity.class);
         intent.putExtra(EXTRA_BUSINESS_DATE, businessDate);
@@ -156,6 +174,18 @@ public class TransactionEditActivity extends AppCompatActivity {
                 }
                 return false;
             });
+        } else {
+            // V5：新增模式右上角挂「智能记账」入口（✨）。只挂新增不挂编辑——
+            // 基线第 3 章定位是「记一笔时的输入增强」，编辑旧账单不提供。
+            binding.toolbar.inflateMenu(R.menu.menu_transaction_add);
+            binding.toolbar.setOnMenuItemClickListener(item -> {
+                if (item.getItemId() == R.id.action_smart) {
+                    showSmartMenuPopup();
+                    return true;
+                }
+                return false;
+            });
+            maybeShowSmartHint();
         }
 
         restoreFormState(savedInstanceState);
@@ -283,6 +313,57 @@ public class TransactionEditActivity extends AppCompatActivity {
         });
         // END 对齐让弹层右缘贴三点按钮右缘，避免靠屏幕右边时超出可视区
         popup.showAsDropDown(anchor == null ? binding.toolbar : anchor, 0, 0, Gravity.END);
+    }
+
+    /**
+     * V5：「智能记账」自绘弹层（popup_smart_menu.xml），与 {@link #showEditMenuPopup()}
+     * 同款策略。两个入口最终都经 {@link #smartFlowLauncher} 进入，确认页落库成功后
+     * 以 RESULT_OK 逐级关闭回记录页。
+     */
+    private void showSmartMenuPopup() {
+        @Nullable View anchor = binding.toolbar.findViewById(R.id.action_smart);
+        PopupWindow popup = new PopupWindow(
+                getLayoutInflater().inflate(R.layout.popup_smart_menu, null),
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, true);
+        popup.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+        popup.setOutsideTouchable(true);
+
+        View content = popup.getContentView();
+        content.findViewById(R.id.action_scan_bill).setOnClickListener(v -> {
+            popup.dismiss();
+            markSmartHintSeen();
+            smartFlowLauncher.launch(new Intent(this, ScanBillActivity.class));
+        });
+        content.findViewById(R.id.action_ai_bookkeeping).setOnClickListener(v -> {
+            popup.dismiss();
+            markSmartHintSeen();
+            smartFlowLauncher.launch(new Intent(this, AiBookkeepingActivity.class));
+        });
+        popup.showAsDropDown(anchor == null ? binding.toolbar : anchor, 0, 0, Gravity.END);
+    }
+
+    /**
+     * V5：智能入口的一次性引导（基线第 41 章）。展示一次即记录，无论用户
+     * 点「知道了」、滑动划走还是超时消失，之后都不再打扰。
+     */
+    private void maybeShowSmartHint() {
+        AiConfigStore configStore = BookkeepingApp.get(this).getAiRepository().getConfigStore();
+        if (configStore.isSmartHintShown()) {
+            return;
+        }
+        Snackbar.make(binding.editRoot, R.string.smart_hint_message, Snackbar.LENGTH_LONG)
+                .setAction(R.string.smart_hint_action, v -> configStore.markSmartHintShown())
+                .addCallback(new Snackbar.Callback() {
+                    @Override
+                    public void onDismissed(Snackbar snackbar, int event) {
+                        configStore.markSmartHintShown();
+                    }
+                })
+                .show();
+    }
+
+    private void markSmartHintSeen() {
+        BookkeepingApp.get(this).getAiRepository().getConfigStore().markSmartHintShown();
     }
 
     /**

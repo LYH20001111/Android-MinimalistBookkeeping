@@ -223,6 +223,30 @@
 
         </com.google.android.material.card.MaterialCardView>
 
+        <!-- ===== V5 智能记账 ===== -->
+        <TextView
+            style="@style/AppGroupLabel"
+            android:text="@string/mine_section_smart" />
+
+        <com.google.android.material.card.MaterialCardView
+            style="@style/Widget.App.Card"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:contentPadding="@dimen/spacing_none">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <include
+                    android:id="@+id/menuAiSettings"
+                    layout="@layout/item_menu_row" />
+
+            </LinearLayout>
+
+        </com.google.android.material.card.MaterialCardView>
+
         <!-- ===== 账户与安全 ===== -->
         <TextView
             style="@style/AppGroupLabel"
