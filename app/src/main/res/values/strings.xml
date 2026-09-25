@@ -844,7 +844,15 @@
     <string name="ai_error_empty">请先描述一下这笔消费</string>
     <string name="ai_error_parse">未能识别出账单信息，请换个说法试试</string>
     <string name="ai_error_network">暂时无法使用智能识别，请稍后再试</string>
-    <string name="ai_privacy_note">识别内容仅用于生成账单草稿；未配置 AI 服务时使用离线识别</string>
+    <string name="ai_privacy_note">识别内容仅用于生成账单草稿；语音听写由系统语音服务完成，未配置 AI 服务时使用离线识别</string>
+    <!-- 语音听写：麦克风图标 + 系统语音识别的友好提示（不用技术错误文案） -->
+    <string name="ai_voice_cd">语音输入</string>
+    <string name="ai_voice_listening">正在聆听，请说出你的消费…</string>
+    <string name="ai_voice_no_match">没听清，请再说一次</string>
+    <string name="ai_voice_no_permission">需要麦克风权限才能语音输入</string>
+    <string name="ai_voice_error_audio">麦克风暂时不可用，请手动输入</string>
+    <string name="ai_voice_error_network">语音输入需要网络，请稍后再试</string>
+    <string name="ai_voice_error_generic">语音输入暂时不可用，请手动输入</string>
 
     <!-- 通用动作 -->
     <string name="action_fill_manually">手动填写</string>

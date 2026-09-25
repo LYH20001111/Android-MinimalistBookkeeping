@@ -55,6 +55,10 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="@dimen/spacing_lg"
                 android:hint="@string/ai_input_hint"
+                app:endIconContentDescription="@string/ai_voice_cd"
+                app:endIconDrawable="@drawable/ic_mic"
+                app:endIconMode="custom"
+                app:endIconTint="@color/text_secondary"
                 app:errorEnabled="true">
 
                 <com.google.android.material.textfield.TextInputEditText

@@ -125,7 +125,8 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="@dimen/spacing_sm"
-                android:text="@string/action_fill_manually" />
+                android:text="@string/action_fill_manually"
+                android:visibility="gone" />
 
             <TextView
                 android:layout_width="match_parent"
@@ -134,7 +135,8 @@
                 android:gravity="center"
                 android:text="@string/scan_privacy_note"
                 android:textAppearance="@style/TextAppearance.App.Caption"
-                android:textColor="@color/text_secondary" />
+                android:textColor="@color/text_secondary"
+                android:visibility="gone" />
 
         </LinearLayout>
     </ScrollView>
