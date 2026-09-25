@@ -110,11 +110,12 @@
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/pickImageButton"
-                style="@style/Widget.App.Button.Quiet"
+                style="@style/Widget.App.Button.Secondary"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="@dimen/spacing_sm"
                 android:text="@string/scan_pick_image"
+                android:textStyle="bold"
                 app:icon="@drawable/ic_image"
                 app:iconGravity="textStart"
                 app:iconTint="@color/primary" />
