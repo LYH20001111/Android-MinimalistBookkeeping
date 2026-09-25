@@ -131,13 +131,8 @@ public class ConfirmBillActivity extends AppCompatActivity {
                 getResources().getInteger(R.integer.category_grid_span)));
         binding.categoryGrid.setAdapter(categoryAdapter);
 
-        binding.toolbar.setNavigationOnClickListener(v -> finish());
-        renderBanner();
-
-        restoreState(savedInstanceState);
-        renderDate();
-        renderTime();
-
+        // 金额预览监听器必须先于草稿回填注册：restoreState 里的 setText 同样会
+        // 走这里刷新大字号金额预览，保证与输入框始终一致，不依赖调用顺序。
         binding.amountInput.addTextChangedListener(new TextWatcher() {
             @Override
             public void beforeTextChanged(CharSequence s, int start, int count, int after) {
@@ -153,6 +148,15 @@ public class ConfirmBillActivity extends AppCompatActivity {
                 updateAmountPreview();
             }
         });
+
+        binding.toolbar.setNavigationOnClickListener(v -> finish());
+        renderBanner();
+
+        restoreState(savedInstanceState);
+        renderDate();
+        renderTime();
+        // 兜底再刷一次（监听器已注册时为幂等操作）。
+        updateAmountPreview();
 
         binding.typeGroup.addOnButtonCheckedListener((group, checkedId, isChecked) -> {
             if (updatingTypeUi || !isChecked) {
